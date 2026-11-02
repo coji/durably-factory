@@ -1125,7 +1125,7 @@ describe('a refused call after preflight stops the run, settled', () => {
     assert.ok(
       repo?.next.some((n) =>
         n.startsWith(
-          'pnpm --filter example-local-agent-loop demo retrigger --run run-1 --reload-config  # after fixing factory.json',
+          'pnpm demo retrigger --run run-1 --reload-config  # after fixing factory.json',
         ),
       ),
     )

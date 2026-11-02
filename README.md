@@ -1,4 +1,7 @@
-# local-agent-loop — Durably local factory demo
+# durably-factory
+
+[Durably](https://github.com/coji/durably) の上に作った、ローカルで動くエージェントの factory です。
+以前は coji/durably の `examples/local-agent-loop` にありました。
 
 Durably、ローカルの SQLite、AI SDK v7、ログイン済みの CLI 1 つ（Codex か
 Claude Code）を使い、実装、固定したテスト、独立したレビュー、人の承認までを
@@ -45,8 +48,8 @@ decision:N
 
 ```bash
 pnpm install
-pnpm --filter example-local-agent-loop typecheck
-pnpm --filter example-local-agent-loop test:unit
+pnpm typecheck
+pnpm test:unit
 ```
 
 使うプロバイダーだけをインストールし、ログインしておきます。
@@ -74,7 +77,7 @@ Codex では `ai-sdk-provider-codex-cli@2.3.0` の app-server モードを使い
 ターミナル 1:
 
 ```bash
-pnpm --filter example-local-agent-loop demo worker
+pnpm demo worker
 ```
 
 ワーカーは状態のルートごとに 1 つだけ動きます（[日々の操作](docs/operations.md)）。
@@ -82,13 +85,13 @@ pnpm --filter example-local-agent-loop demo worker
 ターミナル 2:
 
 ```bash
-pnpm --filter example-local-agent-loop demo trigger \
+pnpm demo trigger \
   --provider codex --context reuse --max-iterations 2
 
-pnpm --filter example-local-agent-loop demo status --run <runId>
-pnpm --filter example-local-agent-loop demo waits --run <runId>
-pnpm --filter example-local-agent-loop demo approve --run <runId> --wait <waitId>
-pnpm --filter example-local-agent-loop demo report --run <runId> --format md
+pnpm demo status --run <runId>
+pnpm demo waits --run <runId>
+pnpm demo approve --run <runId> --wait <waitId>
+pnpm demo report --run <runId> --format md
 ```
 
 `--max-iterations` は、1 つの実行で実装と修正を合わせて何回までするかで、1 から 5
@@ -101,7 +104,7 @@ Claude では `--provider claude` に替えるだけです。承認の CLI は�
 ## fake モード
 
 ```bash
-pnpm --filter example-local-agent-loop demo trigger \
+pnpm demo trigger \
   --provider fake --context reuse --max-iterations 3
 ```
 
@@ -155,9 +158,9 @@ fake の事前確認、待ち時間、使用量、`fakeScenario` は [仕組み�
 
 ## 以前の版から移行する（Upgrading）
 
-以前の版は、DB を `examples/local-agent-loop/local-agent-loop.db`（または
-`DURABLY_DB` の指す場所）に、作業物を `examples/local-agent-loop/runs/` に置いて
-いました。この版はそれらを読まず、移行もしません。チェックアウトに古い DB が
+coji/durably の `examples/local-agent-loop` にあった以前の版は、DB を
+`examples/local-agent-loop/local-agent-loop.db`（または `DURABLY_DB` の指す場所）に、
+作業物を `examples/local-agent-loop/runs/` に置いていました。この版はそれらを読まず、移行もしません。チェックアウトに古い DB が
 残っていると、ワーカーと CLI は、起動したときに、その場所と新しい場所を標準エラー
 出力に一度だけ警告します。承認待ちの実行や、走っている途中の実行が残っているなら、上げる前に、
 以前の版で終わらせるか、破棄してください。そのあと、古い DB と `runs/` は消して

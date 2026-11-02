@@ -32,7 +32,7 @@
 これがあれば、作業の内容を書いたファイルを渡すだけで始められます。
 
 ```bash
-pnpm --filter example-local-agent-loop demo trigger \
+pnpm demo trigger \
   --repo ~/progs/myapp --task-file ~/work/task.md \
   [--spec-file ~/work/spec.md] [--dispositions-file ~/work/dispositions.md] \
   [--context-file ~/work/decisions.md]
@@ -532,7 +532,7 @@ web UI では、レビューの欄と工程の時系列の詳細に、「中止�
   - 古い git に対応するため、`git worktree list --porcelain` を `-z` なしで読むので、
     改行を含む作業ツリーのパスは扱えません。factory がそういうパスを作ることは
     ありません。
-- 判断の理由は [ADR-0039](../../../docs/adr/0039-local-agent-loop-test-probe.md)
+- 判断の理由は [ADR-0039](adr/0039-local-agent-loop-test-probe.md)
   にあります。
 
 ## レビューの `blocker` を頻度と深刻さで決める（review.blockerThreshold）
@@ -778,20 +778,20 @@ Claude Code 2.1.280 で測ったときも、新しいセッションのキャッ
   以外の方法で Bedrock や Vertex を使っている場合は判定できず、続けてしまうことが
   あります。そのときはキャッシュが効かないだけで、結果は変わりません。レポートの、
   修正の呼び出しごとのキャッシュの読み込みの割合で確かめられます。
-- 判断の理由は [ADR-0024](../../../docs/adr/0024-local-agent-loop-claude-effort-session-reuse.md)
+- 判断の理由は [ADR-0024](adr/0024-local-agent-loop-claude-effort-session-reuse.md)
   にあります。
 
-## durably のチェックアウトを固定して呼ぶ
+## durably-factory のチェックアウトを固定して呼ぶ
 
-コードを対象のリポジトリへコピーせず、durably のチェックアウトを特定のコミットに
+コードを対象のリポジトリへコピーせず、durably-factory のチェックアウトを特定のコミットに
 固定して、そのまま呼ぶこともできます。
 
 ```bash
-git -C ~/src/durably fetch
-git -C ~/src/durably checkout <commit>
-pnpm -C ~/src/durably install --frozen-lockfile
-pnpm -C ~/src/durably --filter example-local-agent-loop demo worker     # Terminal 1
-pnpm -C ~/src/durably --filter example-local-agent-loop demo trigger \
+git -C ~/src/durably-factory fetch
+git -C ~/src/durably-factory checkout <commit>
+pnpm -C ~/src/durably-factory install --frozen-lockfile
+pnpm -C ~/src/durably-factory demo worker     # Terminal 1
+pnpm -C ~/src/durably-factory demo trigger \
   --repo "$PWD" --task-file "$PWD/task.md"                                # Terminal 2
 ```
 

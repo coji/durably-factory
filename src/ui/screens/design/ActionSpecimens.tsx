@@ -16,7 +16,7 @@ import { State } from './Specimen'
 /** The design page sends nothing: every action only says it is done. */
 const act: Act = async () => true
 
-const DEMO = 'pnpm --filter example-local-agent-loop demo'
+const DEMO = 'pnpm demo'
 const WAIT = '01K6D2R0000000000000WAIT1'
 const [approval, stopped] = TASKS
 

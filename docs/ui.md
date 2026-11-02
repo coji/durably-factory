@@ -6,14 +6,14 @@
 見るほか、承認、却下、仕様の判断、再実行、アーカイブを画面から行えます。
 
 ```bash
-pnpm --filter example-local-agent-loop demo ui             # http://127.0.0.1:4380/
-pnpm --filter example-local-agent-loop demo ui --port 4500
+pnpm demo ui             # http://127.0.0.1:4380/
+pnpm demo ui --port 4500
 ```
 
 - 表示された URL をブラウザで開きます。待ち受けるのは `127.0.0.1` だけで、外には
   公開しません。`--port` は 1〜65535 の整数だけを受け付けます。
 - 前もってビルドする必要はありません。画面は、要求されたときに Vite が変換して
-  配信します。`pnpm --filter example-local-agent-loop build:ui` は、静的なファイルを
+  配信します。`pnpm build:ui` は、静的なファイルを
   ビルドできるかを確かめるためのものです。
 - UI は、固定した状態のルートの DB を、CLI と同じ接続で開きます。DB がまだなければ
   空の画面を出し、DB は作りません。ワーカーか `trigger` が DB を作ると、次の更新
@@ -262,8 +262,8 @@ URL からも外します）。リポジトリは、保存された `--repo` の
 実際の LLM は呼ばず、すべて fake プロバイダーで動きます。
 
 ```bash
-pnpm --filter example-local-agent-loop demo seed
-pnpm --filter example-local-agent-loop demo seed --home ~/tmp/factory-demo --latency 3000-15000
+pnpm demo seed
+pnpm demo seed --home ~/tmp/factory-demo --latency 3000-15000
 ```
 
 - 使い捨ての HOME を OS の一時ディレクトリに作り、その場所を表示します。
@@ -293,6 +293,6 @@ pnpm --filter example-local-agent-loop demo seed --home ~/tmp/factory-demo --lat
 表示します。
 
 ```bash
-HOME=<表示された場所> pnpm --filter example-local-agent-loop demo ui
-HOME=<表示された場所> pnpm --filter example-local-agent-loop demo worker
+HOME=<表示された場所> pnpm demo ui
+HOME=<表示された場所> pnpm demo worker
 ```

@@ -650,7 +650,7 @@ async function startWorkerIfNeeded(
 
 function usage(): void {
   console.log(`local-agent-loop — Durably local agent demo
-Commands (run from examples/local-agent-loop):
+Commands (run from the repository root):
   pnpm demo worker [--exit-when-idle [--idle-ms <ms>]]
                                             start worker (long-running; kill -9 to test resume)
                                             one per state root: a second one is refused.

@@ -4251,7 +4251,7 @@ describe('numbers on the screens', () => {
         { runId: 'a', name: 'task a' },
         { runId: 'b', name: 'task b' },
       ]),
-      'pnpm --filter example-local-agent-loop demo archive --series a --series b',
+      'pnpm demo archive --series a --series b',
     )
     const text = htmlText(
       renderToStaticMarkup(
@@ -4686,7 +4686,7 @@ describe('numbers on the screens', () => {
   it('offers the way back beside an archived run that does not show its task', () => {
     const first = '01K6D2Q7XB3M9RKT4WFIRST0'
     const repair = '01K6D2Q7XB3M9RKT4WREPAIR'
-    const back = `pnpm --filter example-local-agent-loop demo unarchive --run ${first}`
+    const back = `pnpm demo unarchive --run ${first}`
     const runs = [
       row({
         id: first,
@@ -5759,10 +5759,7 @@ describe('worktree cleanup on the page', { timeout: 300000 }, () => {
       const left = await detail()
       assert.equal(left.archived, true)
       assert.equal(left.report.worktree?.present, true)
-      assert.equal(
-        left.diagnosis.cleanup,
-        'pnpm --filter example-local-agent-loop demo prune --apply',
-      )
+      assert.equal(left.diagnosis.cleanup, 'pnpm demo prune --apply')
       const leftText = shown(left)
       assert.ok(leftText.includes(DETAIL.worktreeLeft))
       assert.ok(leftText.includes(DETAIL.worktreeLeftNote))

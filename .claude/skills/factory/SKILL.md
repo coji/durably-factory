@@ -47,7 +47,7 @@ and steer it.
    was already up. You can also count worker processes:
 
    ```bash
-   pgrep -f "local-agent-loop.*cli.ts worker" | wc -l
+   pgrep -f "durably-factory.*cli.ts worker" | wc -l
    ```
 
    Count the worker process itself, not the pnpm wrapper that launched it: a
@@ -78,16 +78,19 @@ and steer it.
    git status --porcelain=v1
    ```
 
-3. Trigger. From the repository root:
+3. Trigger. Run the CLI of the durably-factory checkout
+   (`~/progs/oss/durably-factory` unless `DURABLY_FACTORY_DIR` names another)
+   from the root of the repository to work on:
 
    ```bash
-   pnpm --filter example-local-agent-loop demo trigger \
+   FACTORY="${DURABLY_FACTORY_DIR:-$HOME/progs/oss/durably-factory}"
+   pnpm -C "$FACTORY" demo trigger \
      --provider codex --repo "$(git rev-parse --show-toplevel)" \
      --issue 234 --check "pnpm validate" --setup "pnpm install --frozen-lockfile"
    ```
 
-   - `--check` is the pinned grading command and is required. For this
-     repository it is `pnpm validate`.
+   - `--check` is the pinned grading command and is required. For
+     coji/durably it is `pnpm validate`.
    - Never pass `--publish` unless the user explicitly asked for a pull
      request. Without it the run delivers a patch and touches nothing remote.
    - Use `--provider claude` when the user asks for Claude, `--provider fake`
@@ -100,10 +103,11 @@ and steer it.
 ## Reading a run
 
 ```bash
-pnpm --filter example-local-agent-loop demo status   # runs needing attention and the next command for each
-pnpm --filter example-local-agent-loop demo status --run <runId>
-pnpm --filter example-local-agent-loop demo report --run <runId> --format md
-pnpm --filter example-local-agent-loop demo compare --runs <runId>,<runId>
+FACTORY="${DURABLY_FACTORY_DIR:-$HOME/progs/oss/durably-factory}"
+pnpm -C "$FACTORY" demo status   # runs needing attention and the next command for each
+pnpm -C "$FACTORY" demo status --run <runId>
+pnpm -C "$FACTORY" demo report --run <runId> --format md
+pnpm -C "$FACTORY" demo compare --runs <runId>,<runId>
 ```
 
 The report carries per-stage wall time, tokens including cache reads and

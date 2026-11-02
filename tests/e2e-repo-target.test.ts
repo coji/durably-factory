@@ -2829,7 +2829,7 @@ describe(
         assert.equal(orphan.warnings.length, 1)
         assert.match(
           orphan.warnings[0] ?? '',
-          /^worktree \S+\/work: .*git no longer lists \S+ as a worktree, so neither archive nor pnpm --filter example-local-agent-loop demo prune --apply can remove it: remove the directory by hand$/,
+          /^worktree \S+\/work: .*git no longer lists \S+ as a worktree, so neither archive nor pnpm demo prune --apply can remove it: remove the directory by hand$/,
         )
         assert.ok(existsSync(work(runs.orphan.id)))
 

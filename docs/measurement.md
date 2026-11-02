@@ -56,8 +56,8 @@ LLM の呼び出しはすべて `src/engine/runner.ts` を通り、試行のメ�
 レポートは、SQLite にある実行、試行、待ちの記録から作り直す、副作用のない処理です。
 
 ```bash
-pnpm --filter example-local-agent-loop demo report --run <runId> --format json
-pnpm --filter example-local-agent-loop demo report --run <runId> --format md \
+pnpm demo report --run <runId> --format json
+pnpm demo report --run <runId> --format md \
   --out reports/<runId>.md
 ```
 
@@ -163,7 +163,7 @@ Claude Opus 5.5 は 0.05 倍、Claude Fable 5.1 は 0.025 倍です。価格表�
 ## 止めた呼び出しの使用量
 
 最後まで終わらなかった呼び出しも、止めるまでに使った分を残します
-（[ADR-0034](../../../docs/adr/0034-local-agent-loop-stopped-call-usage.md)）。
+（[ADR-0034](adr/0034-local-agent-loop-stopped-call-usage.md)）。
 Claude と Codex は、呼び出しの途中でも、その時点までの累計を報告します。
 
 - **Claude**: API の応答ごとの使用量を、message ID ごとに 1 回だけ足し、
@@ -243,7 +243,7 @@ override で、`@anthropic-ai/claude-agent-sdk` を 0.3.280 に上げていま�
 中央値 / 最小 / 最大と、欠測の数を出します。
 
 ```bash
-pnpm --filter example-local-agent-loop demo compare \
+pnpm demo compare \
   --runs <runA>,<runB>,<runC>,<runD> --format md
 ```
 
@@ -272,8 +272,8 @@ repairs と cost の統計、そして、`routine` と判定されたのに修�
 ないタスク、期間の外で終わったタスクは数えません。
 
 ```bash
-pnpm --filter example-local-agent-loop demo compare --trend
-pnpm --filter example-local-agent-loop demo compare --trend --days 14 --include-fake --format json
+pnpm demo compare --trend
+pnpm demo compare --trend --days 14 --include-fake --format json
 ```
 
 - 最初の実行の実装に使ったモデルと推論量（`code` のプロファイルの
@@ -307,7 +307,7 @@ factory が責任を持つのは、factory の DB と `report --format json` ま
 読んで取り込みます。factory から台帳へ書き込むことはしません。
 
 ```bash
-pnpm --filter example-local-agent-loop demo report --run <runId> --format json \
+pnpm demo report --run <runId> --format json \
   | jq '{runId, configVersion, inputs, delivery, roleUsage, summary}'
 ```
 
@@ -323,10 +323,10 @@ pnpm --filter example-local-agent-loop demo report --run <runId> --format json \
 同じ題材、プロバイダー、モデル、推論量、最大反復数で、2 つの実行を作ります。
 
 ```bash
-pnpm --filter example-local-agent-loop demo trigger \
+pnpm demo trigger \
   --provider codex --context reuse --model gpt-5.6-sol --effort medium
 
-pnpm --filter example-local-agent-loop demo trigger \
+pnpm demo trigger \
   --provider codex --context fresh --model gpt-5.6-sol --effort medium
 ```
 

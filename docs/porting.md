@@ -14,10 +14,10 @@
 
 ### checkoutを固定して呼ぶ
 
-durablyのcheckoutを特定のcommitに固定し、そこから `demo worker` と `demo trigger`
+durably-factoryのcheckoutを特定のcommitに固定し、そこから `demo worker` と `demo trigger`
 を実行します。対象リポジトリ側はコードを持ちません。
 
-1. durablyを任意の場所にcloneし、使うcommitをcheckoutして `pnpm install` する。
+1. durably-factoryを任意の場所にcloneし、使うcommitをcheckoutして `pnpm install` する。
    固定したcommitは利用側で記録する。
 2. 対象リポジトリ直下に `factory.json` を置き、`check`、必要なら `setup`、
    `base`、役割ごとの `profiles` を書く。書式は

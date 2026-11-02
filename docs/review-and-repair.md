@@ -26,7 +26,7 @@ LLM にタスクを判定させます。書かなければ判定の呼び出し�
 - 今は、判定だけを記録するモード（**shadow mode**）です。判定は記録するだけで、
   工程やプロファイルを選ぶのには使いません。`routine` の実行も `probe` の実行も、
   同じ工程を同じプロファイルで進みます。判定で進め方を切り替えるのは、
-  [ADR-0018](../../../docs/adr/0018-local-agent-loop-adaptive-routing.md) の後の段階で、
+  [ADR-0018](adr/0018-local-agent-loop-adaptive-routing.md) の後の段階で、
   判定の精度を測ってから入れます。
 - 形式に合わない応答（空、JUDGMENT がない、2 つある、`routine`/`probe` 以外、
   REASON がないか 500 文字を超える）と、プロバイダーのエラーや時間切れは、`unknown`
@@ -335,9 +335,9 @@ Claude のレビューは、使えるツールを `Read` だけにして呼び�
 「仕様の判断待ち」として表示し、次のコマンドを示します。
 
 ```bash
-pnpm --filter example-local-agent-loop demo approve --run <id> --wait <waitId>
-pnpm --filter example-local-agent-loop demo spec-revise --run <id> --notes-file notes.md
-pnpm --filter example-local-agent-loop demo reject --run <id> --wait <waitId>
+pnpm demo approve --run <id> --wait <waitId>
+pnpm demo spec-revise --run <id> --notes-file notes.md
+pnpm demo reject --run <id> --wait <waitId>
 ```
 
 - `approve` は、いまの仕様を確定して実装に進みます。
@@ -408,7 +408,7 @@ pnpm --filter example-local-agent-loop demo reject --run <id> --wait <waitId>
 と違って、実装を最初からやり直さず、修正の回数を新しくして最後の候補を直します。
 
 ```bash
-pnpm --filter example-local-agent-loop demo repair --run <親の runId> \
+pnpm demo repair --run <親の runId> \
   [--findings-file findings.md] [--dispositions-file dispositions.md] \
   [--context-file decisions.md] [--max-iterations 4]
 ```
@@ -532,9 +532,9 @@ pnpm --filter example-local-agent-loop demo repair --run <親の runId> \
   一覧と詳細で、親と子をタスクの名前でリンクします。`compare` は、通常の実行と子の
   実行を別のグループに分け、親の時間、費用、工程を子の値に足しません。子の実行
   どうしは `configVersion` ごとにまとめます。
-- 判断の理由は、[ADR-0022](../../../docs/adr/0022-local-agent-loop-external-repair-runs.md)
+- 判断の理由は、[ADR-0022](adr/0022-local-agent-loop-external-repair-runs.md)
   と、`verification-failed`、`review-cap-reached`、`review-incomplete` の親を加えた
-  [ADR-0030](../../../docs/adr/0030-local-agent-loop-verification-failed-repair.md)
+  [ADR-0030](adr/0030-local-agent-loop-verification-failed-repair.md)
   にあります。
 - `verification-failed` か `review-cap-reached` で止まったリポジトリの実行では、次に
   できる操作として、`retrigger` と並べて `demo repair --run <id>` を出します。

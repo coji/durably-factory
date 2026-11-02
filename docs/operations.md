@@ -10,7 +10,7 @@
 ワーカーの pid と起動元のチェックアウトを表示し、終了コード 1 で起動を断ります。
 
 ```text
-another worker already runs on ~/.local/state/local-agent-loop: pid 41234, started 2026-09-25T01:02:03.000Z from /Users/me/src/durably/examples/local-agent-loop. Stop it first (kill 41234); two workers would pick up each other's runs.
+another worker already runs on ~/.local/state/local-agent-loop: pid 41234, started 2026-09-25T01:02:03.000Z from /Users/me/src/durably-factory. Stop it first (kill 41234); two workers would pick up each other's runs.
 ```
 
 - ロックはプロセスと一緒に消えます。Ctrl-C、SIGTERM、初期化の失敗では自分で
@@ -62,7 +62,7 @@ another worker already runs on ~/.local/state/local-agent-loop: pid 41234, start
   ワーカーを起動せずに警告します。
 - 自動起動したワーカーは、コマンドを実行したチェックアウトの CLI で動きます（どの
   チェックアウトかは `worker.json` の `checkout` に残ります）。同じ状態のルートを
-  共有していると、固定したチェックアウト（[「durably のチェックアウトを固定して呼ぶ」](configuration.md)の節）とは
+  共有していると、固定したチェックアウト（[「durably-factory のチェックアウトを固定して呼ぶ」](configuration.md)の節）とは
   別のチェックアウトから実行したコマンドが、そのチェックアウトのワーカーを起動する
   ことがあります。固定したチェックアウトのワーカーで処理したいときは、その
   チェックアウトでワーカーを動かしておくか、自動起動を止めてください。
@@ -124,16 +124,16 @@ a successor (pid N)` を書きます。次のワーカーも同じようにア�
   `tasks`）と同じ値です。
 
 ```bash
-pnpm --filter example-local-agent-loop demo status
-pnpm --filter example-local-agent-loop demo status --format json
+pnpm demo status
+pnpm demo status --format json
 ```
 
 ```text
 01M375ZAYC...  waiting  (created 2026-09-23T13:06:11.530Z)
   reason:  waiting for human approval of candidate candidate-1-9958e915bf52
-  next:    pnpm --filter example-local-agent-loop demo report --run 01M375ZAYC...  # read the reviews first
-           pnpm --filter example-local-agent-loop demo approve --run 01M375ZAYC... --wait 01M375ZC2C...
-           pnpm --filter example-local-agent-loop demo reject --run 01M375ZAYC... --wait 01M375ZC2C...
+  next:    pnpm demo report --run 01M375ZAYC...  # read the reviews first
+           pnpm demo approve --run 01M375ZAYC... --wait 01M375ZC2C...
+           pnpm demo reject --run 01M375ZAYC... --wait 01M375ZC2C...
   task:    #261 Round the report's cost to cents  (first run 01M375ZAYC..., 1 run(s))
 ```
 
@@ -234,7 +234,7 @@ JSON は下の例のとおりで、`autoStarted` はありません。
   "running": false,
   "pid": null,
   "startedAt": null,
-  "start": "pnpm --filter example-local-agent-loop demo worker"
+  "start": "pnpm demo worker"
 }
 ```
 
@@ -272,7 +272,7 @@ JSON は下の例のとおりで、`autoStarted` はありません。
 表示して終わります。実行の状態やレポートを何度も確かめる代わりに使います。
 
 ```bash
-pnpm --filter example-local-agent-loop demo wait --run <runId> \
+pnpm demo wait --run <runId> \
   [--timeout <ms>] [--worker-timeout <ms> | --no-worker-timeout] [--format json]
 ```
 
@@ -331,11 +331,11 @@ timing:
 （`wait on a person or stopped`）と web UI の「止まったもの」から外れます。
 
 ```bash
-pnpm --filter example-local-agent-loop demo archive --run <runId>
-pnpm --filter example-local-agent-loop demo archive --run <runId> --delete-branch
-pnpm --filter example-local-agent-loop demo archive --series <runId>
-pnpm --filter example-local-agent-loop demo archive --series <runId> --delete-branch
-pnpm --filter example-local-agent-loop demo unarchive --run <runId>
+pnpm demo archive --run <runId>
+pnpm demo archive --run <runId> --delete-branch
+pnpm demo archive --series <runId>
+pnpm demo archive --series <runId> --delete-branch
+pnpm demo unarchive --run <runId>
 ```
 
 - アーカイブできるのは、止まった実行だけです。`failed` か `cancelled` で終わった実行と、
@@ -407,10 +407,10 @@ pnpm --filter example-local-agent-loop demo unarchive --run <runId>
   まとめて片付けるためのものです。
 
 ```bash
-pnpm --filter example-local-agent-loop demo prune                      # 対象と容量を表示するだけ
-pnpm --filter example-local-agent-loop demo prune --apply              # worktree を片付ける
-pnpm --filter example-local-agent-loop demo prune --delete-branches    # 消すブランチも表示する
-pnpm --filter example-local-agent-loop demo prune --delete-branches --apply
+pnpm demo prune                      # 対象と容量を表示するだけ
+pnpm demo prune --apply              # worktree を片付ける
+pnpm demo prune --delete-branches    # 消すブランチも表示する
+pnpm demo prune --delete-branches --apply
 ```
 
 - 削除は `git worktree remove --force` で行い、続けて `git worktree prune` で
@@ -438,7 +438,7 @@ pnpm --filter example-local-agent-loop demo prune --delete-branches --apply
   web UI は、片付けた作業ツリーのパスを作業場所として案内せず、「作業ツリーは
   片付け済み」と表示します。
 - 実行全体、リモートのブランチ、プルリクエストは消しません。この方針は
-  [ADR-0028](../../../docs/adr/0028-local-agent-loop-worktree-retention.md) に
+  [ADR-0028](adr/0028-local-agent-loop-worktree-retention.md) に
   まとめています。
 
 ## DB と作業物の置き場所
@@ -495,7 +495,7 @@ DB（データベース）と、すべての実行のデータは、`~/.local/st
   作業場所の外では、この 2 つのファイルだけを読めて、書き込みはできません。
 
 `worker`、`trigger`、`status`、`waits`、`approve`、`report`、`compare` は、どれも引数なしで同じ
-DB を見ます。ディレクトリがなければ、DB を開く前に作ります。durably の
+DB を見ます。ディレクトリがなければ、DB を開く前に作ります。durably-factory の
 チェックアウトの中にも、対象のリポジトリの中にも、DB や `runs/` は作りません。
 チェックアウトをどのコミットに切り替えても、過去の実行はそのまま読めます。置き場所を
 変える引数や環境変数はありません。2 つのプロセスが別の DB を見ると、実行が黙って

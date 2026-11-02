@@ -642,7 +642,7 @@ describe('status without --run', { timeout: 180000 }, () => {
     const out = res.stdout
     // Printed commands run as pasted from anywhere in the repository; any
     // explanation follows as a shell comment.
-    const demoCmd = 'pnpm --filter example-local-agent-loop demo'
+    const demoCmd = 'pnpm demo'
     const approve = `${demoCmd} approve --run ${waiting} --wait ${waitId}`
     const reject = `${demoCmd} reject --run ${waiting} --wait ${waitId}`
     for (const line of out.split('\n')) {
@@ -844,7 +844,7 @@ describe('archive and unarchive', { timeout: 120000 }, () => {
 })
 
 describe('archive retry hints', { timeout: 300000 }, () => {
-  const DEMO = 'pnpm --filter example-local-agent-loop demo'
+  const DEMO = 'pnpm demo'
   /**
    * Stopped repository runs with no worker, each with a worktree added by
    * hand where setup would have made it: none has a completed setup, so
@@ -950,7 +950,7 @@ describe('archive retry hints', { timeout: 300000 }, () => {
       const stderr = await archive(box, flags)
       assert.match(
         stderr,
-        /^warning: .*git no longer lists \S+ as a worktree, so neither archive nor pnpm --filter example-local-agent-loop demo prune --apply can remove it: remove the directory by hand$/m,
+        /^warning: .*git no longer lists \S+ as a worktree, so neither archive nor pnpm demo prune --apply can remove it: remove the directory by hand$/m,
       )
       assert.doesNotMatch(stderr, /again to retry/)
     }
@@ -1121,7 +1121,7 @@ describe('archive --series', { timeout: 300000 }, () => {
       return res.stdout
     }
     const stopsLine = (count: number, task: string) =>
-      `  stops:   ${count} stopped run(s) not archived; pnpm --filter example-local-agent-loop demo archive --series ${task}  #`
+      `  stops:   ${count} stopped run(s) not archived; pnpm demo archive --series ${task}  #`
     const unarchiveAll = async () => {
       for (const id of stops)
         assert.equal((await demo(box, ['unarchive', '--run', id])).code, 0)
@@ -1319,7 +1319,7 @@ describe('archive --series', { timeout: 300000 }, () => {
     )
     assert.ok(
       locked.stderr.includes(
-        `run pnpm --filter example-local-agent-loop demo archive --series ${repair} again to retry what git refused`,
+        `run pnpm demo archive --series ${repair} again to retry what git refused`,
       ),
     )
     assert.ok(existsSync(work(first)))
@@ -5557,7 +5557,7 @@ describe('auto-started worker', { timeout: 300000 }, () => {
             running: false,
             pid: null,
             startedAt: null,
-            start: 'pnpm --filter example-local-agent-loop demo worker',
+            start: 'pnpm demo worker',
             unknownReason: null,
           })
         }
