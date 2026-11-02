@@ -74,6 +74,16 @@ after(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
+async function fillSlowly(dir: string): Promise<void> {
+  // Enough files that git cannot delete them all within a 1 ms limit, even
+  // on a fast runner.
+  await Promise.all(
+    Array.from({ length: 2000 }, (_, i) =>
+      writeFile(join(dir, `slow-${i}.txt`), 'x'),
+    ),
+  )
+}
+
 describe('git engine', () => {
   it('resolves the repository root and a commit tree', async () => {
     // git reports the real path; on macOS /var is a symlink to /private/var.
@@ -344,6 +354,7 @@ describe('git engine', () => {
   it('says a worktree removal stopped at its limit may be partly done, and removes it when asked again', async () => {
     const wt = join(root, 'wt-slow')
     await addWorktree({ repo, dir: wt, baseCommit: base, branch: 'work/slow' })
+    await fillSlowly(wt)
     // Killed before git can finish: the warning names the limit, the
     // directory and the ways to finish, not git's exit code.
     const stopped = await forceRemoveWorktree(repo, wt, 1)
@@ -393,6 +404,7 @@ describe('git engine', () => {
     assert.equal(await forceRemoveWorktree(repo, wt), null)
     // The same for the test probe's base, removed with -f -f.
     await addWorktree({ repo, dir: wt, baseCommit: base })
+    await fillSlowly(wt)
     assert.ok(
       (await removeWorktreeRegistration(repo, wt, 1))?.startsWith(
         `git worktree remove was stopped at its <0.1s limit before it finished; ${wt} may be partly removed.`,
