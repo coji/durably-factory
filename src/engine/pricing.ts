@@ -14,7 +14,7 @@
 export const PRICE_BASIS = {
   source:
     'developers.openai.com/api/docs/pricing (standard, short context); platform.claude.com/docs/en/about-claude/pricing',
-  checkedAt: '2026-09-23',
+  checkedAt: '2026-11-03',
   basis: 'api-equivalent-estimate',
 } as const
 
@@ -37,9 +37,10 @@ interface ModelPrice {
 }
 
 /**
- * OpenAI lists cache writes at 1.25x input and cache reads at 0.1x for every
- * current model. Not modelled: the long-context tier (2x input, 1.5x output
- * past a threshold the page does not state in its text).
+ * OpenAI's 30-minute cache writes cost 1.25x input; cache reads default to
+ * 0.1x, with model-specific overrides below. Not modelled: 12-hour cache
+ * writes (2.5x input) or the long-context tier (2x input and cache rates,
+ * 1.5x output above 272K input tokens).
  */
 const OPENAI_CACHE = { cacheRead: 0.1, cacheWrite: 1.25 }
 /**
@@ -52,6 +53,19 @@ const ANTHROPIC_CACHE = { cacheRead: 0.1, cacheWrite: 1.25 }
 const PRICE_PER_1K: Record<string, ModelPrice> = {
   // OpenAI, standard processing, short context.
   'gpt-6-astra': { in: 0.01, out: 0.05, ...OPENAI_CACHE },
+  // GPT-6.1 cache reads cost 5% of input, rather than the older models' 10%.
+  'gpt-6.1-sol': {
+    in: 0.002,
+    out: 0.01,
+    ...OPENAI_CACHE,
+    cacheRead: 0.05,
+  },
+  'gpt-6.1-terra': {
+    in: 0.001,
+    out: 0.005,
+    ...OPENAI_CACHE,
+    cacheRead: 0.05,
+  },
   'gpt-6-sol': { in: 0.002, out: 0.01, ...OPENAI_CACHE },
   'gpt-6-luna': { in: 0.0001, out: 0.0005, ...OPENAI_CACHE },
   // Promotional price, stated as available at least through 2026-11-21.

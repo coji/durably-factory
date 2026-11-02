@@ -153,7 +153,8 @@ pnpm demo report --run <runId> --format md \
 `inputTokens` 全体のうち、キャッシュの読み込みと書き込みはそれぞれの料金の項目
 （meter）の単価で、残りは入力の単価で計算します。キャッシュの書き込みは、どちらも
 入力の 1.25 倍です。キャッシュの読み込みはモデルごとに違い、多くは 0.1 倍、
-Claude Opus 5.5 は 0.05 倍、Claude Fable 5.1 は 0.025 倍です。価格表は
+GPT-6.1 Sol / Terra と Claude Opus 5.5 は 0.05 倍、Claude Fable 5.1 は
+0.025 倍です。価格表は
 `src/engine/pricing.ts` にあり、確かめた日と出典を `PRICE_BASIS` に記録して
 います。キャッシュの内訳（cache legs）が報告されなかった呼び出しは、入力全体を
 定価で扱い、`costCacheAware: false` として区別します。レポートは保存した値を
