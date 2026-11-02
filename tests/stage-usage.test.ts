@@ -112,6 +112,30 @@ function row(
 }
 
 describe('pricing meters', () => {
+  for (const { model, input, output, read, write } of [
+    { model: 'gpt-6.1-sol', input: 2, output: 10, read: 0.1, write: 2.5 },
+    { model: 'gpt-6.1-terra', input: 1, output: 5, read: 0.05, write: 1.25 },
+  ]) {
+    it(`prices ${model} at its published standard short-context rates`, () => {
+      // Each meter gets 1K tokens; all cache tokens are part of inputTokens.
+      const b = estimateCostBreakdown(
+        model,
+        usage(3_000, 1_000, { read: 1_000, write: 1_000 }),
+      )
+      assert.ok(b)
+      assert.equal(b.cacheAware, true)
+      assert.deepEqual(b.meters, {
+        input_tokens: input / 1000,
+        output_tokens: output / 1000,
+        input_cache_read_tokens: read / 1000,
+        input_cache_write_tokens: write / 1000,
+      })
+      assert.ok(
+        Math.abs(b.totalUsd - (input + output + read + write) / 1000) < 1e-9,
+      )
+    })
+  }
+
   it('prices cache legs at their own rates and bills the remainder as input', () => {
     // gpt-5.6-sol: in 0.004, out 0.02 per 1K; OpenAI lists cache reads at
     // 0.1x and cache writes at 1.25x input.
