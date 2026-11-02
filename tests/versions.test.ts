@@ -211,7 +211,12 @@ describe('a pinned codexPath', { timeout: 120000 }, () => {
         acceptRejection: true,
       },
     )
-    assert.match(refused.rejection ?? '', /app-server exited \(code=3/)
+    // The stub exits at once, so the first write can fail before its exit
+    // code is read; either way it is a refusal.
+    assert.match(
+      refused.rejection ?? '',
+      /app-server exited \(code=3|app-server: write EPIPE/,
+    )
     const after = await stub.launches()
     assert.ok(after.slice(before).some((l) => l.startsWith('app-server')))
     assert.equal(snapshots.at(-1)?.versions['codexCliPath'], stub.path)
