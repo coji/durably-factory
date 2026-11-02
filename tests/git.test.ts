@@ -344,6 +344,13 @@ describe('git engine', () => {
   it('says a worktree removal stopped at its limit may be partly done, and removes it when asked again', async () => {
     const wt = join(root, 'wt-slow')
     await addWorktree({ repo, dir: wt, baseCommit: base, branch: 'work/slow' })
+    // Enough files that git cannot delete them all within the 1 ms limit,
+    // even on a fast runner.
+    await Promise.all(
+      Array.from({ length: 2000 }, (_, i) =>
+        writeFile(join(wt, `slow-${i}.txt`), 'x'),
+      ),
+    )
     // Killed before git can finish: the warning names the limit, the
     // directory and the ways to finish, not git's exit code.
     const stopped = await forceRemoveWorktree(repo, wt, 1)
