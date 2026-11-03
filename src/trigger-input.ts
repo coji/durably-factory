@@ -546,6 +546,7 @@ async function repoSettings(
     settings: {
       ...(config?.name !== undefined ? { name: config.name } : {}),
       baseRef: a['base'] ?? config?.base ?? 'HEAD',
+      featureBase: a['base'] ?? config?.base ?? 'HEAD',
       checkCommand: checkCommand ?? null,
       checkFromSpec,
       setupCommand:
@@ -1296,6 +1297,7 @@ export function buildRepairInput(
       kind: 'repo' as const,
       repoPath: t.repoPath,
       baseRef: commit,
+      featureBase: t.featureBase ?? t.baseCommit,
       task: t.task,
       spec: fixed.spec ?? t.spec,
       dispositions,

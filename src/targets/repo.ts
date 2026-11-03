@@ -77,6 +77,7 @@ import {
   withPartialLog,
   type GradeResult,
 } from '../engine/verification.js'
+import { repairDispositionText } from '../factory/code-response.js'
 import {
   baseWorkdirOf,
   removableRunPathsOf,
@@ -91,6 +92,7 @@ import {
 import { changedPathsLine, trustedContextLines } from '../factory/prompts.js'
 import {
   DEFAULT_COMMIT_SETTINGS,
+  featureBaseOf,
   type CommitSettings,
   type Delivery,
   type DeliverArgs,
@@ -269,6 +271,10 @@ export class RepoTarget implements Target {
     // invite the implementer to argue with its reviewers.
     if (role !== 'code' && this.config.dispositions)
       inputs.push({ label: 'DISPOSITIONS', content: this.config.dispositions })
+    if (role === 'code' && this.config.codeResponseVersion === 1) {
+      const settled = repairDispositionText(this.config.dispositions)
+      if (settled) inputs.push({ label: 'DISPOSITIONS', content: settled })
+    }
     // Outside findings are what a repair run is for. They stay data like the
     // task: never verified feedback, never a factory instruction.
     const findings = this.config.repairOf?.findings
@@ -302,6 +308,15 @@ export class RepoTarget implements Target {
       [
         'Before you finish, run each of these commands in this worktree and fix what they report:',
         ...commands.map((command) => `  \`${checkFingerprint(command)}\``),
+        ...(this.config.codeResponseVersion === 1
+          ? [
+              'Do not return with a failing sandbox-runnable check. End your reply with NOTES: and report each result as CHECK C<n>: pass | fail | not-run — <result or reason>, using the following IDs. These are self-reported claims, not factory verification. If a command cannot run in this sandbox, say not-run and explain why; do not claim a pass.',
+              ...commands.map(
+                (command, index) =>
+                  `Self-check C${index + 1}: ${checkFingerprint(command)}`,
+              ),
+            ]
+          : []),
         'They are quick checks that the grading command also covers. Only the grading command judges this run.',
       ].join('\n'),
     ]
@@ -329,8 +344,8 @@ export class RepoTarget implements Target {
     )
     return [
       probed
-        ? `${coverage} Judge them from any trusted stage result below that covers them, and say needsChanges when one shows a test meant to cover the change passing on the base commit. Read the code to judge a test no such result covers.`
-        : `${coverage} Say needsChanges when the new tests would pass against the base commit.`,
+        ? `${coverage} Judge them from any trusted stage result below that covers them, and say needsChanges when one shows a test meant to cover the change passing on the feature base commit (featureBase). Read the code to judge a test no such result covers.`
+        : `${coverage} Say needsChanges when the new tests would pass against the feature base commit (featureBase), before the feature was implemented, not just before this repair.`,
     ]
   }
 
@@ -692,6 +707,8 @@ export class RepoTarget implements Target {
     return [
       "TRUSTED CONTEXT (produced by the factory or confirmed by the run's owner, not by the implementer):",
       `Base commit: ${this.config.baseCommit}`,
+      `Feature base commit (featureBase): ${featureBaseOf(this.config)}`,
+      'The base commit is the diff base; use featureBase to judge whether tests detect the feature. They can differ on a repair run.',
       ...(parent
         ? [
             parent.parentConclusion && parent.parentConclusion !== 'approved'

@@ -74,7 +74,10 @@ describe('review prompts follow the target', () => {
     )
     // docs/porting.md tells porters this is the second safeguard once the
     // "tests are immutable" invariant no longer holds.
-    assert.match(prompt, /would pass against the base commit/)
+    assert.match(
+      prompt,
+      /would pass against the feature base commit \(featureBase\)/,
+    )
   })
 
   it('keeps the sample target asking about the sample', () => {
@@ -670,6 +673,54 @@ describe('the reviews of a candidate that failed its check', () => {
 })
 
 describe('selfCheck in the implementation and repair prompts', () => {
+  it('asks new runs to report every configured result in NOTES as a self-reported claim', () => {
+    const target = new RepoTarget({
+      ...repoConfig,
+      codeResponseVersion: 1,
+      selfCheck: [['pnpm', 'lint']],
+    })
+    const prompt = codePrompt({
+      role: 'implement',
+      iteration: 1,
+      repairNotes: [],
+      task: target.taskBrief(),
+      rules: target.implementationRules(),
+      requiresNotes: true,
+    })
+    assert.match(prompt, /Self-check C1: pnpm lint/)
+    assert.match(prompt, /CHECK C<n>: pass \| fail \| not-run/)
+    assert.match(prompt, /Always include NOTES/)
+    assert.doesNotMatch(
+      prompt,
+      /Leave the section out when you left nothing unfixed/,
+    )
+  })
+
+  it('passes only non-actionable and deferred dispositions to code as untrusted data', () => {
+    const target = new RepoTarget({
+      ...repoConfig,
+      codeResponseVersion: 1,
+      dispositions:
+        'F1: non-actionable — owner retained it\nF2: deferred — later\nF3: fixed — closed',
+    })
+    const dispositions = target
+      .untrustedInputs('code')
+      .find((entry) => entry.label === 'DISPOSITIONS')
+    assert.equal(
+      dispositions?.content,
+      'F1: non-actionable — owner retained it\nF2: deferred — later',
+    )
+    const prompt = codePrompt({
+      role: 'repair',
+      iteration: 2,
+      repairNotes: [],
+      task: target.taskBrief(),
+      rules: target.implementationRules(),
+      untrusted: target.untrustedInputs('code'),
+    })
+    assert.match(prompt, /<<<UNTRUSTED DISPOSITIONS/)
+  })
+
   const selfCheck = [
     ['pnpm', 'lint'],
     ['pnpm', 'exec', 'tsc', '--noEmit'],

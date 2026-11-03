@@ -540,3 +540,66 @@ pnpm demo repair --run <親の runId> \
   できる操作として、`retrigger` と並べて `demo repair --run <id>` を出します。
   `review-incomplete` で失敗したリポジトリの実行では、最後の候補が記録されていて、
   その検証が通っているときだけ、次にできる操作に `demo repair --run <id>` を出します。
+
+## 修正したテストを比べる基準
+
+修正の差分は、引き続き親の候補から取ります。
+テストが機能を確かめるかを判断するときは、機能を入れる前のcommitである **featureBase** と比べます。
+最初の実行ではbaseと同じcommitになり、修正の実行は親からこの値を引き継ぎます。
+さらに修正しても、基準を直前の修正候補に移しません。
+
+レビューのTRUSTED CONTEXTには、差分のbaseとfeatureBaseの両方を渡します。
+`testProbe` のbase側もfeatureBaseで実行します。
+親候補にすでに入った修正を検証するテストが親候補で通っても、それだけでテストを無効とは判断しません。
+JSONとMarkdownのレポートには、setupで確定したfeatureBaseを表示します。
+古いsetupに値がない場合は、そのsetupのbaseを使います。
+
+## findingごとの処置を返させる
+
+新しいリポジトリの実行では、修正担当に渡すfindingごとに処置の回答を求めます。
+外部のfindingsファイルには、たとえば次のように書けます。
+
+```text
+F1: 境界値のテストを追加する
+F2: 互換APIを削除する
+```
+
+明記したIDは維持します。
+IDのない箇条書きや段落には、factoryが重複しない `F1`、`F2` などを割り当てます。
+同じIDを複数のfindingに付けた入力は受け付けません。
+検証失敗の診断ログだけを渡す場合は、このfinding単位の回答を要求しません。
+
+修正担当の `NOTES:` には、各IDについて次のいずれかを1行ずつ書かせます。
+
+```text
+NOTES:
+F1: fixed test/boundary.test.ts:25
+F2: not changed — compatibility is still required
+F3: disputed — the confirmed owner context requires the current behavior
+```
+
+`fixed` は具体的な変更箇所、`not changed` と `disputed` は理由が必要です。
+すべてのfindingを直したという一括の宣言や、重複した回答は、そのfindingへの回答と数えません。
+`selfCheck` を設定している場合は、同じNOTESに検査結果も含めます。
+NOTES全体の上限は引き続き4 KiBです。
+
+回答が欠けていれば、候補を確定する前に1回だけ訂正を求めます。
+同じセッションを使う設定なら修正担当自身のセッションで続け、新しいセッションを使う設定なら、元の指示と前回の回答を渡してやり直します。
+訂正でも回答が揃わない場合や、訂正が時間切れになった場合は、候補の確定とレビューに進めず停止します。
+訂正は同じ修正反復の中の追加呼び出しで、使用量と費用を別の呼び出しとして数えます。
+チェックポイントから再開しても、完了済みの呼び出しをもう一度送りません。
+
+`--dispositions-file` で触らないfindingを伝える場合は、次の形式を使います。
+
+```text
+F2: non-actionable — confirmed compatibility requirement
+F3: deferred — outside this repair
+```
+
+この2種類の行は、修正担当にも変更しないよう求めるデータとして渡します。
+引き続きuntrustedであり、ownerの確定したcontextを上書きしません。
+レビュー担当は従来どおりdispositions全体を読みます。
+
+レポートの `codeResponses` には、最初の回答と訂正の両方について、finding、処置、未回答のIDを残します。
+処置の回答は自己申告であり、実際に直したか、反対する理由が妥当かはレビューで判断します。
+機能追加前のsetupで始まった実行には、途中からこの回答ゲートを適用しません。

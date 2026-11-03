@@ -63,3 +63,6 @@ What we considered and why we didn't do it.
 | [0038](0038-local-agent-loop-trusted-context.md)                | local-agent-loop trusted context              | accepted |
 | [0039](0039-local-agent-loop-test-probe.md)                     | local-agent-loop test probe                   | accepted |
 | [0040](0040-local-agent-loop-review-blocker-threshold.md)       | local-agent-loop review blocker threshold     | accepted |
+| [0041](0041-feature-base-for-repair-tests.md)                   | Feature base for repair tests                 | accepted |
+| [0042](0042-self-reported-implementer-checks.md)                | Self-reported implementer checks              | accepted |
+| [0043](0043-per-finding-repair-treatments.md)                   | Per-finding repair treatments                 | accepted |

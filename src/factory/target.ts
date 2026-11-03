@@ -59,6 +59,10 @@ export interface RepoTargetConfig {
   repoPath: string
   /** Commit every candidate is diffed against. */
   baseCommit: string
+  /** Feature's original base, inherited across repair runs. Old setups use baseCommit. */
+  featureBase?: string
+  /** New code response contract; absent on old setups so replay cannot add calls. */
+  codeResponseVersion?: 1
   /** Branch the agent's worktree is on. */
   branch: string
   /** The agent's editable worktree. */
@@ -150,6 +154,8 @@ export interface RepoTargetConfig {
   repairOf?: {
     runId: string
     findings: string
+    /** Factory-generated check diagnostics are not individual review findings. */
+    findingsKind?: 'check-output' | 'findings'
     /** How the parent ended; absent on a run stored before it was kept. */
     parentConclusion?: RepairParentConclusion
   } | null
@@ -168,6 +174,11 @@ export type RepairParentConclusion =
   | 'review-incomplete'
 
 export type TargetConfig = SubjectTargetConfig | RepoTargetConfig
+
+/** Test effectiveness is measured before the feature, not before its latest repair. */
+export function featureBaseOf(config: RepoTargetConfig): string {
+  return config.featureBase ?? config.baseCommit
+}
 
 /**
  * A detached worktree at the base commit, beside the agent's (ADR-0039),
@@ -291,6 +302,8 @@ export interface UntrustedInput {
     | 'SPEC_FINDINGS'
     | 'SETTLED_FINDINGS'
     | 'HUMAN_NOTES'
+    | 'REPAIR_FINDINGS'
+    | 'PREVIOUS_REPLY'
   content: string
 }
 

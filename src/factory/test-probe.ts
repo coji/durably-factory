@@ -48,7 +48,11 @@ import type { CandidateRef } from '../engine/types.js'
 import { prepareTestProbeBase } from '../targets/index.js'
 import { fingerprintPaths, readTestProbeBaseRecord } from '../targets/repo.js'
 import { testProbeMarkerOf, testProbeResultOf } from './layout.js'
-import { MAX_CONTEXT_BYTES, type RepoTargetConfig } from './target.js'
+import {
+  featureBaseOf,
+  MAX_CONTEXT_BYTES,
+  type RepoTargetConfig,
+} from './target.js'
 import type {
   TestProbeFile,
   TestProbeRecord,
@@ -231,7 +235,7 @@ async function prepareBase(
     const made = await prepareTestProbeBase({
       repo: config.repoPath,
       root: runRoot,
-      baseCommit: config.baseCommit,
+      baseCommit: featureBaseOf(config),
       setupCommand: config.setupCommand,
       signal,
     })
@@ -252,7 +256,7 @@ async function prepareBase(
       !fresh &&
       !(await restoreBase(
         base.workdir,
-        config.baseCommit,
+        featureBaseOf(config),
         record?.setupUntracked ?? {},
         signal,
       ))
@@ -685,7 +689,7 @@ export async function runTestProbe(args: {
     file,
     testProbeText({
       candidateId: candidate.id,
-      baseCommit: config.baseCommit,
+      baseCommit: featureBaseOf(config),
       rules: config.testProbe ?? [],
       files,
       elapsedMs,
