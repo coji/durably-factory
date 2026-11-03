@@ -351,7 +351,7 @@ export const codeStage: StageHandler = async ({
     response = await readResponse(false)
     if (response.missing.length > 0) {
       const session: SessionRef | null =
-        reuse && call.sessionId
+        state.setup.contextMode === 'reuse' && call.sessionId
           ? {
               provider: profile.provider,
               nativeId: call.sessionId,

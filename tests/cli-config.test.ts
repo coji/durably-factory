@@ -3605,7 +3605,7 @@ describe('repair', { timeout: 240000 }, () => {
     assert.match(built.content, new RegExp(`commit ${commit}`))
     assert.match(
       built.content,
-      /^## correctness\n\nrefunds truncate\nline two$/m,
+      /^## correctness\n\n- refunds truncate\n  line two$/m,
     )
     assert.doesNotMatch(built.content, /EARLIER|## edge-cases/)
     assert.deepEqual(incompleteReviewFindings(both), built)
@@ -3617,7 +3617,7 @@ describe('repair', { timeout: 240000 }, () => {
       ]),
     ).content
     assert.doesNotMatch(one, /PASS NOTE|## correctness|EARLIER/)
-    assert.match(one, /^## edge-cases\n\nempty cart$/m)
+    assert.match(one, /^## edge-cases\n\n- empty cart$/m)
     for (const [name, last] of [
       [
         'a pass and a failed review',
@@ -3796,7 +3796,7 @@ describe('repair', { timeout: 240000 }, () => {
     assert.match(built.content, new RegExp(`commit ${commit}`))
     assert.match(
       built.content,
-      /^## correctness\n\nrefunds still truncate\nsecond line\n\n## edge-cases\n\nempty cart$/m,
+      /^## correctness\n\n- refunds still truncate\n  second line\n\n## edge-cases\n\n- empty cart$/m,
     )
     assert.deepEqual(reviewFindings(both), built)
     // A pass review's notes, and a review with blank notes, are left out.
@@ -3807,7 +3807,7 @@ describe('repair', { timeout: 240000 }, () => {
       ]),
     ).content
     assert.doesNotMatch(one, /PASS NOTE|## correctness/)
-    assert.match(one, /^## edge-cases\n\nempty cart$/m)
+    assert.match(one, /^## edge-cases\n\n- empty cart$/m)
     const refused = (reviews: unknown, name: string) =>
       assert.throws(
         () => reviewFindings(parent(reviews)),

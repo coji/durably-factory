@@ -5913,7 +5913,7 @@ describe('owner context and stage context', { timeout: 240000 }, () => {
     const IMPLEMENTED =
       'IMPLEMENT-NOTES: left mul() as is; the owner context keeps it.'
     const REPAIRED =
-      'REPAIR-NOTES: left the rounding finding; the spec asks for raw sums.'
+      'REPAIR-NOTES: left the rounding finding; the spec asks for raw sums.\nF1: disputed — the spec asks for raw sums'
     try {
       // The first candidate's reviews ask for changes, so a repair follows
       // and its candidate is reviewed again.

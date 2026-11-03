@@ -6,8 +6,55 @@ import {
   repairDispositionText,
   repairFindings,
 } from '../src/factory/code-response.js'
+import { reviewFindings } from '../src/trigger-input.js'
 
 describe('repair finding contract', () => {
+  it("keeps blank lines inside a paragraph finding's fenced example", () => {
+    const findings = repairFindings(
+      [
+        'First problem:\n```js\nconst x = 1\n\nconst y = 2\n```\n\nSecond problem',
+      ],
+      'F2: deferred — later',
+    )
+    assert.equal(findings.length, 2)
+    assert.match(findings[0].text, /const x = 1\n\nconst y = 2/)
+    assert.equal(findings[1].text, 'Second problem')
+    assert.equal(findings[1].disposition, 'deferred')
+  })
+
+  it('does not silently erase a nonempty heading-only findings file', () => {
+    const text = '# Fix negative inputs\n# Add bounds test'
+    const findings = repairFindings([text], null)
+    assert.equal(findings.length, 1)
+    assert.equal(findings[0].text, text)
+  })
+
+  it('identifies actual generated verdict notes without making the factory explanation another finding', () => {
+    const generated = reviewFindings({
+      id: 'parent',
+      status: 'completed',
+      input: {},
+      output: {
+        candidate: { commit: 'a'.repeat(40) },
+        reviews: [
+          {
+            lens: 'correctness',
+            decision: 'needsChanges',
+            notes: 'Fix negative inputs.',
+          },
+          {
+            lens: 'edge-cases',
+            decision: 'needsChanges',
+            notes: 'Keep compatibility.',
+          },
+        ],
+      },
+    })
+    assert.deepEqual(
+      repairFindings([generated.content], null).map((finding) => finding.text),
+      ['Fix negative inputs.', 'Keep compatibility.'],
+    )
+  })
   it('keeps explicit IDs, numbers unnumbered findings without collisions, and carries do-not-change dispositions', () => {
     const findings = repairFindings(
       [
@@ -106,5 +153,16 @@ describe('repair finding contract', () => {
         .status,
       'not-reported',
     )
+  })
+
+  it('records delimiter-only or missing check details as invalid, never as a passing check', () => {
+    for (const line of [
+      'CHECK C1: pass —',
+      'CHECK C1: fail -',
+      'CHECK C1: not-run —',
+      'CHECK C1: pass',
+    ]) {
+      assert.equal(read(`NOTES:\n${line}`).checks[0].status, 'invalid', line)
+    }
   })
 })

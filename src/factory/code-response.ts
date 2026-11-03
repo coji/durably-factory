@@ -88,40 +88,50 @@ export function repairDispositionText(text: string | null): string | null {
  * headings are context; a heading with an explicit ID opens that finding.
  */
 function findingParts(text: string): string[] {
-  const lines = text.split(/\r?\n/)
-  const items: string[] = []
+  let items: string[] = []
   let current: string[] = []
-  let fenced = false
+  let fence: string | null = null
   let hasItems = false
   const flush = () => {
     const body = current.join('\n').trim()
     if (body) items.push(body)
     current = []
   }
-  for (const line of lines) {
-    if (/^\s*(`{3,}|~{3,})/.test(line)) fenced = !fenced
+  for (const line of text.split(/\r?\n/)) {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
+    if (marker) {
+      if (!fence) fence = marker
+      else if (marker[0] === fence[0] && marker.length >= fence.length)
+        fence = null
+      current.push(line)
+      continue
+    }
+    if (fence) {
+      current.push(line)
+      continue
+    }
     const bare = line
       .replace(/^#{1,6}\s+/, '')
       .replace(/^\s{0,2}(?:[-*]|\d+[.)])\s+/, '')
       .trim()
     const item =
-      !fenced &&
-      (EXPLICIT_ID.test(bare) || /^\s{0,2}(?:[-*]|\d+[.)])\s+/.test(line))
+      EXPLICIT_ID.test(bare) || /^\s{0,2}(?:[-*]|\d+[.)])\s+/.test(line)
     if (item) {
-      // A preamble such as "review findings of run ..." is still present
-      // in the original untrusted block, but is not another finding.
-      if (!hasItems) current = []
-      else flush()
+      // A list makes preceding prose context; generated review findings
+      // always use a list so the factory's explanation cannot become an item.
+      if (!hasItems) {
+        items = []
+        current = []
+      } else flush()
       hasItems = true
       current.push(bare)
-    } else if (!fenced && /^#{1,6}\s+/.test(line)) {
-      if (hasItems) flush()
-    } else current.push(line)
+    } else if (/^#{1,6}\s+/.test(line)) flush()
+    else if (!hasItems && line.trim() === '') flush()
+    else current.push(line)
   }
   flush()
-  return hasItems
-    ? items
-    : items.flatMap((part) => part.split(/\n\s*\n/).filter((p) => p.trim()))
+  // Never silently turn a nonempty repair request into no required response.
+  return items.length ? items : text.trim() ? [text.trim()] : []
 }
 
 export function repairFindings(
@@ -155,6 +165,10 @@ export function repairFindings(
   })
 }
 
+function hasDetail(text: string): boolean {
+  return text.replace(/[—–\s-]/g, '') !== ''
+}
+
 export function parseCodeResponse(args: {
   text: string
   role: 'implement' | 'repair'
@@ -179,7 +193,7 @@ export function parseCodeResponse(args: {
             prefixed[0],
           )
         : null
-    if (match && match[2].replace(/[—–\s-]/g, '') !== '')
+    if (match && hasDetail(match[2]))
       treatments.push({
         id: finding.id,
         status: match[1]
@@ -203,11 +217,12 @@ export function parseCodeResponse(args: {
     return {
       id,
       command,
-      status: match
-        ? (match[1].toLowerCase() as ReportedCheck['status'])
-        : prefixed.length
-          ? 'invalid'
-          : 'not-reported',
+      status:
+        match && hasDetail(match[2])
+          ? (match[1].toLowerCase() as ReportedCheck['status'])
+          : prefixed.length
+            ? 'invalid'
+            : 'not-reported',
       detail: match?.[2].trim() ?? null,
     }
   })

@@ -1161,7 +1161,9 @@ function reviewNotesFindings(
     ...blocking.flatMap((r) => [
       `## ${r.lens ?? 'review'}`,
       '',
-      (r.notes ?? '').trim(),
+      /^(?:[-*]|\d+[.)])\s+/.test((r.notes ?? '').trim())
+        ? (r.notes ?? '').trim()
+        : `- ${(r.notes ?? '').trim().replaceAll('\n', '\n  ')}`,
       '',
     ]),
   ].join('\n')
