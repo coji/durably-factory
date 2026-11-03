@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
@@ -12,6 +12,7 @@ import { createAgentDurably } from '../src/durably.js'
 import { buildReport } from '../src/engine/build-report.js'
 import { runChild } from '../src/engine/child.js'
 import { reportToMarkdown } from '../src/engine/report.js'
+import { promptHash } from '../src/factory/prompt-policy.js'
 import type { FactorySetup, TestProbeRecord } from '../src/factory/types.js'
 import {
   buildRepairInput,
@@ -732,6 +733,56 @@ it(
           c.roles.some((r) => ['code', 'repair', 'triage'].includes(r)),
         ),
         false,
+      )
+    } finally {
+      await b.close()
+    }
+  },
+)
+
+it(
+  'runs with stored policies after their source disappears, preserving them through repair and recheck',
+  { timeout: 60000 },
+  async () => {
+    const b = await box()
+    try {
+      const path = join(b.home, 'policy.md')
+      await writeFile(path, 'OWNER POLICY ORIGINAL')
+      const prompts = {
+        implement: {
+          mode: 'replace' as const,
+          path,
+          content: 'OWNER POLICY ORIGINAL',
+          sha256: promptHash('OWNER POLICY ORIGINAL'),
+        },
+      }
+      const parent = await b.durably.jobs.agentLoop.trigger({
+        ...b.input,
+        prompts,
+      })
+      await writeFile(path, 'OWNER POLICY EDITED')
+      b.start()
+      const done = await b.settled(parent.id)
+      assert.equal(
+        (done.output as { conclusion: string }).conclusion,
+        'approved',
+        done.error ?? '',
+      )
+      const setup = await b.setup(parent.id)
+      assert.deepEqual(setup.prompts, prompts)
+      const repair = buildRepairInput(done, setup, {
+        findings: {
+          content: 'Keep totals unchanged.',
+          ref: { path: '/findings.md' },
+        },
+        dispositions: null,
+      })
+      assert.deepEqual(repair.input.prompts, prompts)
+      const check = await startableRecheck(b.durably, parent.id)
+      assert.deepEqual(check.input.prompts, prompts)
+      assert.equal(
+        (await buildReport(b.durably, parent.id)).prompts?.implement?.content,
+        'OWNER POLICY ORIGINAL',
       )
     } finally {
       await b.close()

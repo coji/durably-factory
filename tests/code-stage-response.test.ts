@@ -8,6 +8,7 @@ import type {
   AgentCallOptions,
   AgentProvider,
 } from '../src/engine/providers/types.js'
+import { promptHash } from '../src/factory/prompt-policy.js'
 import { codeStage } from '../src/factory/stages.js'
 import { initialState, type FactorySetup } from '../src/factory/types.js'
 
@@ -20,12 +21,28 @@ describe('durable repair response correction', () => {
           tracked,
           separateRepair,
           promptVersion,
+          policyMode: undefined as 'append' | 'replace' | undefined,
         })),
       ),
     ),
   )
-  for (const { contextMode, tracked, separateRepair, promptVersion } of cases) {
-    it(`v${promptVersion}/${contextMode}/${separateRepair ? 'separate' : 'shared'}: ${tracked ? 'replays the correction without another call or seal' : 'does not add a correction to a legacy setup'}`, async () => {
+  cases.push(
+    ...(['append', 'replace'] as const).map((policyMode) => ({
+      contextMode: 'reuse' as const,
+      tracked: true,
+      separateRepair: false,
+      promptVersion: 2 as const,
+      policyMode,
+    })),
+  )
+  for (const {
+    contextMode,
+    tracked,
+    separateRepair,
+    promptVersion,
+    policyMode,
+  } of cases) {
+    it(`${policyMode ?? 'default'}/v${promptVersion}/${contextMode}/${separateRepair ? 'separate' : 'shared'}: ${tracked ? 'replays the correction without another call or seal' : 'does not add a correction to a legacy setup'}`, async () => {
       const root = await mkdtemp(join(tmpdir(), 'factory-code-response-'))
       const profile = {
         id: 'p',
@@ -37,6 +54,18 @@ describe('durable repair response correction', () => {
       }
       const setup: FactorySetup = {
         fake: true,
+        ...(policyMode
+          ? {
+              prompts: {
+                repair: {
+                  mode: policyMode,
+                  path: '/repair.md',
+                  content: 'CUSTOM REPAIR',
+                  sha256: promptHash('CUSTOM REPAIR'),
+                },
+              },
+            }
+          : {}),
         contextMode,
         target: {
           kind: 'repo',
@@ -138,7 +167,10 @@ describe('durable repair response correction', () => {
       const target = {
         workdir: root,
         taskBrief: () => 'repair',
-        implementationRules: () => [],
+        implementationRules: (options?: { policy?: boolean }) =>
+          options?.policy === false
+            ? ['CORE CONTRACT']
+            : ['CORE CONTRACT', 'DEFAULT POLICY'],
         ownerContext: () => null,
         untrustedInputs: () => [
           {
@@ -180,6 +212,16 @@ describe('durable repair response correction', () => {
       const replay = await codeStage(args)
       assert.deepEqual(replay, first)
       assert.equal(seals, 1)
+      if (policyMode) {
+        for (const call of calls) {
+          assert.match(call.prompt, /CUSTOM REPAIR/)
+          assert.match(call.prompt, /CORE CONTRACT/)
+          assert.equal(
+            call.prompt.includes('DEFAULT POLICY'),
+            policyMode === 'append',
+          )
+        }
+      }
       assert.equal(calls.length, tracked ? 2 : 1)
       assert.equal(
         calls[0].prompt.includes('This is an unattended factory run.'),

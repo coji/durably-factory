@@ -6115,3 +6115,71 @@ describe('automaticRetryLimit', { timeout: 60000 }, () => {
     }
   })
 })
+
+describe('custom prompt files at the CLI boundary', { timeout: 120000 }, () => {
+  it('pins relative files beside an explicit config and reloads edits even when factory.json is unchanged', async () => {
+    const box = await sandbox()
+    await writeFile(join(box.root, 'policy.md'), 'OWNER POLICY V1')
+    const config = join(box.root, 'custom.json')
+    await writeFile(
+      config,
+      JSON.stringify({
+        check: CHECK,
+        prompts: {
+          implement: { file: 'policy.md' },
+          repair: { file: 'policy.md', mode: 'replace' },
+        },
+      }),
+    )
+    const runId = await trigger(box, [
+      '--repo',
+      box.repo,
+      '--task',
+      'x',
+      '--config',
+      config,
+    ])
+    const durably = createAgentDurably({ stateRoot: box.stateRoot })
+    await durably.migrate()
+    try {
+      const run = await durably.getRun(runId)
+      const input = run!.input as Parameters<typeof reloadTriggerInput>[0] & {
+        prompts: import('../src/factory/prompt-policy.js').PromptPolicies
+      }
+      assert.equal(input.prompts.implement?.path, join(box.root, 'policy.md'))
+      assert.equal(input.prompts.implement?.mode, 'append')
+      assert.equal(input.prompts.repair?.mode, 'replace')
+      const first = await reloadTriggerInput(input)
+      await writeFile(join(box.root, 'policy.md'), 'OWNER POLICY V2')
+      const next = await reloadTriggerInput(input)
+      assert.notEqual(first.configSha256, next.configSha256)
+      assert.equal(input.prompts.implement?.content, 'OWNER POLICY V1')
+      assert.equal(next.input.prompts?.implement?.content, 'OWNER POLICY V2')
+      assert.equal(
+        (await reloadTriggerInput(input)).configSha256,
+        next.configSha256,
+      )
+      const report = await buildReport(durably, runId)
+      assert.equal(report.prompts?.implement?.content, 'OWNER POLICY V1')
+      assert.match(reportToMarkdown(report), /Custom work policies \(trusted\)/)
+      assert.match(reportToMarkdown(report), /OWNER POLICY V1/)
+    } finally {
+      await durably.db.destroy()
+    }
+  })
+
+  it('rejects missing or invalid policies before a database or run is created', async () => {
+    for (const prompts of [
+      { unknown: { file: 'policy.md' } },
+      { implement: { file: 'policy.md', mode: 'typo' } },
+      { implement: { file: 'missing.md' } },
+    ]) {
+      const box = await sandbox({ check: CHECK, prompts })
+      await rejected(
+        box,
+        ['--repo', box.repo, '--task', 'x'],
+        /prompts|cannot read/,
+      )
+    }
+  })
+})

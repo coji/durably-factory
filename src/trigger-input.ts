@@ -39,6 +39,11 @@ import {
   timeoutMsSchema,
   type FixedProfile,
 } from './factory/job.js'
+import {
+  promptFilesSchema,
+  promptPolicyKey,
+  readPromptPolicies,
+} from './factory/prompt-policy.js'
 import { repairLabels } from './factory/repair.js'
 import {
   DEFAULT_COMMIT_SETTINGS,
@@ -168,6 +173,7 @@ function configuresSpecStages(spec: SpecConfig | undefined): boolean {
  */
 const factoryConfigSchema = z
   .object({
+    prompts: promptFilesSchema.optional(),
     /**
      * The repository's name on the web UI, instead of its directory's.
      * Display only: stored on the run, never part of the config version.
@@ -544,6 +550,9 @@ async function repoSettings(
   const commit = config?.commit
   return {
     specStages,
+    prompts: loaded
+      ? await readPromptPolicies(config?.prompts, dirname(loaded.path))
+      : undefined,
     automaticRetryLimit: config?.automaticRetryLimit ?? 1,
     settings: {
       ...(config?.name !== undefined ? { name: config.name } : {}),
@@ -615,15 +624,13 @@ export async function resolveTarget(a: Record<string, string>) {
       codexPath: null,
       configSource: null,
       specStages: null,
+      prompts: undefined,
     }
   }
   const repoPath = isAbsolute(repo) ? repo : join(process.cwd(), repo)
   const loaded = await loadConfig(await repoRoot(repoPath), a['config'])
-  const { settings, codexPath, configSource, specStages } = await repoSettings(
-    a,
-    loaded,
-    Boolean(a['spec-file']),
-  )
+  const { settings, codexPath, configSource, specStages, prompts } =
+    await repoSettings(a, loaded, Boolean(a['spec-file']))
   const sources = ['issue', 'task', 'task-file'].filter((flag) => a[flag])
   if (sources.length > 1)
     throw new Error(
@@ -675,6 +682,7 @@ export async function resolveTarget(a: Record<string, string>) {
       ...settings,
     },
     config: loaded?.config ?? null,
+    prompts,
     codexPath,
     configSource,
     specStages,
@@ -727,6 +735,7 @@ function assembleInput(a: Record<string, string>, resolved: ResolvedTarget) {
   })
   return {
     provider: profiles.code.provider,
+    ...(resolved.prompts ? { prompts: resolved.prompts } : {}),
     automaticRetryLimit: config?.automaticRetryLimit ?? 1,
     profiles: {
       code: requested(profiles.code),
@@ -838,15 +847,17 @@ export async function reloadTriggerInput(stored: StoredInput): Promise<{
     ResolvedTarget['target'],
     { kind: 'repo' }
   >
-  const { settings, codexPath, configSource, specStages } = await repoSettings(
-    a,
-    loaded,
-    // The spec the run was given; the spec stages never store theirs here.
-    typeof storedTarget.spec === 'string',
-  )
+  const { settings, codexPath, configSource, specStages, prompts } =
+    await repoSettings(
+      a,
+      loaded,
+      // The spec the run was given; the spec stages never store theirs here.
+      typeof storedTarget.spec === 'string',
+    )
   const input = assembleInput(a, {
     target: { ...storedTarget, ...settings },
     config: loaded?.config ?? null,
+    prompts,
     codexPath,
     configSource,
     specStages,
@@ -858,7 +869,14 @@ export async function reloadTriggerInput(stored: StoredInput): Promise<{
         ? { fakeScenario: stored.fakeScenario }
         : {}),
     },
-    configSha256: loaded?.sha256 ?? null,
+    configSha256: promptPolicyKey(input.prompts)
+      ? sha256Of(
+          JSON.stringify({
+            config: loaded?.sha256 ?? null,
+            prompts: promptPolicyKey(input.prompts),
+          }),
+        )
+      : (loaded?.sha256 ?? null),
   }
 }
 
@@ -1306,6 +1324,7 @@ export function buildRepairInput(
     ...(parentInput.model !== undefined ? { model: parentInput.model } : {}),
     ...(parentInput.effort !== undefined ? { effort: parentInput.effort } : {}),
     context: stored.contextMode,
+    ...(stored.prompts ? { prompts: stored.prompts } : {}),
     automaticRetryLimit:
       (parent.input as AgentLoopInput).automaticRetryLimit ??
       stored.automaticRetryLimit ??

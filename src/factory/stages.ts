@@ -255,7 +255,10 @@ export const codeStage: StageHandler = async ({
     repairNotes: state.repairNotes,
     failedCheckReviews: state.failedCheckReviews,
     task: target.taskBrief(),
-    rules: target.implementationRules(),
+    rules: target.implementationRules({
+      policy: state.setup.prompts?.[role]?.mode !== 'replace',
+    }),
+    policy: state.setup.prompts?.[role],
     untrusted: target.untrustedInputs('code'),
     // The owner's confirmed decisions, trusted and apart from the
     // data above; the stages' results are for the reviewers.
@@ -849,6 +852,7 @@ async function reviewRoundOf(args: {
       {
         output,
         promptVersion: promptVersionOf(setup.instructionsVersion),
+        policy: setup.prompts?.[lens],
         // A prompt review in the sealed tree is shown that tree alone.
         snapshots: commandMode ? trees : null,
         // A command-mode reviewer works in a directory of its own, so it
@@ -1303,8 +1307,15 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
             providerName: profile.provider,
             prompt:
               role === 'author'
-                ? specAuthorPrompt(base)
-                : specFixPrompt({ ...base, feedback }),
+                ? specAuthorPrompt({
+                    ...base,
+                    policy: setup.prompts?.['spec-author'],
+                  })
+                : specFixPrompt({
+                    ...base,
+                    feedback,
+                    policy: setup.prompts?.['spec-fix'],
+                  }),
             // The spec's own directory: the file alone is writable.
             workdir: specDir,
             specWrite: {
@@ -1376,6 +1387,7 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
     const output = invocation?.output ?? 'verdict'
     const commandMode = usesReviewMaterials(invocation)
     const context = specReviewPrompt({
+      policy: setup.prompts?.['spec-review'],
       promptVersion: promptVersionOf(setup.instructionsVersion),
       name,
       worktree: target.workdir,
