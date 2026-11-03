@@ -34,9 +34,9 @@ export const TASKS = [
 ] as const
 
 export const COMMANDS = [
-  'pnpm demo approve --run 01K6D2Q7XB3M9RKT4WAPPROV --wait 01K6D2R0000000000000WAIT1',
-  'pnpm demo report --run 01K6D2Q7XB3M9RKT4WAPPROV  # read the reviews first',
-  'pnpm demo retrigger --run 01K6D2Q7XB3M9RKT4WSTOPPD --reload-config',
+  'pnpm factory approve --run 01K6D2Q7XB3M9RKT4WAPPROV --wait 01K6D2R0000000000000WAIT1',
+  'pnpm factory report --run 01K6D2Q7XB3M9RKT4WAPPROV  # read the reviews first',
+  'pnpm factory retrigger --run 01K6D2Q7XB3M9RKT4WSTOPPD --reload-config',
 ]
 
 const ORDER = [

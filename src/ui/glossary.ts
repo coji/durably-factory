@@ -582,7 +582,7 @@ export const BULK = {
 // ---------------------------------------------------------------- shell
 
 export const SHELL = {
-  product: 'local-agent-loop',
+  product: 'durably-factory',
   skipToContent: '本文へ移動',
   nav: '画面',
   runs: 'タスク一覧',
@@ -697,10 +697,10 @@ export const DETAIL = {
     'ログ、差分、仕様、チェックポイント、納品の記録は残っています。直すときは記録したコミットから新しい実行を始めます。',
   worktreeWarning: '納品のあと、作業ツリーを片付けられませんでした',
   worktreeWarningNote:
-    '実行は承認と納品を終えています。demo prune --apply で片付けをやり直せます。git がもう作業ツリーとして扱っていないと警告にあるときは、ディレクトリを手で消します。',
+    '実行は承認と納品を終えています。factory prune --apply で片付けをやり直せます。git がもう作業ツリーとして扱っていないと警告にあるときは、ディレクトリを手で消します。',
   worktreeLeft: 'アーカイブした実行の作業ツリーが残っています',
   worktreeLeftNote:
-    'アーカイブのときに片付けられませんでした。原因を取り除いてから demo prune --apply で片付けます。git がもう作業ツリーとして扱っていないときは、ディレクトリを手で消します。',
+    'アーカイブのときに片付けられませんでした。原因を取り除いてから factory prune --apply で片付けます。git がもう作業ツリーとして扱っていないときは、ディレクトリを手で消します。',
   retry: '再実行',
   humanCheck: '人が確認すること',
   leadTime: '所要時間',

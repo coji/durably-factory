@@ -158,7 +158,7 @@ LLM にタスクを判定させます。書かなければ判定の呼び出し�
   ためで、fake の判定は実際の LLM の判定としては数えません。
 - 三つとも書かない役割は、これまでどおりのプロンプトと verdict で動きます。どれか
   一つでも書いた役割だけ、三つの確定した値が `configVersion` に入ります。どの役割も
-  書かなければ、`configVersion` は変わりません。`demo repair` の子の実行は、
+  書かなければ、`configVersion` は変わりません。`factory repair` の子の実行は、
   `--max-iterations` を除いて、親の設定をそのまま使います。
 
 `command` か `local-instructions` を使う役割がある実行では、候補をレビューする
@@ -191,7 +191,7 @@ index、そのロックファイルを消してから、足りない tree を書
 そのため、レビューの記録の直後にワーカーが止まっても、承認待ちのあいだに残りません。
 実行が失敗する、取り消される、終わる、準備をやり直す、のどの場合も全体を消します。
 失敗と取り消しでは、ジョブの中で消し終えてから、実行の状態を記録します。別の
-プロセスから `demo cancel` したときは、ワーカーにはリースを失ったようにしか見えず、
+プロセスから `factory cancel` したときは、ワーカーにはリースを失ったようにしか見えず、
 ほかのワーカーが実行を取り出し直す場合に備えて、ワーカーは消しません。代わりに取り消した
 側が消しますが、そのときワーカーが書き出していた tree は残ることがあります。
 ワーカーは起動したときに、終わった実行（完了、失敗、取り消し）の `review-snapshots/`
@@ -335,9 +335,9 @@ Claude のレビューは、使えるツールを `Read` だけにして呼び�
 「仕様の判断待ち」として表示し、次のコマンドを示します。
 
 ```bash
-pnpm demo approve --run <id> --wait <waitId>
-pnpm demo spec-revise --run <id> --notes-file notes.md
-pnpm demo reject --run <id> --wait <waitId>
+pnpm factory approve --run <id> --wait <waitId>
+pnpm factory spec-revise --run <id> --notes-file notes.md
+pnpm factory reject --run <id> --wait <waitId>
 ```
 
 - `approve` は、いまの仕様を確定して実装に進みます。
@@ -396,19 +396,19 @@ pnpm demo reject --run <id> --wait <waitId>
 ## 外部の指摘から修正する（repair）
 
 承認して納品まで終わったリポジトリの実行に、あとから UI の確認、正式なレビュー、CI
-など、factory の外で指摘が見つかることがあります。そのときは `demo repair` で、その
+など、factory の外で指摘が見つかることがあります。そのときは `factory repair` で、その
 実行の候補を直す子の実行を始めます。終わった実行を再開するのではなく、候補の
 コミットを引き継ぐ新しい実行として記録するので、修正の時間、費用、回数も factory で
 測れます。
 
-次の実行も、同じ `demo repair` で最後の候補から続けられます。修正の回数を使い切っても
+次の実行も、同じ `factory repair` で最後の候補から続けられます。修正の回数を使い切っても
 チェックが通らずに止まった実行（`verification-failed`）、チェックは通ったのに
 レビューが修正を求めたまま止まった実行（`review-cap-reached`）、最後の候補がチェックを
 通ったあとにレビューが終わらずに失敗した実行（`review-incomplete`）です。`retrigger`
 と違って、実装を最初からやり直さず、修正の回数を新しくして最後の候補を直します。
 
 ```bash
-pnpm demo repair --run <親の runId> \
+pnpm factory repair --run <親の runId> \
   [--findings-file findings.md] [--dispositions-file dispositions.md] \
   [--context-file decisions.md] [--max-iterations 4]
 ```
@@ -435,11 +435,11 @@ pnpm demo repair --run <親の runId> \
   作りません。子の実行の準備でも、作業ツリーとブランチを候補のコミットから作る直前
   （CLI の確認のあと、`setupCommand` の前）に、同じことを確かめます。途中で止まった
   準備をやり直すときは、前回の作業ツリーとブランチを片付けてから確かめます。
-  `demo repair` が確かめたあとでブランチが動いた場合や、子の実行を `demo retrigger`
+  `factory repair` が確かめたあとでブランチが動いた場合や、子の実行を `factory retrigger`
   した場合も、ここで `candidate-moved`（`retry: yes`）として止まります。作業ツリー、
   ブランチ、実行のディレクトリは残さず、エージェントは呼びません。ブランチを候補の
   コミットに戻せば、`retrigger` で続けられます。
-- `demo repair` が受け付けるのは、`--run`、`--findings-file`、`--dispositions-file`、
+- `factory repair` が受け付けるのは、`--run`、`--findings-file`、`--dispositions-file`、
   `--context-file`、`--max-iterations` だけです。`--publish`、`--check`、`--config`
   など、ほかのフラグは黙って無視せず、エラーにします。
 - 子の実行は、親が保存したタスク、仕様、イシュー、プロファイル（見立ても含む、
@@ -519,7 +519,7 @@ pnpm demo repair --run <親の runId> \
   渡せるようになる前と同じ子の実行です。
 - `--publish` の下書きの PR は、通常の実行と同じく、既定のブランチに向けて作ります。
   親がまだマージされていなければ、PR には親の変更も含まれます。
-- 子の実行には、どの経路（`demo repair`、`demo retrigger`、`demo seed`）で始めても、
+- 子の実行には、どの経路（`factory repair`、`factory retrigger`、`factory seed`）で始めても、
   実行のラベル `repairOf=<親の runId>` を付けます。1 件の `report`、`status --run`、
   CLI の `compare`、web UI の詳細は、このラベルで子を 1 回問い合わせます。SQLite は
   この問い合わせで、ジョブの実行を順に見てラベルを引くので、問い合わせの手間は
@@ -537,9 +537,9 @@ pnpm demo repair --run <親の runId> \
   [ADR-0030](adr/0030-local-agent-loop-verification-failed-repair.md)
   にあります。
 - `verification-failed` か `review-cap-reached` で止まったリポジトリの実行では、次に
-  できる操作として、`retrigger` と並べて `demo repair --run <id>` を出します。
+  できる操作として、`retrigger` と並べて `factory repair --run <id>` を出します。
   `review-incomplete` で失敗したリポジトリの実行では、最後の候補が記録されていて、
-  その検証が通っているときだけ、次にできる操作に `demo repair --run <id>` を出します。
+  その検証が通っているときだけ、次にできる操作に `factory repair --run <id>` を出します。
 
 ## 修正したテストを比べる基準
 
@@ -612,7 +612,7 @@ F3: deferred — outside this repair
 開始時に内容を保存し、あとでファイルを編集してもrunの範囲は変わりません。
 
 ```bash
-pnpm demo repair --run <id> --findings-file findings.md --scope-file scope.md
+pnpm factory repair --run <id> --findings-file findings.md --scope-file scope.md
 ```
 
 scopeには、たとえば「spec §3のブラウザ画面は今回の対象外。sandboxではDockerとネットワークを使えない」と書きます。
@@ -628,7 +628,7 @@ ownerが確認した製品上の決定は、引き続き`--context-file`で渡�
 ## 候補を変えずに検査とレビューをやり直す
 
 ```bash
-pnpm demo recheck --run <id>
+pnpm factory recheck --run <id>
 ```
 
 `recheck`は親候補と同じcommitから、固定検査と独立レビューを再実行します。

@@ -32,7 +32,7 @@
 これがあれば、作業の内容を書いたファイルを渡すだけで始められます。
 
 ```bash
-pnpm demo trigger \
+pnpm factory trigger \
   --repo ~/progs/myapp --task-file ~/work/task.md \
   [--spec-file ~/work/spec.md] [--dispositions-file ~/work/dispositions.md] \
   [--context-file ~/work/decisions.md]
@@ -129,7 +129,7 @@ pnpm demo trigger \
   レポートと工程の時系列には、その候補が時間切れの呼び出しから作られたことを出します。
   変更が無ければ候補を作らず、`agent-timeout` で止まります。
 - 反復ごとにコミットして封印します。検証、レビュー、納品物は、同じコミットを見ます。
-- 既定の納品物は `~/.local/state/local-agent-loop/runs/<runId>/delivery/<candidate>.patch`
+- 既定の納品物は `~/.local/state/durably-factory/runs/<runId>/delivery/<candidate>.patch`
   です。パッチは、ベースのコミットと最後の候補の差分です。イシューの無い実行の
   ブランチは `factory/<runId>`（イシューのある実行は `factory/issue-<番号>-<runId>`）
   で、反復ごとのコミットと承認されたコミットは、このブランチに残ります。`status` と
@@ -327,7 +327,7 @@ PR に進むのが安全です。
 - 書かなければオフで、工程の順序、Durably の `step` の名前、レビューの呼び出しの
   回数と費用は、これまでと同じです。値は `trigger` のときに、実行の入力に保存
   します。`retrigger` は保存した値を引き継ぎ、`--reload-config` はファイルを
-  読み直します。`demo repair` の修正の実行は、修正元の実行の値を引き継ぎます。
+  読み直します。`factory repair` の修正の実行は、修正元の実行の値を引き継ぎます。
   いつレビューするかを選ぶだけで、レビューの中身は変えないので、`configVersion` には
   入りません。
 - オンのとき、レビュアーが読む候補のコードは、封印したコミットから取り出した
@@ -365,7 +365,7 @@ PR に進むのが安全です。
 理由が付きます。検証がまだ終わっていない回と、検証がエラーで終わった回は
 `pending`（理由は `verify-pending`）で、これも数えず、レビューの要点にも
 使いません。「検証に落ちた候補へのレビュー」の呼び出しの数と費用は、
-レポートの要約、`demo compare` の設定ごとの行、`demo compare --trend` の列に、
+レポートの要約、`factory compare` の設定ごとの行、`factory compare --trend` の列に、
 総費用とは別に出ます。この費用は総費用に含まれています。使用量や価格が
 分からない呼び出しがあれば、0 ではなく不明と出します。止めたレビューは、
 止めるまでにプロバイダーが報告した使用量（モデル別）とセッション ID を残します
@@ -401,7 +401,7 @@ web UI では、レビューの欄と工程の時系列の詳細に、「中止�
   増えません。合否は、これまでどおり `check` だけで決めます。
 - 書かなければ、プロンプトはこれまでと同じです。値は `trigger` のときに、実行の
   入力に保存します。`retrigger` は保存した値を引き継ぎ、`--reload-config` は
-  ファイルを読み直します。`demo repair` の修正の実行は、修正元の実行の値を
+  ファイルを読み直します。`factory repair` の修正の実行は、修正元の実行の値を
   引き継ぎます。プロンプトが変わるので、書いたときは `configVersion` に入ります。
 
 新しく開始する実行では、各コマンドに `C1`、`C2` のIDを付け、結果を `NOTES:` に記録するよう求めます。
@@ -514,7 +514,7 @@ CHECK C2: not-run — the sandbox cannot start the required local server
   `git worktree add` が残した、ロック付きの登録も消します）。`base.json` は、
   `git worktree list` にベースが出なくなってから消します。片付けの途中でワーカーが
   止まったり git が失敗したりしても、起動時の片付けが `base.json` から登録の残りを
-  見つけて消します。`demo archive` と `demo prune --apply` も、
+  見つけて消します。`factory archive` と `factory prune --apply` も、
   作業ツリーと一緒に消します。
 - レポートの JSON（`testProbes`）と Markdown（「Test probe」の節）には、候補ごとに、
   対象のファイル数、ベースで落ちて候補で通った数（両方で落ちたファイルは数えません）、
@@ -522,7 +522,7 @@ CHECK C2: not-run — the sandbox cannot start the required local server
   保存した `step` から読むので、レポートのためにテストを実行し直すことはありません。
 - 書かなければ、ベースの作業ツリーも試し実行の `step` も作らず、工程はこれまでと
   同じです。値は `trigger` のときに、実行の入力に保存します。`retrigger` は保存した
-  値を引き継ぎ、`--reload-config` はファイルを読み直します。`demo repair` の修正の
+  値を引き継ぎ、`--reload-config` はファイルを読み直します。`factory repair` の修正の
   実行は、修正元の実行の値を引き継ぎます。`configVersion` には入りません。
 - 次の制約は、直さずに残しています（詳しくは ADR-0039 の「Known limits」）。
   - 同じ候補の中では、先に走ったテストが変えたものを、後のテストがそのまま見ます。
@@ -584,7 +584,7 @@ CHECK C2: not-run — the sandbox cannot start the required local server
   ます。`verdict` のレビューと仕様のレビューには入れません。重さで振り分けたい
   レビューは、`output` を `findings-json` にします。
 - 値は `trigger` のときに、実行の入力に保存します。`retrigger` は保存した値を引き継ぎ、
-  `--reload-config` はファイルを読み直します。`demo repair` の修正の実行は、修正元の
+  `--reload-config` はファイルを読み直します。`factory repair` の修正の実行は、修正元の
   実行の値を引き継ぎます。この設定ができる前に保存した実行と、その修正の実行には、
   規則を入れません。閾値が変わるとレビューの基準が変わるので、0 も含めて
   `configVersion` に入れます。
@@ -672,7 +672,7 @@ CHECK C2: not-run — the sandbox cannot start the required local server
 パスと、保存した本文から計算した SHA-256 が出ます。確定した文脈は、本文もレポートに
 出します。Markdown では、本文の中のどのバッククォートの並びよりも長いフェンスで
 囲むので、本文の見出しがレポートの見出しと混ざりません。設定を直したあとに、同じ
-タスクでやり直すには、`demo retrigger --run <id> --reload-config` を使います（上の
+タスクでやり直すには、`factory retrigger --run <id> --reload-config` を使います（上の
 [「止まった実行と次の手順を見る」](operations.md)を参照）。
 
 ## 修正だけのプロファイル（profiles.repair）
@@ -713,7 +713,7 @@ CHECK C2: not-run — the sandbox cannot start the required local server
 - 修正の呼び出しと使用量は、レポートの役割ごとの集計で、`code` ではなく `repair` の
   行に入ります。
 - 修正の呼び出しをプロバイダーがはっきり拒否すると、`rejected-invocation` で止まります。
-  `factory.json` の `repair` を直してから、`demo retrigger --run <id>
+  `factory.json` の `repair` を直してから、`factory retrigger --run <id>
 --reload-config` でやり直します。
 
 ## 推論量だけが違う修正では、実装のセッションを続ける（Claude）
@@ -807,8 +807,8 @@ Claude Code 2.1.280 で測ったときも、新しいセッションのキャッ
 git -C ~/src/durably-factory fetch
 git -C ~/src/durably-factory checkout <commit>
 pnpm -C ~/src/durably-factory install --frozen-lockfile
-pnpm -C ~/src/durably-factory demo worker     # Terminal 1
-pnpm -C ~/src/durably-factory demo trigger \
+pnpm -C ~/src/durably-factory factory worker     # Terminal 1
+pnpm -C ~/src/durably-factory factory trigger \
   --repo "$PWD" --task-file "$PWD/task.md"                                # Terminal 2
 ```
 

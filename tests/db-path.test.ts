@@ -1,18 +1,12 @@
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import {
-  createAgentDurably,
-  dbPath,
-  defaultStateRoot,
-  legacyDbPath,
-  legacyDbWarning,
-} from '../src/durably.js'
+import { createAgentDurably, dbPath, defaultStateRoot } from '../src/durably.js'
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -31,9 +25,9 @@ describe('database path resolution', () => {
   it('defaults to the fixed state directory under the home directory', () => {
     assert.equal(
       defaultStateRoot(),
-      join(homedir(), '.local', 'state', 'local-agent-loop'),
+      join(homedir(), '.local', 'state', 'durably-factory'),
     )
-    assert.equal(dbPath(), join(defaultStateRoot(), 'local-agent-loop.db'))
+    assert.equal(dbPath(), join(defaultStateRoot(), 'durably-factory.db'))
   })
 
   it('does not depend on where the checkout is', () => {
@@ -45,7 +39,7 @@ describe('database path resolution', () => {
 
   it('ignores DURABLY_DB', () => {
     process.env['DURABLY_DB'] = '/tmp/explicit agent loop.db'
-    assert.equal(dbPath(), join(defaultStateRoot(), 'local-agent-loop.db'))
+    assert.equal(dbPath(), join(defaultStateRoot(), 'durably-factory.db'))
   })
 
   it('lets tests put the whole state root elsewhere, creating it first', async () => {
@@ -63,16 +57,5 @@ describe('database path resolution', () => {
     } finally {
       await durably.db.destroy()
     }
-  })
-
-  it('warns once, naming both files, when the checkout has an old database', async () => {
-    assert.equal(legacyDbPath(), join(packageRoot, 'local-agent-loop.db'))
-    const dir = await mkdtemp(join(tmpdir(), 'legacy-db-'))
-    const legacy = join(dir, 'local-agent-loop.db')
-    assert.equal(legacyDbWarning(legacy, '/new/state.db'), null)
-    await writeFile(legacy, '')
-    const warning = legacyDbWarning(legacy, '/new/state.db')
-    assert.ok(warning?.includes(legacy), warning ?? '')
-    assert.ok(warning?.includes('/new/state.db'), warning ?? '')
   })
 })

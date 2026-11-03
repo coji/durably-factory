@@ -192,7 +192,7 @@ const FINDINGS = {
 }
 
 const LOG_PATH =
-  '/Users/me/.local/state/local-agent-loop/runs/01K6D2Q7XB3M9RKT4WSTOPPD/logs/check.stdout.log'
+  '/Users/me/.local/state/durably-factory/runs/01K6D2Q7XB3M9RKT4WSTOPPD/logs/check.stdout.log'
 
 const minutesAgo = (minutes: number) =>
   new Date(Date.parse(NOW) - minutes * 60_000).toISOString()
@@ -278,7 +278,7 @@ export function PathStates() {
 /** A worktree removed, one left after a delivery, one left after an archive. */
 export function WorktreeStates() {
   const path =
-    '/Users/me/.local/state/local-agent-loop/runs/01K6D2Q7XB3M9RKT4WSTOPPD/work'
+    '/Users/me/.local/state/durably-factory/runs/01K6D2Q7XB3M9RKT4WSTOPPD/work'
   const warning = `git worktree remove --force ${path} failed with code 128: fatal: '${path}' is locked`
   const left = { path, present: true, cleanupWarning: null }
   const states = [

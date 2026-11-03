@@ -634,7 +634,7 @@ function runsBaselineCheck(
  * approved, delivered one, or one that stopped failing the check, with
  * reviewers still asking for changes, or on a review that did not finish
  * after the check passed (ADR-0030).
- * Built by `demo repair` from the parent's stored input and setup; the
+ * Built by `factory repair` from the parent's stored input and setup; the
  * worker never resolves these profiles again.
  */
 const repairOfSchema = z
@@ -863,7 +863,7 @@ const inputSchema = z
       path: ['fakeScenario'],
     },
   )
-  // Refused at trigger, like `demo run` refuses it from `factory.json`, so
+  // Refused at trigger, like `factory trigger` refuses it from `factory.json`, so
   // a direct trigger is never stored with a reviewer that cannot run it.
   .superRefine((input, ctx) => {
     for (const lens of REVIEW_LENSES) {
@@ -1667,7 +1667,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                         }
                       : null,
                     // The parent's candidate is checked again here, not only
-                    // by `demo repair`: its branch can move after that check,
+                    // by `factory repair`: its branch can move after that check,
                     // and a retrigger never makes it. The check runs after a
                     // replayed setup has discarded its earlier worktree and
                     // branch and right before the new ones are cut, so a

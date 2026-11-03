@@ -1,6 +1,6 @@
 /**
  * Build a run's input from trigger flags and the repository's factory.json.
- * Shared by `demo trigger` and `demo seed`, so both fix a run the same way.
+ * Shared by `factory trigger` and `factory seed`, so both fix a run the same way.
  */
 import { createHash } from 'node:crypto'
 import { constants, existsSync } from 'node:fs'
@@ -881,7 +881,7 @@ export async function reloadTriggerInput(stored: StoredInput): Promise<{
 }
 
 /**
- * Read `demo spec-revise`'s notes once, with an input file's limits: at most
+ * Read `factory spec-revise`'s notes once, with an input file's limits: at most
  * 256 KiB, UTF-8, not blank. The signal carries the content, so editing the
  * file afterwards changes nothing.
  */
@@ -902,7 +902,7 @@ export interface RepairFiles {
 }
 
 /**
- * What `demo repair` read from its flags. The findings are null when no file
+ * What `factory repair` read from its flags. The findings are null when no file
  * was given: a parent that stopped on the check or at the review cap then
  * has them built from its stored record (ADR-0030). `maxIterations` is set
  * only when `--max-iterations` was given; the parent's value applies
@@ -914,7 +914,7 @@ export type RepairFlagFiles = Omit<RepairFiles, 'findings'> & {
 }
 
 /**
- * The only flags `demo repair` takes; every setting but the repair budget
+ * The only flags `factory repair` takes; every setting but the repair budget
  * is the parent's.
  */
 const REPAIR_FLAGS = [
@@ -927,7 +927,7 @@ const REPAIR_FLAGS = [
 ]
 
 /**
- * Read `demo repair`'s input files once, with the same limits as trigger's:
+ * Read `factory repair`'s input files once, with the same limits as trigger's:
  * at most 256 KiB (32 KiB for the context), UTF-8, not blank, and
  * `--max-iterations` as trigger reads it. Any other flag is refused rather than ignored: a repair run
  * takes its parent's stored settings, and nothing else.

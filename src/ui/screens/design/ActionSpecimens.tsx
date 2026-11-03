@@ -1,3 +1,4 @@
+import { FACTORY_COMMAND } from '../../../engine/cli-command'
 import type { FailureClassification } from '../../../engine/failure-reasons'
 import type { Diagnosis, Task } from '../../../engine/status'
 import {
@@ -16,7 +17,6 @@ import { State } from './Specimen'
 /** The design page sends nothing: every action only says it is done. */
 const act: Act = async () => true
 
-const DEMO = 'pnpm demo'
 const WAIT = '01K6D2R0000000000000WAIT1'
 const [approval, stopped] = TASKS
 
@@ -59,9 +59,9 @@ const target = (
 })
 
 const decide = (id: string) => [
-  `${DEMO} report --run ${id}  # read the reviews first`,
-  `${DEMO} approve --run ${id} --wait ${WAIT}`,
-  `${DEMO} reject --run ${id} --wait ${WAIT}`,
+  `${FACTORY_COMMAND} report --run ${id}  # read the reviews first`,
+  `${FACTORY_COMMAND} approve --run ${id} --wait ${WAIT}`,
+  `${FACTORY_COMMAND} reject --run ${id} --wait ${WAIT}`,
 ]
 
 const approvalRun = target(approval, {
@@ -89,13 +89,13 @@ const stoppedRun = target(stopped, {
   diagnosis: diagnosis(
     'stopped',
     [
-      `${DEMO} report --run ${stopped.id} --format json`,
-      `${DEMO} repair --run ${stopped.id}`,
-      `${DEMO} retrigger --run ${stopped.id}`,
+      `${FACTORY_COMMAND} report --run ${stopped.id} --format json`,
+      `${FACTORY_COMMAND} repair --run ${stopped.id}`,
+      `${FACTORY_COMMAND} retrigger --run ${stopped.id}`,
     ],
     { kind: 'verification-failed', retryable: true },
   ),
-  archiveCommand: `${DEMO} archive --run ${stopped.id}`,
+  archiveCommand: `${FACTORY_COMMAND} archive --run ${stopped.id}`,
 })
 
 const RUNS: [keyof typeof DESIGN.state, ActionTarget, ActionName?][] = [
@@ -106,7 +106,7 @@ const RUNS: [keyof typeof DESIGN.state, ActionTarget, ActionName?][] = [
     target(approval, {
       diagnosis: diagnosis('spec-approval', [
         ...decide(approval.id),
-        `${DEMO} spec-revise --run ${approval.id} --notes-file <file>  # fix it once more with your notes`,
+        `${FACTORY_COMMAND} spec-revise --run ${approval.id} --notes-file <file>  # fix it once more with your notes`,
       ]),
       waitId: WAIT,
     }),
@@ -116,7 +116,7 @@ const RUNS: [keyof typeof DESIGN.state, ActionTarget, ActionName?][] = [
     target(approval, {
       diagnosis: diagnosis('spec-approval', [
         ...decide(approval.id),
-        `${DEMO} spec-revise --run ${approval.id} --notes-file <file>`,
+        `${FACTORY_COMMAND} spec-revise --run ${approval.id} --notes-file <file>`,
       ]),
       waitId: WAIT,
     }),
@@ -128,11 +128,15 @@ const RUNS: [keyof typeof DESIGN.state, ActionTarget, ActionName?][] = [
   [
     'stoppedNoRetry',
     target(stopped, {
-      diagnosis: diagnosis('stopped', [`${DEMO} status --run ${stopped.id}`], {
-        kind: 'uncertain-invocation',
-        retryable: false,
-      }),
-      archiveCommand: `${DEMO} archive --run ${stopped.id}`,
+      diagnosis: diagnosis(
+        'stopped',
+        [`${FACTORY_COMMAND} status --run ${stopped.id}`],
+        {
+          kind: 'uncertain-invocation',
+          retryable: false,
+        },
+      ),
+      archiveCommand: `${FACTORY_COMMAND} archive --run ${stopped.id}`,
     }),
   ],
   [
@@ -143,7 +147,7 @@ const RUNS: [keyof typeof DESIGN.state, ActionTarget, ActionName?][] = [
         retryable: false,
       }),
       archived: true,
-      archiveCommand: `${DEMO} unarchive --run ${stopped.id}`,
+      archiveCommand: `${FACTORY_COMMAND} unarchive --run ${stopped.id}`,
     }),
   ],
 ]
@@ -176,7 +180,7 @@ const ARCHIVED_ROWS = new Map(
         retryable: true,
       }),
       archived: true,
-      archiveCommand: `${DEMO} unarchive --run ${stopped.id}`,
+      archiveCommand: `${FACTORY_COMMAND} unarchive --run ${stopped.id}`,
       status: 'failed',
       conclusion: null,
       createdAt: '2026-09-30T08:31:00.000Z',
@@ -257,7 +261,7 @@ export function RunActionStates() {
             result: {
               changed: true,
               warnings: [
-                `worktree /Users/me/.local/state/local-agent-loop/runs/${stopped.id}/work: git worktree remove --force failed with code 128: fatal: cannot remove a locked working tree`,
+                `worktree /Users/me/.local/state/durably-factory/runs/${stopped.id}/work: git worktree remove --force failed with code 128: fatal: cannot remove a locked working tree`,
               ],
             },
           }}

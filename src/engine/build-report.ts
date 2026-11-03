@@ -1218,7 +1218,7 @@ export async function repairChildren(
 
 /**
  * The run a repair run repairs: its label, or its stored input when it has
- * none; null for a run that repairs nothing. The task list and `demo status`
+ * none; null for a run that repairs nothing. The task list and `factory status`
  * both group runs by it.
  */
 export function repairParentId(run: {
@@ -1236,7 +1236,7 @@ export function repairParentId(run: {
 
 /**
  * A run as `groupTasks` reads it, from its report and its diagnosis: the one
- * mapping `demo status` and the web UI share.
+ * mapping `factory status` and the web UI share.
  */
 export function taskRunInput(
   run: Pick<Run, 'id' | 'createdAt' | 'labels' | 'input'>,

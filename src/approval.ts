@@ -1,7 +1,7 @@
 /**
  * Approve or reject a waiting candidate, or decide on a spec the spec
- * reviewers still block: shared by `demo approve|reject|spec-revise`, the
- * web UI (through `actions.ts`) and `demo seed`.
+ * reviewers still block: shared by `factory approve|reject|spec-revise`, the
+ * web UI (through `actions.ts`) and `factory seed`.
  */
 import type { AgentLoopDurably } from './durably.js'
 

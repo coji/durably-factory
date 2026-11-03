@@ -77,7 +77,7 @@ Codex では `ai-sdk-provider-codex-cli@2.3.0` の app-server モードを使い
 ターミナル 1:
 
 ```bash
-pnpm demo worker
+pnpm factory worker
 ```
 
 ワーカーは状態のルートごとに 1 つだけ動きます（[日々の操作](docs/operations.md)）。
@@ -85,13 +85,13 @@ pnpm demo worker
 ターミナル 2:
 
 ```bash
-pnpm demo trigger \
+pnpm factory trigger \
   --provider codex --context reuse --max-iterations 2
 
-pnpm demo status --run <runId>
-pnpm demo waits --run <runId>
-pnpm demo approve --run <runId> --wait <waitId>
-pnpm demo report --run <runId> --format md
+pnpm factory status --run <runId>
+pnpm factory waits --run <runId>
+pnpm factory approve --run <runId> --wait <waitId>
+pnpm factory report --run <runId> --format md
 ```
 
 `--max-iterations` は、1 つの実行で実装と修正を合わせて何回までするかで、1 から 5
@@ -104,7 +104,7 @@ Claude では `--provider claude` に替えるだけです。承認の CLI は�
 ## fake モード
 
 ```bash
-pnpm demo trigger \
+pnpm factory trigger \
   --provider fake --context reuse --max-iterations 3
 ```
 
@@ -122,23 +122,23 @@ fake の事前確認、待ち時間、使用量、`fakeScenario` は [仕組み�
 
 ## コマンドの一覧
 
-すべてのフラグは `pnpm demo --help` で見られます。
+すべてのフラグは `pnpm factory --help` で見られます。
 
-| コマンド                            | すること                                       | 詳しい説明                                          |
-| ----------------------------------- | ---------------------------------------------- | --------------------------------------------------- |
-| `demo worker`                       | ワーカーを起動する                             | [日々の操作](docs/operations.md)                    |
-| `demo trigger`                      | 実行を登録する                                 | [実際のリポジトリで動かす](docs/configuration.md)   |
-| `demo status`                       | 人を待つ実行、止まった実行、実行中の実行を見る | [日々の操作](docs/operations.md)                    |
-| `demo wait`                         | 実行が終わるか、人を待つまで待つ               | [日々の操作](docs/operations.md)                    |
-| `demo waits` / `approve` / `reject` | 承認待ちを見る、承認する、却下する             | このページの「実行」                                |
-| `demo spec-revise`                  | レビューで止まった仕様を、メモを付けて直させる | [見立て、レビュー、修正](docs/review-and-repair.md) |
-| `demo retrigger`                    | 保存した入力で、新しい実行を作る               | [日々の操作](docs/operations.md)                    |
-| `demo recheck`                      | 同じ候補の検査とレビューをやり直す             | [見立て、レビュー、修正](docs/review-and-repair.md) |
-| `demo repair`                       | 外部の指摘から、修正の実行を作る               | [見立て、レビュー、修正](docs/review-and-repair.md) |
-| `demo archive` / `unarchive`        | 止まった実行をアーカイブする、戻す             | [日々の操作](docs/operations.md)                    |
-| `demo prune`                        | 終わった実行の作業ツリーを片付ける             | [日々の操作](docs/operations.md)                    |
-| `demo report` / `compare`           | レポートを作る、実行を比べる                   | [計測とレポート](docs/measurement.md)               |
-| `demo ui` / `seed`                  | web UI を開く、デモデータを入れる              | [ブラウザで見る（web UI）](docs/ui.md)              |
+| コマンド                               | すること                                       | 詳しい説明                                          |
+| -------------------------------------- | ---------------------------------------------- | --------------------------------------------------- |
+| `factory worker`                       | ワーカーを起動する                             | [日々の操作](docs/operations.md)                    |
+| `factory trigger`                      | 実行を登録する                                 | [実際のリポジトリで動かす](docs/configuration.md)   |
+| `factory status`                       | 人を待つ実行、止まった実行、実行中の実行を見る | [日々の操作](docs/operations.md)                    |
+| `factory wait`                         | 実行が終わるか、人を待つまで待つ               | [日々の操作](docs/operations.md)                    |
+| `factory waits` / `approve` / `reject` | 承認待ちを見る、承認する、却下する             | このページの「実行」                                |
+| `factory spec-revise`                  | レビューで止まった仕様を、メモを付けて直させる | [見立て、レビュー、修正](docs/review-and-repair.md) |
+| `factory retrigger`                    | 保存した入力で、新しい実行を作る               | [日々の操作](docs/operations.md)                    |
+| `factory recheck`                      | 同じ候補の検査とレビューをやり直す             | [見立て、レビュー、修正](docs/review-and-repair.md) |
+| `factory repair`                       | 外部の指摘から、修正の実行を作る               | [見立て、レビュー、修正](docs/review-and-repair.md) |
+| `factory archive` / `unarchive`        | 止まった実行をアーカイブする、戻す             | [日々の操作](docs/operations.md)                    |
+| `factory prune`                        | 終わった実行の作業ツリーを片付ける             | [日々の操作](docs/operations.md)                    |
+| `factory report` / `compare`           | レポートを作る、実行を比べる                   | [計測とレポート](docs/measurement.md)               |
+| `factory ui` / `seed`                  | web UI を開く、デモデータを入れる              | [ブラウザで見る（web UI）](docs/ui.md)              |
 
 ## ドキュメント
 
@@ -151,19 +151,15 @@ fake の事前確認、待ち時間、使用量、`fakeScenario` は [仕組み�
   （`baselineCheck`、`parallelReview`、`testProbe`、`review.blockerThreshold`、
   `profiles.repair` など）
 - [見立て、レビュー、修正](docs/review-and-repair.md)：見立て、レビュー役の呼び出しと
-  出力、仕様（spec）、外部の指摘から修正する `demo repair`
+  出力、仕様（spec）、外部の指摘から修正する `factory repair`
 - [計測とレポート](docs/measurement.md)：レポートの形、使用量、複数の実行の比較
 - [仕組みと制約](docs/architecture.md)：候補と固定したテスト、呼び出しの識別と復旧、
   権限と制約、fake モードの詳細、ファイルの構成
 - [別のリポジトリへ移す](docs/porting.md)
 
-## 以前の版から移行する（Upgrading）
+## 保存先の変更
 
-coji/durably の `examples/local-agent-loop` にあった以前の版は、DB を
-`examples/local-agent-loop/local-agent-loop.db`（または `DURABLY_DB` の指す場所）に、
-作業物を `examples/local-agent-loop/runs/` に置いていました。この版はそれらを読まず、移行もしません。チェックアウトに古い DB が
-残っていると、ワーカーと CLI は、起動したときに、その場所と新しい場所を標準エラー
-出力に一度だけ警告します。承認待ちの実行や、走っている途中の実行が残っているなら、上げる前に、
-以前の版で終わらせるか、破棄してください。そのあと、古い DB と `runs/` は消して
-かまいません。作業ツリーを消したときは、対象のリポジトリで `git worktree prune` を
-実行します。
+DBとrunのデータは `~/.local/state/durably-factory/` に保存します。
+以前の保存先にあるデータは自動移行しません。
+既存のrunを続ける場合は、そのrunを開始した版を使ってください。
+環境変数は `DURABLY_FACTORY_NO_AUTO_WORKER` と `DURABLY_FACTORY_IDLE_MS` を使います。

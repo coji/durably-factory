@@ -4,8 +4,8 @@
  * start a stopped run again with its stored input, and archive or unarchive
  * a stopped run. Both callers go through these functions, so a run acted on
  * from the page ends up exactly as one acted on from the terminal. Reading
- * files and reloading factory.json stay with the CLI, as do `demo prune`,
- * whose choice of runs is here too, and `demo archive --series`, which
+ * files and reloading factory.json stay with the CLI, as do `factory prune`,
+ * whose choice of runs is here too, and `factory archive --series`, which
  * archives every stopped run of a task through the same `archiveRun`.
  */
 import { existsSync, readdirSync } from 'node:fs'
@@ -55,7 +55,7 @@ async function stored(durably: AgentLoopDurably, runId: string) {
 }
 
 /**
- * `demo approve` / `demo reject`: decide the wait the run is suspended on,
+ * `factory approve` / `factory reject`: decide the wait the run is suspended on,
  * bound to the candidate or the spec version its metadata names.
  */
 export async function decideRun(
@@ -69,7 +69,7 @@ export async function decideRun(
 }
 
 /**
- * `demo spec-revise`: fix the blocked spec once more with `notes`, the
+ * `factory spec-revise`: fix the blocked spec once more with `notes`, the
  * content the CLI reads from its notes file, on the wait the run is
  * suspended on. `signalSpecDecision` refuses it unless that is the run's own
  * pending blocked-spec wait, and refuses blank notes.
@@ -114,7 +114,7 @@ export async function retriggerableRun(
 }
 
 /**
- * `demo retrigger` without `--reload-config`: a new run with the stored
+ * `factory retrigger` without `--reload-config`: a new run with the stored
  * input. One retry per stopped run: asking again returns the run it already
  * started instead of paying for another, or pushing twice. A repair run's
  * retry retains its original repair candidate and checks that branch again.
@@ -299,7 +299,7 @@ async function cleanUpRun(
 }
 
 /**
- * `demo archive`: take a stopped run out of the runs that need a person.
+ * `factory archive`: take a stopped run out of the runs that need a person.
  * A marker file under the state root is written; the run, its steps and
  * its waits stay as they are. `changed` is false when it already was.
  * Refused for any run `archivable` refuses: one still open is decided or
@@ -308,7 +308,7 @@ async function cleanUpRun(
  * A repository run's worktree, the test probe's base worktree and its
  * review snapshots are removed with it, also when it already was
  * archived, so asking again retries a removal that failed. Its branches
- * are kept unless `deleteBranches` says otherwise (`demo archive
+ * are kept unless `deleteBranches` says otherwise (`factory archive
  * --delete-branch`). A failed removal is a warning in the answer, not a
  * refusal: the run is archived either way.
  */
@@ -362,7 +362,7 @@ export interface SeriesArchive {
 }
 
 /**
- * `demo archive --series`: archive every stopped run of the task `runId`
+ * `factory archive --series`: archive every stopped run of the task `runId`
  * belongs to, the first run and every repair below it, by the parents
  * `repairParentId` reads. Any run of the task may be given, also one still
  * open or one approved and delivered: only the stops are archived, each by
@@ -417,7 +417,7 @@ export async function archiveSeries(
 }
 
 /**
- * `demo unarchive`: remove the marker, so the run reads as before. Any
+ * `factory unarchive`: remove the marker, so the run reads as before. Any
  * stored run with a marker can be brought back; looking the run up first
  * keeps an ID that is not a run's out of the marker path. A worktree the
  * archive removed is not made again: a fix starts a new run.
@@ -459,7 +459,7 @@ async function sizeOf(path: string): Promise<number> {
   return total
 }
 
-/** One run whose worktree `demo prune` removes. */
+/** One run whose worktree `factory prune` removes. */
 export interface PruneWorktree {
   runId: string
   path: string
@@ -482,7 +482,7 @@ export interface PrunePlan {
 }
 
 /**
- * What `demo prune` would remove, read from the stored runs, their setup,
+ * What `factory prune` would remove, read from the stored runs, their setup,
  * their delivery and the archive markers, never from directory names alone.
  * Only a run that has ended counts, whatever marker it has: a pending,
  * leased or waiting run is never touched. A worktree still on disk goes
@@ -537,7 +537,7 @@ export async function planPrune(
 }
 
 /**
- * `demo prune --apply`: remove what `planPrune` chose, each run's worktree
+ * `factory prune --apply`: remove what `planPrune` chose, each run's worktree
  * before its branches. Asking again after it succeeded finds nothing left.
  */
 export async function applyPrune(

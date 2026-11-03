@@ -12,7 +12,7 @@ import { realpath } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 
 import { runChild, SpawnTimeoutError } from './child.js'
-import { DEMO } from './demo-command.js'
+import { FACTORY_COMMAND } from './cli-command.js'
 import { formatDuration } from './format.js'
 
 const DEFAULT_TIMEOUT_MS = 120_000
@@ -173,7 +173,7 @@ export interface RemoveFailure {
  * A failed `git worktree remove` of `dir` as one line: git's words, or, when
  * it was stopped at its limit, that `dir` may be partly removed. `listed`
  * says whether git still lists `dir` as a worktree afterwards, null when it
- * could not tell: while it does, `demo prune --apply` continues the removal;
+ * could not tell: while it does, `factory prune --apply` continues the removal;
  * once git has deleted `dir/.git` it no longer does, and since the directory
  * is not removed any other way (ADR-0028), a person removes it.
  */
@@ -188,15 +188,15 @@ function describeRemoveFailure(
       : describeGitFailure(error)
   if (listed === false)
     return {
-      message: `${failure}. git no longer lists ${dir} as a worktree, so neither archive nor ${DEMO} prune --apply can remove it: remove the directory by hand`,
+      message: `${failure}. git no longer lists ${dir} as a worktree, so neither archive nor ${FACTORY_COMMAND} prune --apply can remove it: remove the directory by hand`,
       byHand: true,
     }
   // Not by hand while git may still list it: a retry can still finish it.
   if (error instanceof SpawnTimeoutError)
     return {
       message: listed
-        ? `${failure}. git still lists it, so ${DEMO} prune --apply continues the removal`
-        : `${failure}. If git worktree list in the run's repository still names it, ${DEMO} prune --apply continues the removal; otherwise remove the directory by hand`,
+        ? `${failure}. git still lists it, so ${FACTORY_COMMAND} prune --apply continues the removal`
+        : `${failure}. If git worktree list in the run's repository still names it, ${FACTORY_COMMAND} prune --apply continues the removal; otherwise remove the directory by hand`,
       byHand: false,
     }
   return { message: failure, byHand: false }

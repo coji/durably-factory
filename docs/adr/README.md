@@ -70,3 +70,4 @@ What we considered and why we didn't do it.
 | [0045](0045-repair-scope-and-candidate-recheck.md)              | Trusted repair scope and candidate recheck       | accepted |
 | [0046](0046-scoped-unattended-prompt-guidance.md)               | Scoped unattended coding and complete reviews    | accepted |
 | [0047](0047-custom-work-policies.md)                            | Role-specific custom work policies               | accepted |
+| [0048](0048-factory-naming.md)                                  | Factory CLI and runtime naming                   | accepted |

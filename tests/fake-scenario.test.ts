@@ -216,7 +216,7 @@ describe('fakeScenario on a real provider', () => {
   })
 })
 
-describe('demo seed smoke', { timeout: 180000 }, () => {
+describe('factory seed smoke', { timeout: 180000 }, () => {
   it('produces every outcome the web UI shows', async () => {
     const home = await mkdtemp(join(tmpdir(), 'demo-seed-'))
     const { seed } = await import('../src/demo-seed.js')
@@ -227,7 +227,7 @@ describe('demo seed smoke', { timeout: 180000 }, () => {
       backgroundWorker: false,
     })
     const durably = createAgentDurably({
-      stateRoot: join(home, '.local', 'state', 'local-agent-loop'),
+      stateRoot: join(home, '.local', 'state', 'durably-factory'),
     })
     try {
       const seen = new Map<string, number>()

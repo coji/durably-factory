@@ -26,12 +26,12 @@ export function offered(run: ActionTarget) {
   const decides = kind === 'approval' || kind === 'spec-approval'
   return {
     spec: kind === 'spec-approval',
-    approve: decides ? line(/ demo approve /) : null,
-    reject: decides ? line(/ demo reject /) : null,
-    revise: kind === 'spec-approval' ? line(/ demo spec-revise /) : null,
+    approve: decides ? line(/ factory approve /) : null,
+    reject: decides ? line(/ factory reject /) : null,
+    revise: kind === 'spec-approval' ? line(/ factory spec-revise /) : null,
     retrigger:
       kind === 'stopped' && !run.archived
-        ? line(/ demo retrigger (?!.*--reload-config)/)
+        ? line(/ factory retrigger (?!.*--reload-config)/)
         : null,
     archive: run.archived ? null : run.archiveCommand,
     unarchive: run.archived ? run.archiveCommand : null,

@@ -36,12 +36,12 @@ and steer it.
 
 1. A worker is not a precondition. `trigger` (and `repair`, `retrigger`,
    `approve`, `reject`, `spec-revise`) starts a detached
-   `demo worker --exit-when-idle` when none runs; it lives in a session of its
+   `factory worker --exit-when-idle` when none runs; it lives in a session of its
    own, so cleaning up this session does not stop it, and it stops by itself
    once it has had no work for a while. Do not ask the user to start a
    long-lived worker and do not stop when none is running.
 
-   Checking for a worker is informational only. `demo status` shows it, and
+   Checking for a worker is informational only. `factory status` shows it, and
    the `worker` field of the trigger JSON says what happened: `autoStarted`
    (pid and log file) when the trigger started one, `running: true` when one
    was already up. You can also count worker processes:
@@ -64,11 +64,11 @@ and steer it.
    run when it is triggered, never read from the worker's environment.
 
    An auto-started worker appends its output to
-   `~/.local/state/local-agent-loop/logs/worker-YYYY-MM-DD.log`, including
+   `~/.local/state/durably-factory/logs/worker-YYYY-MM-DD.log`, including
    `[shutdown] reason=<SIGTERM|SIGINT|idle>` when it stops. It runs the CLI of
    the checkout the command ran from. The user can switch auto-start off with
-   `--no-auto-worker` on the command or `LOCAL_AGENT_LOOP_NO_AUTO_WORKER=1`;
-   then a run stays pending until they start `demo worker` themselves.
+   `--no-auto-worker` on the command or `DURABLY_FACTORY_NO_AUTO_WORKER=1`;
+   then a run stays pending until they start `factory worker` themselves.
 
 2. Confirm the repository is clean. The factory cuts a worktree from a
    commit, so uncommitted work would not be included and the user should know
@@ -84,7 +84,7 @@ and steer it.
 
    ```bash
    FACTORY="${DURABLY_FACTORY_DIR:-$HOME/progs/oss/durably-factory}"
-   pnpm -C "$FACTORY" demo trigger \
+   pnpm -C "$FACTORY" factory trigger \
      --provider codex --repo "$(git rev-parse --show-toplevel)" \
      --issue 234 --check "pnpm validate" --setup "pnpm install --frozen-lockfile"
    ```
@@ -104,10 +104,10 @@ and steer it.
 
 ```bash
 FACTORY="${DURABLY_FACTORY_DIR:-$HOME/progs/oss/durably-factory}"
-pnpm -C "$FACTORY" demo status   # runs needing attention and the next command for each
-pnpm -C "$FACTORY" demo status --run <runId>
-pnpm -C "$FACTORY" demo report --run <runId> --format md
-pnpm -C "$FACTORY" demo compare --runs <runId>,<runId>
+pnpm -C "$FACTORY" factory status   # runs needing attention and the next command for each
+pnpm -C "$FACTORY" factory status --run <runId>
+pnpm -C "$FACTORY" factory report --run <runId> --format md
+pnpm -C "$FACTORY" factory compare --runs <runId>,<runId>
 ```
 
 The report carries per-stage wall time, tokens including cache reads and
@@ -117,8 +117,8 @@ verification or hit the repair cap.
 
 ## Delivering
 
-The run writes a patch under `~/.local/state/local-agent-loop/runs/<runId>/delivery/`;
-`demo status` shows its path, branch, and commit.
+The run writes a patch under `~/.local/state/durably-factory/runs/<runId>/delivery/`;
+`factory status` shows its path, branch, and commit.
 Apply it only when the user asks:
 
 ```bash

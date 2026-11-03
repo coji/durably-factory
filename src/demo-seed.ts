@@ -1,5 +1,5 @@
 /**
- * `demo seed`: fill a throwaway HOME with runs that look like real use, for
+ * `factory seed`: fill a throwaway HOME with runs that look like real use, for
  * looking at the web UI. Demo only: every run is on the fake provider, with a
  * per-run fake scenario, and every run is marked fake as usual.
  *
@@ -21,7 +21,7 @@ import {
   type AgentLoopDurably,
 } from './durably.js'
 import { runChild } from './engine/child.js'
-import { DEMO } from './engine/failure-reasons.js'
+import { FACTORY_COMMAND } from './engine/failure-reasons.js'
 import { parseLatency, type FakeScenario } from './engine/providers/fake.js'
 import { checkpointPaths } from './engine/runner.js'
 import { shellQuote } from './engine/status.js'
@@ -446,7 +446,7 @@ async function waitUntil(
   for (;;) {
     if (await cond()) return
     if (Date.now() - started > timeoutMs)
-      throw new Error(`demo seed timed out waiting for ${label}`)
+      throw new Error(`factory seed timed out waiting for ${label}`)
     // sleep-ok(poll): one tick of a loop that re-checks run state until its deadline
     await new Promise((r) => setTimeout(r, 500))
   }
@@ -604,7 +604,7 @@ export async function seed(options: SeedOptions): Promise<SeedResult> {
   return { home: options.home, runs, workerPid, workerLog }
 }
 
-/** `demo seed [--home <dir>] [--latency <min>-<max>]` */
+/** `factory seed [--home <dir>] [--latency <min>-<max>]` */
 export async function seedCommand(a: Record<string, string>): Promise<void> {
   let home: string
   if (a['home']) {
@@ -615,7 +615,7 @@ export async function seedCommand(a: Record<string, string>): Promise<void> {
         `--home ${home} is not empty; give an empty or new directory`,
       )
   } else {
-    home = await mkdtemp(join(tmpdir(), 'local-agent-loop-demo-'))
+    home = await mkdtemp(join(tmpdir(), 'durably-factory-demo-'))
   }
   const latencyMs = parseLatency(a['latency'] ?? '20000-90000')
   if (!latencyMs) throw new Error('--latency must be <min>-<max>')
@@ -631,7 +631,7 @@ export async function seedCommand(a: Record<string, string>): Promise<void> {
   console.log(`デモデータを作りました: ${home}`)
   console.log('')
   console.log('画面を開く:')
-  console.log(`  ${env} ${DEMO} ui`)
+  console.log(`  ${env} ${FACTORY_COMMAND} ui`)
   if (result.workerPid !== null) {
     console.log('')
     console.log(
@@ -646,5 +646,5 @@ export async function seedCommand(a: Record<string, string>): Promise<void> {
   }
   console.log('')
   console.log('worker を止めたあとで残りの run を続ける:')
-  console.log(`  ${env} ${DEMO} worker`)
+  console.log(`  ${env} ${FACTORY_COMMAND} worker`)
 }

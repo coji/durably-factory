@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { DEMO } from '../../../engine/demo-command'
+import { FACTORY_COMMAND } from '../../../engine/cli-command'
 import { formatCount } from '../../../engine/format'
 import { ActionButton, type ActionStage } from '../../components/ActionButton'
 import type { BulkItem } from '../../components/BulkNotice'
@@ -9,7 +9,7 @@ import { BULK } from '../../glossary'
 
 /** The CLI line that archives the same tasks, one `--series` each. */
 export function seriesCommand(items: BulkItem[]): string {
-  return `${DEMO} archive ${items.map((i) => `--series ${i.runId}`).join(' ')}`
+  return `${FACTORY_COMMAND} archive ${items.map((i) => `--series ${i.runId}`).join(' ')}`
 }
 
 /**

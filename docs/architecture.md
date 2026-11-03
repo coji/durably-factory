@@ -60,7 +60,7 @@ LLM の呼び出しと固定テストは、実行する前に、`operationKey` �
   費用はかからず、同じ判定になります。そのため、ワーカーを `kill -9` する再開の
   デモが、ずっと詰まったままになることはありません。
 
-作業物とチェックポイントは `~/.local/state/local-agent-loop/runs/<runId>/` に
+作業物とチェックポイントは `~/.local/state/durably-factory/runs/<runId>/` に
 残ります。独自の常駐プロセス（daemon）や、送信を管理する DB はありません。
 
 この取り決めは、「結果を受け取ったあと、Durably のチェックポイントの前」に起きる
@@ -130,7 +130,7 @@ fake の事前確認（preflight）は、要求したモデルの名前で決ま
 書きます。指定がなくても、fake の呼び出しは返答の本文を出力の最後に書きます。
 `FAKE_REVIEW_SLOW_MS` は、これらの呼び出しでも edge-cases のレビューを遅らせます。
 すべての役割が fake の実行でしか受け付けず、そうでなければ `trigger` のときに
-断ります。`configVersion` にも入りません。`demo seed` がこれを使います。
+断ります。`configVersion` にも入りません。`factory seed` がこれを使います。
 
 テスト専用の `claudeEffortResume: true` を付けると、fake は「推論量を変えて
 セッションを再開しても、キャッシュが残る Claude Code」の代わりをします。呼び出し
@@ -185,7 +185,7 @@ src/
   trigger-input.ts  factory.jsonと入力ファイルの読み込み、trigger時の固定
   actions.ts        承認、却下、仕様の修正、再実行、アーカイブ（CLIとweb UIで共有）、pruneの対象選び
   approval.ts       candidateに結びつけた承認と却下のsignal
-  demo-seed.ts      demo seedが作るデモ用のリポジトリとrun
+  demo-seed.ts      factory seedが作るデモ用のリポジトリとrun
   durably.ts        固定state directoryのDB
 subject/            変更しないバグ入り題材
 ```

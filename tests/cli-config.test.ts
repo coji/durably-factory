@@ -120,11 +120,11 @@ async function sandbox(config?: unknown): Promise<Sandbox> {
     root,
     home,
     repo,
-    stateRoot: join(home, '.local', 'state', 'local-agent-loop'),
+    stateRoot: join(home, '.local', 'state', 'durably-factory'),
   }
 }
 
-async function demo(
+async function runCli(
   box: Sandbox,
   args: string[],
   env: Record<string, string> = {},
@@ -139,7 +139,7 @@ async function demo(
       DURABLY_DB: join(box.root, 'durably-db-override.db'),
       // No worker unless a test starts one: a run stays where the command
       // left it. A test that exercises the auto-started worker overrides it.
-      LOCAL_AGENT_LOOP_NO_AUTO_WORKER: '1',
+      DURABLY_FACTORY_NO_AUTO_WORKER: '1',
       ...env,
     },
   })
@@ -150,7 +150,7 @@ async function trigger(
   args: string[],
   env: Record<string, string> = {},
 ): Promise<string> {
-  const res = await demo(box, ['trigger', ...args], env)
+  const res = await runCli(box, ['trigger', ...args], env)
   assert.equal(res.code, 0, res.stderr)
   const out = JSON.parse(res.stdout) as { runId: string; db: string }
   assert.equal(out.db, dbPath(box.stateRoot))
@@ -163,7 +163,7 @@ async function rejected(
   message: RegExp,
   env: Record<string, string> = {},
 ) {
-  const res = await demo(box, ['trigger', ...args], env)
+  const res = await runCli(box, ['trigger', ...args], env)
   assert.notEqual(res.code, 0, `expected failure for ${args.join(' ')}`)
   assert.match(res.stderr, message)
   // Validation happens before the run, and before the database, exist.
@@ -324,7 +324,7 @@ describe('factory.json and input files', { timeout: 180000 }, () => {
       delete process.env.FAKE_FAIL_FIRST
     }
 
-    const status = await demo(box, ['status', '--run', runId])
+    const status = await runCli(box, ['status', '--run', runId])
     assert.equal(status.code, 0, status.stderr)
     const shown = JSON.parse(status.stdout) as {
       delivery: { branch: string; commit: string }
@@ -532,13 +532,13 @@ function blockOf(stdout: string, runId: string): string {
 describe('status without --run', { timeout: 180000 }, () => {
   it('lists open and stopped runs with the next command, and leftover worktrees', async () => {
     const box = await sandbox({ check: CHECK })
-    const empty = await demo(box, ['status'])
+    const empty = await runCli(box, ['status'])
     assert.equal(empty.code, 0, empty.stderr)
     assert.match(empty.stdout, /No runs need attention/)
-    const emptyJson = await demo(box, ['status', '--format', 'json'])
+    const emptyJson = await runCli(box, ['status', '--format', 'json'])
     assert.equal(emptyJson.code, 0, emptyJson.stderr)
     assert.deepEqual(JSON.parse(emptyJson.stdout).tasks, [])
-    assert.notEqual((await demo(box, ['status', '--format', 'yaml'])).code, 0)
+    assert.notEqual((await runCli(box, ['status', '--format', 'yaml'])).code, 0)
 
     // A repository run that finishes, and one whose setup fails before any
     // worktree is recorded.
@@ -637,19 +637,19 @@ describe('status without --run', { timeout: 180000 }, () => {
       delete process.env.FAKE_FAIL_FIRST
     }
 
-    const res = await demo(box, ['status'])
+    const res = await runCli(box, ['status'])
     assert.equal(res.code, 0, res.stderr)
     const out = res.stdout
     // Printed commands run as pasted from anywhere in the repository; any
     // explanation follows as a shell comment.
-    const demoCmd = 'pnpm demo'
-    const approve = `${demoCmd} approve --run ${waiting} --wait ${waitId}`
-    const reject = `${demoCmd} reject --run ${waiting} --wait ${waitId}`
+    const factoryCmd = 'pnpm factory'
+    const approve = `${factoryCmd} approve --run ${waiting} --wait ${waitId}`
+    const reject = `${factoryCmd} reject --run ${waiting} --wait ${waitId}`
     for (const line of out.split('\n')) {
       const cmd = line.match(/^ {2}(?:next:| {5}|cleanup:) +(.*)$/)?.[1]
       if (!cmd) continue
       assert.ok(
-        cmd.startsWith(`${demoCmd} `) || cmd.startsWith('git -C '),
+        cmd.startsWith(`${factoryCmd} `) || cmd.startsWith('git -C '),
         line,
       )
       assert.doesNotMatch(cmd.split('  #')[0] ?? '', /[()]/, line)
@@ -659,21 +659,21 @@ describe('status without --run', { timeout: 180000 }, () => {
     assert.match(blockOf(out, pending), /pending[\s\S]*queued/)
     assert.match(blockOf(out, live), /a worker is running it/)
     assert.match(blockOf(out, expired), /lease expired/)
-    assert.match(blockOf(out, expired), /demo worker/)
+    assert.match(blockOf(out, expired), /factory worker/)
     // Only the run with an approval wait is offered approve or reject, and
     // an open run is never called retryable.
     for (const id of [pending, live, expired, noSetup, done]) {
-      assert.doesNotMatch(blockOf(out, id), /demo (approve|reject)/)
+      assert.doesNotMatch(blockOf(out, id), /factory (approve|reject)/)
     }
     for (const id of [pending, live, expired])
       assert.doesNotMatch(blockOf(out, id), /retry:/)
     assert.match(blockOf(out, noSetup), /unclassified[\s\S]*retry: +NO/)
     // The delivered repository run's worktree is still on disk, though its
-    // run should have removed it: offer `demo prune --apply`, which forces
+    // run should have removed it: offer `factory prune --apply`, which forces
     // the removal and prunes the registration, not a git removal that a
     // worktree with changes refuses. The run that failed before setup and
     // the sample run get none.
-    const prune = `cleanup: ${demoCmd} prune --apply  # forces the removal`
+    const prune = `cleanup: ${factoryCmd} prune --apply  # forces the removal`
     assert.ok(blockOf(out, done).includes(prune), out)
     assert.doesNotMatch(out, /worktree remove|branch -D/)
     for (const id of [noSetup, waiting, pending, live, expired])
@@ -681,13 +681,13 @@ describe('status without --run', { timeout: 180000 }, () => {
 
     // Once the worktree is gone, the run is not mentioned again.
     await git(repoPath, ['worktree', 'remove', workdir])
-    const after = await demo(box, ['status'])
+    const after = await runCli(box, ['status'])
     assert.equal(after.code, 0, after.stderr)
     assert.equal(blockOf(after.stdout, done), '')
     assert.doesNotMatch(after.stdout, /cleanup:/)
 
     // The run-specific view keeps its fields and adds the diagnosis.
-    const one = await demo(box, ['status', '--run', waiting])
+    const one = await runCli(box, ['status', '--run', waiting])
     assert.equal(one.code, 0, one.stderr)
     const shown = JSON.parse(one.stdout) as Record<string, unknown> & {
       diagnosis: { next: string[] }
@@ -705,7 +705,7 @@ describe('status without --run', { timeout: 180000 }, () => {
 
     // Once approved, with no worker running, the run is still waiting but
     // its decision is recorded: no second approve, and a worker resumes it.
-    const approved = await demo(box, [
+    const approved = await runCli(box, [
       'approve',
       '--run',
       waiting,
@@ -713,11 +713,11 @@ describe('status without --run', { timeout: 180000 }, () => {
       waitId,
     ])
     assert.equal(approved.code, 0, approved.stderr)
-    const decided = blockOf((await demo(box, ['status'])).stdout, waiting)
+    const decided = blockOf((await runCli(box, ['status'])).stdout, waiting)
     assert.match(decided, /waiting/)
     assert.match(decided, /decision on candidate .* is recorded \(approved\)/)
-    assert.match(decided, /demo worker/)
-    assert.doesNotMatch(decided, /demo (approve|reject)|not a candidate/)
+    assert.match(decided, /factory worker/)
+    assert.doesNotMatch(decided, /factory (approve|reject)|not a candidate/)
   })
 })
 
@@ -775,7 +775,7 @@ describe('archive and unarchive', { timeout: 120000 }, () => {
     }
     const marker = archiveMarkerOf(box.stateRoot, stopped)
     const status = async () => {
-      const res = await demo(box, ['status'])
+      const res = await runCli(box, ['status'])
       assert.equal(res.code, 0, res.stderr)
       return res.stdout
     }
@@ -784,16 +784,16 @@ describe('archive and unarchive', { timeout: 120000 }, () => {
     assert.match(block, /cancelled/)
 
     // Refused without a run, for an unknown run, and for one still open.
-    assert.match((await demo(box, ['archive'])).stderr, /--run <id> required/)
+    assert.match((await runCli(box, ['archive'])).stderr, /--run <id> required/)
     assert.match(
-      (await demo(box, ['archive', '--run', 'nope'])).stderr,
+      (await runCli(box, ['archive', '--run', 'nope'])).stderr,
       /no run nope/,
     )
-    const open = await demo(box, ['archive', '--run', pending])
+    const open = await runCli(box, ['archive', '--run', pending])
     assert.notEqual(open.code, 0)
     assert.match(open.stderr, /it is pending, not stopped/)
     assert.equal(existsSync(archiveMarkerOf(box.stateRoot, pending)), false)
-    const finished = await demo(box, ['archive', '--run', delivered])
+    const finished = await runCli(box, ['archive', '--run', delivered])
     assert.notEqual(finished.code, 0)
     assert.match(
       finished.stderr,
@@ -802,7 +802,7 @@ describe('archive and unarchive', { timeout: 120000 }, () => {
     assert.equal(existsSync(archiveMarkerOf(box.stateRoot, delivered)), false)
 
     const snapshot = rows(box)
-    const archived = await demo(box, ['archive', '--run', stopped])
+    const archived = await runCli(box, ['archive', '--run', stopped])
     assert.equal(archived.code, 0, archived.stderr)
     assert.match(archived.stdout, /^archived /)
     assert.ok(existsSync(marker))
@@ -811,8 +811,8 @@ describe('archive and unarchive', { timeout: 120000 }, () => {
     const after = await status()
     assert.equal(blockOf(after, stopped), '')
     assert.match(after, /1 stopped run\(s\) archived:/)
-    assert.ok(after.includes(`demo unarchive --run ${stopped}`))
-    const json = await demo(box, ['status', '--format', 'json'])
+    assert.ok(after.includes(`factory unarchive --run ${stopped}`))
+    const json = await runCli(box, ['status', '--format', 'json'])
     const task = (
       JSON.parse(json.stdout) as {
         tasks: {
@@ -827,24 +827,24 @@ describe('archive and unarchive', { timeout: 120000 }, () => {
       ['done', 'stopped', true],
     )
     assert.match(
-      (await demo(box, ['archive', '--run', stopped])).stdout,
+      (await runCli(box, ['archive', '--run', stopped])).stdout,
       /already archived/,
     )
 
-    const back = await demo(box, ['unarchive', '--run', stopped])
+    const back = await runCli(box, ['unarchive', '--run', stopped])
     assert.equal(back.code, 0, back.stderr)
     assert.equal(existsSync(marker), false)
     assert.equal(rows(box), snapshot)
     assert.equal(blockOf(await status(), stopped), block)
     assert.match(
-      (await demo(box, ['unarchive', '--run', stopped])).stdout,
+      (await runCli(box, ['unarchive', '--run', stopped])).stdout,
       /not archived/,
     )
   })
 })
 
 describe('archive retry hints', { timeout: 300000 }, () => {
-  const DEMO = 'pnpm demo'
+  const FACTORY_COMMAND = 'pnpm factory'
   /**
    * Stopped repository runs with no worker, each with a worktree added by
    * hand where setup would have made it: none has a completed setup, so
@@ -897,7 +897,7 @@ describe('archive retry hints', { timeout: 300000 }, () => {
     args: string[],
     env: Record<string, string> = {},
   ) => {
-    const res = await demo(box, ['archive', ...args], env)
+    const res = await runCli(box, ['archive', ...args], env)
     assert.equal(res.code, 0, res.stderr)
     return res.stderr
   }
@@ -922,7 +922,7 @@ describe('archive retry hints', { timeout: 300000 }, () => {
       assert.match(stderr, /^warning: .*worktree .*locked/m)
       assert.ok(
         stderr.includes(
-          `run ${DEMO} archive ${again} again to retry what git refused\n`,
+          `run ${FACTORY_COMMAND} archive ${again} again to retry what git refused\n`,
         ),
         stderr,
       )
@@ -950,7 +950,7 @@ describe('archive retry hints', { timeout: 300000 }, () => {
       const stderr = await archive(box, flags)
       assert.match(
         stderr,
-        /^warning: .*git no longer lists \S+ as a worktree, so neither archive nor pnpm demo prune --apply can remove it: remove the directory by hand$/m,
+        /^warning: .*git no longer lists \S+ as a worktree, so neither archive nor pnpm factory prune --apply can remove it: remove the directory by hand$/m,
       )
       assert.doesNotMatch(stderr, /again to retry/)
     }
@@ -1020,7 +1020,7 @@ describe('archive --series', { timeout: 300000 }, () => {
     }
     const marked = () =>
       [one, two].filter((id) => existsSync(archiveMarkerOf(box.stateRoot, id)))
-    const res = await demo(box, [
+    const res = await runCli(box, [
       'archive',
       '--series',
       one,
@@ -1033,7 +1033,7 @@ describe('archive --series', { timeout: 300000 }, () => {
     assert.notEqual(res.code, 0)
     assert.match(res.stderr, /no run nope/)
     assert.deepEqual(marked(), [one, two])
-    const back = await demo(box, ['unarchive', '--run', one, '--run', two])
+    const back = await runCli(box, ['unarchive', '--run', one, '--run', two])
     assert.equal(back.code, 0, back.stderr)
     assert.ok(back.stdout.includes(`unarchived ${one}`))
     assert.ok(back.stdout.includes(`unarchived ${two}`))
@@ -1116,15 +1116,15 @@ describe('archive --series', { timeout: 300000 }, () => {
         existsSync(archiveMarkerOf(box.stateRoot, id)),
       )
     const status = async () => {
-      const res = await demo(box, ['status'])
+      const res = await runCli(box, ['status'])
       assert.equal(res.code, 0, res.stderr)
       return res.stdout
     }
     const stopsLine = (count: number, task: string) =>
-      `  stops:   ${count} stopped run(s) not archived; pnpm demo archive --series ${task}  #`
+      `  stops:   ${count} stopped run(s) not archived; pnpm factory archive --series ${task}  #`
     const unarchiveAll = async () => {
       for (const id of stops)
-        assert.equal((await demo(box, ['unarchive', '--run', id])).code, 0)
+        assert.equal((await runCli(box, ['unarchive', '--run', id])).code, 0)
       assert.deepEqual(marked(), [])
     }
 
@@ -1139,7 +1139,7 @@ describe('archive --series', { timeout: 300000 }, () => {
     // The JSON task data keeps its shape.
     type JsonTask = { id: string; runs: Record<string, unknown>[] }
     const jsonTasks = async () => {
-      const res = await demo(box, ['status', '--format', 'json'])
+      const res = await runCli(box, ['status', '--format', 'json'])
       assert.equal(res.code, 0, res.stderr)
       return (JSON.parse(res.stdout) as { tasks: JsonTask[] }).tasks
     }
@@ -1168,28 +1168,34 @@ describe('archive --series', { timeout: 300000 }, () => {
 
     // Refused with both flags, with neither, without an ID and for a run
     // that is not there; nothing is archived.
-    const both = await demo(box, ['archive', '--series', first, '--run', first])
+    const both = await runCli(box, [
+      'archive',
+      '--series',
+      first,
+      '--run',
+      first,
+    ])
     assert.notEqual(both.code, 0)
     assert.match(both.stderr, /--run and --series exclude each other/)
-    const neither = await demo(box, ['archive'])
+    const neither = await runCli(box, ['archive'])
     assert.notEqual(neither.code, 0)
     assert.match(neither.stderr, /--run <id> required/)
-    const bare = await demo(box, ['archive', '--series'])
+    const bare = await runCli(box, ['archive', '--series'])
     assert.notEqual(bare.code, 0)
     assert.match(bare.stderr, /--series <id> required/)
-    const missing = await demo(box, ['archive', '--series', 'nope'])
+    const missing = await runCli(box, ['archive', '--series', 'nope'])
     assert.notEqual(missing.code, 0)
     assert.match(missing.stderr, /no run nope/)
     assert.deepEqual(marked(), [])
 
     // `--run` still takes one stopped run, and refuses any other.
-    const open = await demo(box, ['archive', '--run', pending])
+    const open = await runCli(box, ['archive', '--run', pending])
     assert.notEqual(open.code, 0)
     assert.match(
       open.stderr,
       /refusing to archive \S+: it is pending, not stopped/,
     )
-    const one = await demo(box, ['archive', '--run', first])
+    const one = await runCli(box, ['archive', '--run', first])
     assert.equal(one.code, 0, one.stderr)
     assert.match(
       one.stdout,
@@ -1201,7 +1207,7 @@ describe('archive --series', { timeout: 300000 }, () => {
     // From the grandchild: every stop of its task, the one already archived
     // again; nothing else, and no run's record changes.
     const snapshot = rows(box)
-    const series = await demo(box, ['archive', '--series', grandchild])
+    const series = await runCli(box, ['archive', '--series', grandchild])
     assert.equal(series.code, 0, series.stderr)
     assert.ok(series.stdout.includes(`${first}: already archived`))
     for (const id of [repair, grandchild])
@@ -1240,13 +1246,13 @@ describe('archive --series', { timeout: 300000 }, () => {
     // From the repair, and from the delivered run, the same stops.
     for (const from of [repair, delivered, first]) {
       await unarchiveAll()
-      const res = await demo(box, ['archive', '--series', from])
+      const res = await runCli(box, ['archive', '--series', from])
       assert.equal(res.code, 0, res.stderr)
       assert.deepEqual(marked().sort(), [...stops].sort(), from)
     }
 
     // A task whose only open matter was its stop leaves the top.
-    const last = await demo(box, ['archive', '--series', other])
+    const last = await runCli(box, ['archive', '--series', other])
     assert.equal(last.code, 0, last.stderr)
     const done = await status()
     assert.match(done, /^1 task\(s\) wait on a person or stopped unresolved:/)
@@ -1310,7 +1316,7 @@ describe('archive --series', { timeout: 300000 }, () => {
     // A locked worktree: git refuses, the run is archived anyway, and the
     // warning names its run. Without --delete-branch every branch stays.
     await git(box.repo, ['worktree', 'lock', work(first)])
-    const locked = await demo(box, ['archive', '--series', repair])
+    const locked = await runCli(box, ['archive', '--series', repair])
     assert.equal(locked.code, 0, locked.stderr)
     assert.ok(locked.stdout.includes(`${repair}: removed its worktree`))
     assert.match(
@@ -1319,7 +1325,7 @@ describe('archive --series', { timeout: 300000 }, () => {
     )
     assert.ok(
       locked.stderr.includes(
-        `run pnpm demo archive --series ${repair} again to retry what git refused`,
+        `run pnpm factory archive --series ${repair} again to retry what git refused`,
       ),
     )
     assert.ok(existsSync(work(first)))
@@ -1329,7 +1335,7 @@ describe('archive --series', { timeout: 300000 }, () => {
     // Again, unlocked and with --delete-branch: the archived runs are
     // cleaned up once more and their branches deleted.
     await git(box.repo, ['worktree', 'unlock', work(first)])
-    const again = await demo(box, [
+    const again = await runCli(box, [
       'archive',
       '--series',
       first,
@@ -1388,7 +1394,7 @@ describe('archive --series', { timeout: 300000 }, () => {
       await durably.db.destroy()
     }
 
-    const res = await demo(box, ['archive', '--series', first])
+    const res = await runCli(box, ['archive', '--series', first])
     assert.notEqual(res.code, 0)
     for (const id of [first, last]) {
       assert.ok(res.stdout.includes(`${id}: archived. Undo with`), id)
@@ -1597,10 +1603,10 @@ describe('trigger validation', { timeout: 120000 }, () => {
 
   it('does not document DURABLY_DB', async () => {
     const box = await sandbox()
-    const res = await demo(box, ['--help'])
+    const res = await runCli(box, ['--help'])
     assert.equal(res.code, 0)
     assert.doesNotMatch(res.stdout, /DURABLY_DB/)
-    assert.match(res.stdout, /\.local\/state\/local-agent-loop/)
+    assert.match(res.stdout, /\.local\/state\/durably-factory/)
     assert.match(res.stdout, /factory\.json/)
     // The threshold's exclusions are the review prompt's (ADR-0040).
     assert.match(
@@ -1855,7 +1861,7 @@ describe('settings fixed at trigger', { timeout: 180000 }, () => {
       delete process.env.FAKE_FAIL_FIRST
     }
 
-    const status = await demo(box, ['status', '--run', runId])
+    const status = await runCli(box, ['status', '--run', runId])
     assert.equal(status.code, 0, status.stderr)
     const shown = JSON.parse(status.stdout) as {
       delivery: { squashedBranch: string; squashedCommit: string }
@@ -2299,7 +2305,7 @@ describe('selfCheck', { timeout: 240000 }, () => {
     assert.ok(!prompt.includes('`node -v`'))
     // A repair run takes the parent's value, not the edited file's.
     await writeFile(join(box.root, 'findings.md'), 'FINDING: refunds\n')
-    const res = await demo(box, [
+    const res = await runCli(box, [
       'repair',
       '--run',
       parentId,
@@ -2482,7 +2488,7 @@ describe('testProbe', { timeout: 240000 }, () => {
     assert.equal(probed.length, 1)
     // A repair run takes the parent's value, not the edited file's.
     await writeFile(join(box.root, 'findings.md'), 'FINDING: refunds\n')
-    const res = await demo(box, [
+    const res = await runCli(box, [
       'repair',
       '--run',
       parentId,
@@ -2626,7 +2632,7 @@ describe('review.blockerThreshold', { timeout: 240000 }, () => {
     assert.notEqual(setups[0]?.configVersion, setups[1]?.configVersion)
     // A repair run takes the parent's value, not the edited file's.
     await writeFile(join(box.root, 'findings.md'), 'FINDING: refunds\n')
-    const res = await demo(box, [
+    const res = await runCli(box, [
       'repair',
       '--run',
       nine,
@@ -2808,7 +2814,7 @@ describe('retrigger --reload-config', { timeout: 240000 }, () => {
       await durably.stop()
       await durably.db.destroy()
     }
-    const status = blockOf((await demo(box, ['status'])).stdout, stopped)
+    const status = blockOf((await runCli(box, ['status'])).stdout, stopped)
     assert.match(status, /rejected-invocation:[\s\S]*retry: +yes/)
     assert.match(status, /refusal: fake: the repair call on rejects-repair/)
     assert.match(
@@ -2825,7 +2831,7 @@ describe('retrigger --reload-config', { timeout: 240000 }, () => {
         profiles: { repair: { model: 'fixed-repair' } },
       }),
     )
-    const created = await demo(box, [
+    const created = await runCli(box, [
       'retrigger',
       '--run',
       stopped,
@@ -2866,7 +2872,7 @@ describe('retrigger --reload-config', { timeout: 240000 }, () => {
     }
     const first = await inputOf(box, stopped)
     assert.match(
-      (await demo(box, ['status'])).stdout,
+      (await runCli(box, ['status'])).stdout,
       new RegExp(`retrigger --run ${stopped} --reload-config`),
     )
 
@@ -2880,7 +2886,7 @@ describe('retrigger --reload-config', { timeout: 240000 }, () => {
       }),
     )
     const reload = () =>
-      demo(box, ['retrigger', '--run', stopped, '--reload-config'])
+      runCli(box, ['retrigger', '--run', stopped, '--reload-config'])
     const created = await reload()
     assert.equal(created.code, 0, created.stderr)
     const nextId = /^new run (\S+) with the input of /.exec(created.stdout)?.[1]
@@ -2905,7 +2911,7 @@ describe('retrigger --reload-config', { timeout: 240000 }, () => {
     )
 
     // Without the flag the stored settings stay, for an environment fix.
-    const plain = await demo(box, ['retrigger', '--run', stopped])
+    const plain = await runCli(box, ['retrigger', '--run', stopped])
     assert.equal(plain.code, 0, plain.stderr)
     const plainId = /^new run (\S+)/.exec(plain.stdout)?.[1] ?? ''
     const kept = await inputOf(box, plainId)
@@ -2973,14 +2979,14 @@ describe('retrigger --reload-config', { timeout: 240000 }, () => {
       await durably.db.destroy()
     }
     assert.match(
-      (await demo(box, ['status'])).stdout,
+      (await runCli(box, ['status'])).stdout,
       /--reload-config {2}# after fixing factory\.json; the --check, --setup or --base given at trigger still wins over it/,
     )
 
     // The run read the default factory.json, which is now gone: the reload
     // carries on without a config, as a trigger would.
     await rm(config)
-    const created = await demo(box, [
+    const created = await runCli(box, [
       'retrigger',
       '--run',
       stopped,
@@ -2994,7 +3000,7 @@ describe('retrigger --reload-config', { timeout: 240000 }, () => {
 
     // The file the other run named with --config is gone: an error, not a
     // silent fallback to no config.
-    const missing = await demo(box, [
+    const missing = await runCli(box, [
       'retrigger',
       '--run',
       named,
@@ -3018,7 +3024,7 @@ function startWorker(
       ...process.env,
       HOME: box.home,
       FAKE_FAIL_FIRST: '0',
-      LOCAL_AGENT_LOOP_NO_AUTO_WORKER: '1',
+      DURABLY_FACTORY_NO_AUTO_WORKER: '1',
       ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -3167,7 +3173,7 @@ const wait = setInterval(() => existsSync(gate) || clearInterval(wait), 100)
     if (created.acquired) created.release()
     const lockPath = join(box.stateRoot, 'worker.lock')
 
-    // Simulate `demo wait`'s once-a-second probe holding the lock file open
+    // Simulate `factory wait`'s once-a-second probe holding the lock file open
     // for a moment, spanning the window in which a real worker starts.
     const probe = new Database(lockPath, {
       readonly: true,
@@ -3216,7 +3222,7 @@ describe('repair', { timeout: 240000 }, () => {
     await writeFile(join(box.root, 'bad.md'), Buffer.from([0x66, 0xff, 0xfe]))
     await writeFile(join(box.root, 'big.md'), 'x'.repeat(256 * 1024 + 1))
     const refused = async (args: string[], message: RegExp) => {
-      const res = await demo(box, ['repair', '--run', 'some-run', ...args])
+      const res = await runCli(box, ['repair', '--run', 'some-run', ...args])
       assert.notEqual(res.code, 0, args.join(' '))
       assert.match(res.stderr, message)
       assert.equal(existsSync(dbPath(box.stateRoot)), false)
@@ -4109,7 +4115,7 @@ describe('repair', { timeout: 240000 }, () => {
     await writeFile(join(box.root, 'b', 'copy.md'), 'FINDING: refunds\n')
     await writeFile(join(box.root, 'disp.md'), 'CHILD DISPOSITIONS\n')
     const repair = async (args: string[]) => {
-      const res = await demo(box, ['repair', '--run', parentId, ...args], env)
+      const res = await runCli(box, ['repair', '--run', parentId, ...args], env)
       assert.equal(res.code, 0, res.stderr)
       return JSON.parse(res.stdout) as {
         runId: string
@@ -4119,7 +4125,7 @@ describe('repair', { timeout: 240000 }, () => {
       }
     }
     // An approved parent needs findings from outside.
-    const bare = await demo(box, ['repair', '--run', parentId], env)
+    const bare = await runCli(box, ['repair', '--run', parentId], env)
     assert.notEqual(bare.code, 0)
     assert.match(
       bare.stderr,
@@ -4198,12 +4204,12 @@ describe('repair', { timeout: 240000 }, () => {
     assert.equal(withBudget.checkTimeoutMs, 150000)
 
     // status --run shows both sides.
-    const parentStatus = await demo(box, ['status', '--run', parentId])
+    const parentStatus = await runCli(box, ['status', '--run', parentId])
     assert.deepEqual(
       (JSON.parse(parentStatus.stdout) as { lineage: unknown }).lineage,
       { parent: null, children: [first.runId, other.runId, budget.runId] },
     )
-    const childStatus = await demo(box, ['status', '--run', first.runId])
+    const childStatus = await runCli(box, ['status', '--run', first.runId])
     assert.equal(
       (JSON.parse(childStatus.stdout) as { lineage: { parent: string } })
         .lineage.parent,
@@ -4226,7 +4232,7 @@ describe('repair', { timeout: 240000 }, () => {
       'main',
     ])
     await writeFile(join(box.root, 'new.md'), 'FINDING: new\n')
-    const moved = await demo(
+    const moved = await runCli(
       box,
       ['repair', '--run', parentId, '--findings-file', 'new.md'],
       env,
@@ -4289,7 +4295,7 @@ describe('repair', { timeout: 240000 }, () => {
     await writeFile(join(box.root, 'findings.md'), 'FINDING: by hand\n')
     await writeFile(join(box.root, 'disp.md'), 'CHILD DISPOSITIONS\n')
     const repair = async (args: string[]) => {
-      const res = await demo(box, ['repair', '--run', parentId, ...args])
+      const res = await runCli(box, ['repair', '--run', parentId, ...args])
       assert.equal(res.code, 0, res.stderr)
       return JSON.parse(res.stdout) as {
         runId: string
@@ -4337,7 +4343,7 @@ describe('repair', { timeout: 240000 }, () => {
     assert.equal(byHand.repairOf.parentConclusion, 'verification-failed')
 
     // status --run links the children to the parent by repair lineage.
-    const parentStatus = await demo(box, ['status', '--run', parentId])
+    const parentStatus = await runCli(box, ['status', '--run', parentId])
     assert.deepEqual(
       (
         JSON.parse(parentStatus.stdout) as { lineage: { children: string[] } }
@@ -4386,7 +4392,7 @@ describe('repair', { timeout: 240000 }, () => {
     assert.equal(passing.length, 1)
     await writeFile(join(box.root, 'findings.md'), 'FINDING: by hand\n')
     const repair = async (args: string[]) => {
-      const res = await demo(box, ['repair', '--run', parentId, ...args])
+      const res = await runCli(box, ['repair', '--run', parentId, ...args])
       assert.equal(res.code, 0, res.stderr)
       return JSON.parse(res.stdout) as { runId: string; disposition: string }
     }
@@ -4603,7 +4609,7 @@ describe('wait and worker state', { timeout: 300000 }, () => {
   }
 
   async function waitJson(box: Sandbox, runId: string, flags: string[] = []) {
-    const res = await demo(box, [
+    const res = await runCli(box, [
       'wait',
       '--run',
       runId,
@@ -4615,7 +4621,7 @@ describe('wait and worker state', { timeout: 300000 }, () => {
   }
 
   async function statusJson(box: Sandbox, runId: string) {
-    const res = await demo(box, ['status', '--run', runId])
+    const res = await runCli(box, ['status', '--run', runId])
     assert.equal(res.code, 0, res.stderr)
     return JSON.parse(res.stdout) as {
       worker: {
@@ -4633,11 +4639,11 @@ describe('wait and worker state', { timeout: 300000 }, () => {
     const bad = ['0', '-1', '1.5', 'NaN', 'Infinity', '2147483648', 'soon']
     for (const flag of ['--timeout', '--worker-timeout'])
       for (const value of bad) {
-        const res = await demo(box, ['wait', '--run', 'x', flag, value])
+        const res = await runCli(box, ['wait', '--run', 'x', flag, value])
         assert.equal(res.code, 1, `${flag} ${value}`)
         assert.match(res.stderr, /must be an integer number of milliseconds/)
       }
-    const both = await demo(box, [
+    const both = await runCli(box, [
       'wait',
       '--run',
       'x',
@@ -4648,7 +4654,7 @@ describe('wait and worker state', { timeout: 300000 }, () => {
     assert.equal(both.code, 1)
     // Nothing was opened, so nothing was waited on.
     assert.equal(existsSync(dbPath(box.stateRoot)), false)
-    const unknown = await demo(box, ['wait', '--run', 'no-such-run'])
+    const unknown = await runCli(box, ['wait', '--run', 'no-such-run'])
     assert.equal(unknown.code, 1)
     assert.match(unknown.stderr, /no run no-such-run/)
   })
@@ -4665,7 +4671,7 @@ describe('wait and worker state', { timeout: 300000 }, () => {
         startedAt: new Date().toISOString(),
       }),
     )
-    const triggered = await demo(box, ['trigger', '--provider', 'fake'])
+    const triggered = await runCli(box, ['trigger', '--provider', 'fake'])
     assert.equal(triggered.code, 0, triggered.stderr)
     const shown = JSON.parse(triggered.stdout) as {
       runId: string
@@ -4674,13 +4680,13 @@ describe('wait and worker state', { timeout: 300000 }, () => {
     const runId = shown.runId
     assert.equal(shown.worker.running, false)
     assert.equal(shown.worker.pid, null)
-    assert.match(shown.worker.start ?? '', /demo worker$/)
-    const list = await demo(box, ['status'])
+    assert.match(shown.worker.start ?? '', /factory worker$/)
+    const list = await runCli(box, ['status'])
     assert.match(
       list.stdout,
-      /worker: not running; start one with .*demo worker/,
+      /worker: not running; start one with .*factory worker/,
     )
-    assert.match(blockOf(list.stdout, runId), /demo worker/)
+    assert.match(blockOf(list.stdout, runId), /factory worker/)
     const absent = await statusJson(box, runId)
     assert.equal(absent.worker.running, false)
     assert.equal(absent.lastLeaseRenewedAt, null)
@@ -4690,7 +4696,7 @@ describe('wait and worker state', { timeout: 300000 }, () => {
     const lock = acquireWorkerLock(box.stateRoot, packageRoot)
     assert.ok(lock.acquired)
     try {
-      const again = await demo(box, ['trigger', '--provider', 'fake'])
+      const again = await runCli(box, ['trigger', '--provider', 'fake'])
       const up = JSON.parse(again.stdout) as {
         worker: { running: boolean; pid: number | null; start: string | null }
       }
@@ -4707,7 +4713,7 @@ describe('wait and worker state', { timeout: 300000 }, () => {
       const idle = await statusJson(box, runId)
       assert.equal(idle.worker.running, true)
       assert.equal(idle.lastLeaseRenewedAt, null)
-      assert.ok(!idle.diagnosis.next.some((n) => /demo worker/.test(n)))
+      assert.ok(!idle.diagnosis.next.some((n) => /factory worker/.test(n)))
 
       const setRun = (values: Record<string, string | null>) =>
         durably.db
@@ -4752,8 +4758,8 @@ describe('wait and worker state', { timeout: 300000 }, () => {
     const gone = await waitJson(box, runId, ['--worker-timeout', '1000'])
     assert.equal(gone.code, 6)
     assert.equal(gone.out.worker.running, false)
-    assert.match(gone.out.next[0] ?? '', /demo worker$/)
-    const text = await demo(box, [
+    assert.match(gone.out.next[0] ?? '', /factory worker$/)
+    const text = await runCli(box, [
       'wait',
       '--run',
       runId,
@@ -4807,7 +4813,7 @@ describe('wait and worker state', { timeout: 300000 }, () => {
     }
 
     // `trigger` stores the run and still prints its id.
-    const triggered = await demo(box, ['trigger', '--provider', 'fake'])
+    const triggered = await runCli(box, ['trigger', '--provider', 'fake'])
     assert.equal(triggered.code, 0, triggered.stderr)
     const shown = JSON.parse(triggered.stdout) as {
       runId: string
@@ -4817,7 +4823,7 @@ describe('wait and worker state', { timeout: 300000 }, () => {
     assert.equal(shown.worker.running, null)
     assert.equal(shown.worker.start, null)
     const runId = shown.runId
-    const list = await demo(box, ['status'])
+    const list = await runCli(box, ['status'])
     assert.equal(list.code, 0, list.stderr)
     assert.match(list.stdout, /worker: unknown \(cannot read /)
     const one = await statusJson(box, runId)
@@ -4837,7 +4843,7 @@ describe('wait and worker state', { timeout: 300000 }, () => {
   it('follows runs a worker in another process moves, until they end or wait on a person', async () => {
     const box = await sandbox({ check: CHECK })
     const subject = async () => {
-      const res = await demo(box, ['trigger', '--provider', 'fake'])
+      const res = await runCli(box, ['trigger', '--provider', 'fake'])
       assert.equal(res.code, 0, res.stderr)
       return (JSON.parse(res.stdout) as { runId: string }).runId
     }
@@ -4866,7 +4872,7 @@ describe('wait and worker state', { timeout: 300000 }, () => {
       assert.equal(human.code, 2)
       assert.equal(human.out.status, 'waiting')
       assert.match(human.out.stopReason, /approval wait/)
-      assert.ok(human.out.next.some((n) => /demo approve/.test(n)))
+      assert.ok(human.out.next.some((n) => /factory approve/.test(n)))
       assert.ok(human.out.stageTimings.some((t) => t.stage === 'code'))
       for (const t of human.out.stageTimings)
         if (!t.complete) assert.equal(t.elapsedMs, null)
@@ -4898,7 +4904,7 @@ describe('wait and worker state', { timeout: 300000 }, () => {
       ] as const) {
         const w = await pendingWait(runId)
         assert.ok(w)
-        const res = await demo(box, [verb, '--run', runId, '--wait', w.id])
+        const res = await runCli(box, [verb, '--run', runId, '--wait', w.id])
         assert.equal(res.code, 0, res.stderr)
       }
       const decided = await waitJson(box, approved, [
@@ -4911,7 +4917,7 @@ describe('wait and worker state', { timeout: 300000 }, () => {
       const second = startWorker(box)
       workers.push(second)
       await second.running()
-      const done = await demo(box, ['wait', '--run', approved])
+      const done = await runCli(box, ['wait', '--run', approved])
       assert.equal(done.code, 0, done.stdout)
       assert.match(done.stdout, /conclusion: approved/)
       assert.match(done.stdout, /stopped: +completed: approved and delivered/)
@@ -5091,14 +5097,17 @@ describe('compare --trend', { timeout: 120000 }, () => {
       '1.5',
       String(Number.MAX_SAFE_INTEGER + 1),
     ]) {
-      const res = await demo(box, ['compare', '--trend', '--days', days])
+      const res = await runCli(box, ['compare', '--trend', '--days', days])
       assert.notEqual(res.code, 0, days)
       assert.match(res.stderr, /--days must be a whole number of days/, days)
     }
     // A bare flag is refused too, and nothing was created on the way.
-    assert.notEqual((await demo(box, ['compare', '--trend', '--days'])).code, 0)
+    assert.notEqual(
+      (await runCli(box, ['compare', '--trend', '--days'])).code,
+      0,
+    )
     assert.equal(existsSync(dbPath(box.stateRoot)), false)
-    const ok = await demo(box, [
+    const ok = await runCli(box, [
       'compare',
       '--trend',
       '--days',
@@ -5116,7 +5125,7 @@ describe('compare --trend', { timeout: 120000 }, () => {
       groups: [],
     })
     // The config-version comparison is still there, and still asks for runs.
-    const noRuns = await demo(box, ['compare'])
+    const noRuns = await runCli(box, ['compare'])
     assert.notEqual(noRuns.code, 0)
     assert.match(noRuns.stderr, /--runs <id,id,...> required/)
   })
@@ -5205,7 +5214,7 @@ async function workerLogs(stateRoot: string): Promise<string> {
 }
 
 /** Commands run with auto-start on, as a person would. */
-const AUTO = { LOCAL_AGENT_LOOP_NO_AUTO_WORKER: '0' }
+const AUTO = { DURABLY_FACTORY_NO_AUTO_WORKER: '0' }
 
 /**
  * Rows written straight into a state database, for the runs an idle worker
@@ -5274,7 +5283,7 @@ describe('worker --exit-when-idle', { timeout: 240000 }, () => {
       '9007199254740993',
       '1e3',
     ]) {
-      const res = await demo(box, [
+      const res = await runCli(box, [
         'worker',
         '--exit-when-idle',
         '--idle-ms',
@@ -5283,9 +5292,9 @@ describe('worker --exit-when-idle', { timeout: 240000 }, () => {
       assert.notEqual(res.code, 0, value)
       assert.match(res.stderr, /--idle-ms must be an integer/, value)
     }
-    const bare = await demo(box, ['worker', '--exit-when-idle', '--idle-ms'])
+    const bare = await runCli(box, ['worker', '--exit-when-idle', '--idle-ms'])
     assert.notEqual(bare.code, 0)
-    const alone = await demo(box, ['worker', '--idle-ms', '1000'])
+    const alone = await runCli(box, ['worker', '--idle-ms', '1000'])
     assert.notEqual(alone.code, 0)
     assert.match(alone.stderr, /--idle-ms applies only with --exit-when-idle/)
     // No worker ever started on this root.
@@ -5383,11 +5392,11 @@ describe('auto-started worker', { timeout: 300000 }, () => {
 
   it('starts after trigger, retrigger, approve and reject when work needs one, and stops when idle', async () => {
     const box = await sandbox()
-    const env = { ...AUTO, LOCAL_AGENT_LOOP_IDLE_MS: '500' }
+    const env = { ...AUTO, DURABLY_FACTORY_IDLE_MS: '500' }
     const started: number[] = []
     /** Run a command, recording any worker it started before anything else. */
     const run = async (args: string[], extra: Record<string, string> = {}) => {
-      const res = await demo(box, args, { ...env, ...extra })
+      const res = await runCli(box, args, { ...env, ...extra })
       const pid = startedWorker(res.stderr)
       if (pid !== null) started.push(pid)
       return { ...res, pid }
@@ -5511,7 +5520,7 @@ describe('auto-started worker', { timeout: 300000 }, () => {
   it('starts no second worker, none when switched off, and none when the lock cannot be read', async () => {
     const box = await sandbox()
     const unreadable = await sandbox()
-    const env = { ...AUTO, LOCAL_AGENT_LOOP_IDLE_MS: '500' }
+    const env = { ...AUTO, DURABLY_FACTORY_IDLE_MS: '500' }
     const started: number[] = []
     /** Run a command, recording any worker it started before anything else. */
     const run = async (
@@ -5519,7 +5528,7 @@ describe('auto-started worker', { timeout: 300000 }, () => {
       args: string[],
       runEnv: Record<string, string> = env,
     ) => {
-      const res = await demo(target, args, runEnv)
+      const res = await runCli(target, args, runEnv)
       const pid = startedWorker(res.stderr)
       if (pid !== null) started.push(pid)
       return { ...res, pid }
@@ -5536,7 +5545,7 @@ describe('auto-started worker', { timeout: 300000 }, () => {
       assert.equal(flagged.code, 0, flagged.stderr)
       assert.equal(flagged.pid, null, flagged.stderr)
       const off = await run(box, ['trigger', '--provider', 'fake'], {
-        LOCAL_AGENT_LOOP_NO_AUTO_WORKER: '1',
+        DURABLY_FACTORY_NO_AUTO_WORKER: '1',
       })
       assert.equal(off.code, 0, off.stderr)
       assert.equal(off.pid, null, off.stderr)
@@ -5565,7 +5574,7 @@ describe('auto-started worker', { timeout: 300000 }, () => {
             running: false,
             pid: null,
             startedAt: null,
-            start: 'pnpm demo worker',
+            start: 'pnpm factory worker',
             unknownReason: null,
           })
         }
@@ -5586,12 +5595,12 @@ describe('auto-started worker', { timeout: 300000 }, () => {
       ]) {
         const res = await run(box, ['trigger', '--provider', 'fake'], {
           ...AUTO,
-          LOCAL_AGENT_LOOP_IDLE_MS: value,
+          DURABLY_FACTORY_IDLE_MS: value,
         })
         assert.equal(res.code, 0, res.stderr)
         JSON.parse(res.stdout)
         assert.equal(res.pid, null, value)
-        assert.match(res.stderr, /LOCAL_AGENT_LOOP_IDLE_MS must be/, value)
+        assert.match(res.stderr, /DURABLY_FACTORY_IDLE_MS must be/, value)
       }
 
       // A worker already runs: none is started beside it, and it takes the
@@ -5652,8 +5661,8 @@ describe('auto-started worker', { timeout: 300000 }, () => {
         env: {
           ...process.env,
           HOME: box.home,
-          LOCAL_AGENT_LOOP_NO_AUTO_WORKER: '0',
-          LOCAL_AGENT_LOOP_IDLE_MS: '60000',
+          DURABLY_FACTORY_NO_AUTO_WORKER: '0',
+          DURABLY_FACTORY_IDLE_MS: '60000',
         },
         detached: true,
         stdio: 'ignore',

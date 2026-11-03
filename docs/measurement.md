@@ -56,8 +56,8 @@ LLM の呼び出しはすべて `src/engine/runner.ts` を通り、試行のメ�
 レポートは、SQLite にある実行、試行、待ちの記録から作り直す、副作用のない処理です。
 
 ```bash
-pnpm demo report --run <runId> --format json
-pnpm demo report --run <runId> --format md \
+pnpm factory report --run <runId> --format json
+pnpm factory report --run <runId> --format md \
   --out reports/<runId>.md
 ```
 
@@ -260,7 +260,7 @@ Claude と Codex は、呼び出しの途中でも、その時点までの累計
 Markdown の集計の行も、工程や役割の合計と同じ試行から数えます。試行の表では、途中の
 報告のままの使用量とその費用に `(partial)` と付けます。Summary の total tokens も、
 数えた合計のどれかが不完全なら `tokensComplete: false` にし、Markdown では
-`(PARTIAL)` と付けます。`demo compare` は、不完全なトークンの合計と、不完全な
+`(PARTIAL)` と付けます。`factory compare` は、不完全なトークンの合計と、不完全な
 工程のトークン・キャッシュの読み込みの合計を、不明として扱います。
 
 ## モデルの選び方とサブスクでの制約
@@ -289,7 +289,7 @@ override で、`@anthropic-ai/claude-agent-sdk` を 0.3.280 に上げていま�
 中央値 / 最小 / 最大と、欠測の数を出します。
 
 ```bash
-pnpm demo compare \
+pnpm factory compare \
   --runs <runA>,<runB>,<runC>,<runD> --format md
 ```
 
@@ -308,18 +308,18 @@ repairs と cost の統計、そして、`routine` と判定されたのに修�
 材料が分からない実行は、統計から外して unknown の件数に数えます。見立ての
 呼び出しのトークンと費用は、`triage` の工程と `triage` の役割に 1 回ずつ数えます。
 
-外部の指摘から作った修正の実行（`demo repair`）は、通常の実行とは別のグループに
+外部の指摘から作った修正の実行（`factory repair`）は、通常の実行とは別のグループに
 まとめます。子の実行の数字はその実行自身のもので、親の時間、費用、工程は足しません。
 
 週ごとの移り変わりは `--trend` で見ます。`--runs` は取らず、実行ではなくタスクを
-数えます。タスクは、一覧と同じく、最初の実行と、その下の修正の実行（`demo repair`）
+数えます。タスクは、一覧と同じく、最初の実行と、その下の修正の実行（`factory repair`）
 をまとめたものです。最後に作った実行が終わり、その完了時刻が直近の `--days` 日
 （既定は 30）に入るタスクだけを読みます。最後の実行が動いているタスク、完了時刻の
 ないタスク、期間の外で終わったタスクは数えません。
 
 ```bash
-pnpm demo compare --trend
-pnpm demo compare --trend --days 14 --include-fake --format json
+pnpm factory compare --trend
+pnpm factory compare --trend --days 14 --include-fake --format json
 ```
 
 - 最初の実行の実装に使ったモデルと推論量（`code` のプロファイルの
@@ -353,7 +353,7 @@ factory が責任を持つのは、factory の DB と `report --format json` ま
 読んで取り込みます。factory から台帳へ書き込むことはしません。
 
 ```bash
-pnpm demo report --run <runId> --format json \
+pnpm factory report --run <runId> --format json \
   | jq '{runId, configVersion, inputs, delivery, roleUsage, summary}'
 ```
 
@@ -369,10 +369,10 @@ pnpm demo report --run <runId> --format json \
 同じ題材、プロバイダー、モデル、推論量、最大反復数で、2 つの実行を作ります。
 
 ```bash
-pnpm demo trigger \
+pnpm factory trigger \
   --provider codex --context reuse --model gpt-5.6-sol --effort medium
 
-pnpm demo trigger \
+pnpm factory trigger \
   --provider codex --context fresh --model gpt-5.6-sol --effort medium
 ```
 
