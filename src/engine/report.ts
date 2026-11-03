@@ -18,6 +18,7 @@ import { INTERRUPTED_CHECK } from './failure-details.js'
 import { retryText, type FailureClassification } from './failure-reasons.js'
 import { formatters } from './format.js'
 import { fencedText } from './markdown.js'
+import { unpricedModelsOf } from './pricing-status.js'
 import { PRICE_BASIS } from './pricing.js'
 import {
   NOT_SENT,
@@ -2173,6 +2174,15 @@ export function reportToMarkdown(r: LoopReport): string {
     lines.push('## Versions')
     lines.push('')
     for (const v of versions) lines.push(`- ${v}`)
+  }
+  const unpriced = unpricedModelsOf(r.attempts)
+  if (unpriced.length > 0) {
+    lines.push('', '## Unpriced models', '')
+    for (const model of unpriced) lines.push(`- ${model}`)
+    lines.push(
+      '',
+      'No supported price was registered for these models at invocation time. Their cost remains unknown; update the model price catalog for future calls.',
+    )
   }
   if (r.notes.length > 0) {
     lines.push('')
