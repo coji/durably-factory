@@ -90,6 +90,17 @@ interface PersistedProfile {
 }
 
 interface PersistedInput {
+  retryOf?: {
+    runId: string
+    rootRunId: string
+    attempt: number
+    reason: string
+  }
+  recheckOf?: {
+    runId: string
+    candidateCommit: string
+    candidateBranch: string
+  }
   agentTimeoutMs?: number
   agentIdleTimeoutMs?: number
   provider?: string
@@ -102,6 +113,7 @@ interface PersistedInput {
     checkFromSpec?: string[] | null
     dispositions?: string | null
     context?: string | null
+    scope?: string | null
     inputFiles?: Record<string, { path?: string } | null>
     reviewBlockerThreshold?: number | null
   }
@@ -439,7 +451,7 @@ function sealedCodeSteps(
       const where = stageStep(s.name)
       const candidate = asReportCandidate(s.output)
       return s.status === 'completed' &&
-        where?.stage === 'code' &&
+        (where?.stage === 'code' || where?.stage === 'recheck') &&
         where.part === 'candidate' &&
         candidate
         ? [{ candidate, sequence: where.sequence, output: s.output }]
@@ -1136,6 +1148,14 @@ function inputHashes(input: PersistedInput | null): ReportInputs {
             content: context,
           }
         : null,
+    scope:
+      typeof target?.scope === 'string'
+        ? {
+            path: target.inputFiles?.scope?.path ?? null,
+            content: target.scope,
+            sha256: createHash('sha256').update(target.scope).digest('hex'),
+          }
+        : null,
     findings: findingsHash(input),
   }
 }
@@ -1206,6 +1226,8 @@ export function repairParentId(run: {
 }): string | null {
   return (
     run.labels?.[REPAIR_OF_LABEL] ??
+    (run.input as PersistedInput | null)?.retryOf?.runId ??
+    (run.input as PersistedInput | null)?.recheckOf?.runId ??
     (run.input as PersistedInput | null)?.repairOf?.runId ??
     null
   )
@@ -1513,6 +1535,8 @@ export async function buildReport(
     stageUsage: usage,
     roleUsage: roleUsage(rows, profiles),
     inputs: inputHashes(input),
+    retryOf: input?.retryOf ?? null,
+    recheckOf: input?.recheckOf ?? null,
     lineage: {
       parent: repairParent(input),
       children: known.children ?? (await repairChildren(durably, run)),

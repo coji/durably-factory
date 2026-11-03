@@ -21,6 +21,7 @@ import {
   unarchiveRun,
 } from './actions.js'
 import { isSpecWait } from './approval.js'
+import { automaticRetries } from './automatic-retry.js'
 import {
   acquireWorkerLock,
   createAgentDurably,
@@ -74,6 +75,7 @@ import {
   readRepairFiles,
   reloadTriggerInput,
   startableRepair,
+  startableRecheck,
 } from './trigger-input.js'
 
 async function emit(text: string, out: string | undefined): Promise<void> {
@@ -445,7 +447,11 @@ async function workerHasWork(durably: AgentLoopDurably): Promise<boolean> {
 function watchIdle(
   durably: AgentLoopDurably,
   idleMs: number,
-  hooks: { stopping: () => boolean; idle: () => void },
+  hooks: {
+    stopping: () => boolean
+    idle: () => void
+    recover?: () => Promise<void>
+  },
 ): { settled: () => Promise<void> } {
   const interval = Math.min(IDLE_CHECK_MS, idleMs)
   let idleSince: number | null = null
@@ -453,6 +459,7 @@ function watchIdle(
   let inFlight: Promise<void> | null = null
   const hasWork = async (): Promise<boolean | null> => {
     try {
+      await hooks.recover?.()
       return await workerHasWork(durably)
     } catch (error) {
       if (!hooks.stopping())
@@ -667,7 +674,7 @@ Commands (run from the repository root):
                         [--context-file <file>] [--config <file>]
                         [--check "pnpm validate"] [--setup "pnpm install"] [--base <ref>]
                         [--publish] [--approve auto|manual]
-  pnpm demo repair --run <id> [--findings-file <file>] [--dispositions-file <file>]
+  pnpm demo repair --run <id> [--findings-file <file>] [--dispositions-file <file>] [--scope-file <file>]
                   [--context-file <file>]
                   [--max-iterations <n>]    new run that repairs the last candidate of an approved,
                                             delivered repository run from outside findings, or of
@@ -692,6 +699,7 @@ Commands (run from the repository root):
   pnpm demo spec-revise --run <id> --notes-file <file>
                                             fix the blocked spec once more with the notes,
                                             then review it once more
+  pnpm demo recheck --run <id>              check and review the same candidate without implementation or findings
   pnpm demo retrigger --run <id>            new run with the stored input (only for stops safe to repeat)
   pnpm demo retrigger --run <id> --reload-config
                                             the stored task and inputs, settings read again from
@@ -868,6 +876,8 @@ Repository config: factory.json at the repository root, or --config <file>:
   The config and input files are read once at trigger; the run keeps the
   input file contents and the resolved timeouts and codexPath, and the
   report shows each input file's SHA-256.
+  repair --scope-file <path> fixes trusted exclusions of named task/spec requirements
+  and sandbox limitations (32 KiB, UTF-8, not empty), for code and reviews.
   --context-file (at most 32 KiB, UTF-8, not empty) holds decisions the owner
   has confirmed. Unlike the task, the spec, the dispositions and the findings,
   it is trusted: the implementer and the repairer get it in a section of its
@@ -976,6 +986,12 @@ if (cmd === 'worker') {
     console.log(
       `[sweep] removed review snapshots and probe base worktrees of ${swept.join(', ')}`,
     )
+  const recovery = automaticRetries(
+    durably,
+    () => shuttingDown,
+    (line) => console.log(line),
+  )
+  await recovery.scan()
   // Polling starts only when no signal came during startup, so a run is
   // never claimed by a worker that is about to stop.
   if (!shuttingDown) {
@@ -989,6 +1005,7 @@ if (cmd === 'worker') {
       ? watchIdle(durably, idleMs, {
           stopping: () => shuttingDown,
           idle: () => requestShutdown('idle'),
+          recover: recovery.scan,
         })
       : null
   const reason = await shutdownRequested
@@ -998,6 +1015,7 @@ if (cmd === 'worker') {
   killOwnedChildren()
   // The idle check in flight settles before the database closes under it.
   await idle?.settled()
+  await recovery.stop()
   await durably.stop()
   lock.release()
   // A run triggered after the last idle check saw this worker's lock and
@@ -1324,6 +1342,35 @@ if (cmd === 'worker') {
       console.log(line),
     )
     console.log(JSON.stringify(receipt, null, 2))
+    await startWorkerIfNeeded(durably, a)
+  } finally {
+    await durably.db.destroy()
+  }
+} else if (cmd === 'recheck') {
+  const a = args()
+  const runId = a['run']
+  if (!runId) throw new Error('--run <id> required')
+  const other = Object.keys(a).filter(
+    (key) => !['run', 'no-auto-worker'].includes(key),
+  )
+  if (other.length)
+    throw new Error(
+      `recheck takes only --run; not accepted: ${other.map((key) => `--${key}`).join(', ')}`,
+    )
+  const durably = createAgentDurably()
+  await durably.migrate()
+  try {
+    const { input, idempotencyKey, labels } = await startableRecheck(
+      durably,
+      runId,
+    )
+    const next = await durably.jobs.agentLoop.trigger(input, {
+      idempotencyKey,
+      labels,
+    })
+    console.log(
+      `${next.disposition === 'created' ? 'new recheck' : 'already rechecked as'} ${next.id}; unchanged candidate of ${runId}`,
+    )
     await startWorkerIfNeeded(durably, a)
   } finally {
     await durably.db.destroy()

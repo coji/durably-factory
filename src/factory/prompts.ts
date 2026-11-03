@@ -58,6 +58,17 @@ export const OWNER_CONTEXT_LABEL = 'OWNER_CONTEXT'
  * a trusted section of its own, apart from the untrusted TASK, FINDINGS and
  * DISPOSITIONS data. Nothing without a context.
  */
+export function scopeContext(scope: string | null | undefined): string[] {
+  return scope
+    ? [
+        'REPAIR SCOPE (trusted, confirmed by the owner):',
+        'This scope names task/spec requirements excluded from this run and sandbox limitations. Do not implement excluded requirements. Do not report their absence as a finding. Do not request changes solely because a sandbox limitation prevents verification (browser, Docker or network); report the verification gap instead. All other requirements and code defects remain in scope. Scope does not override the pinned check verdict.',
+        ...hashFenced('TRUSTED REPAIR SCOPE', scope),
+        '',
+      ]
+    : []
+}
+
 export function ownerContextSection(context: string | null): string[] {
   if (!context) return []
   return [
@@ -165,6 +176,7 @@ export interface CodePromptArgs {
   untrusted?: UntrustedInput[]
   /** The owner's confirmed context, as trusted; null or absent: none. */
   ownerContext?: string | null
+  scope?: string | null
   /**
    * A repair on its own profile, in a session that has not seen the
    * implementation: it is told the earlier attempt is in the working tree.
@@ -414,6 +426,7 @@ export function codePrompt(args: CodePromptArgs): string {
     ...args.rules.map((rule) => `- ${rule}`),
     '',
     ...ownerContextSection(args.ownerContext ?? null),
+    ...scopeContext(args.scope),
     ...untrustedSection(args.untrusted ?? []),
     ...CODE_REPLY_FORMAT.map((line) =>
       args.requiresNotes || args.repairFindings?.length

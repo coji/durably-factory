@@ -173,6 +173,7 @@ const factoryConfigSchema = z
      * Display only: stored on the run, never part of the config version.
      */
     name: z.string().trim().min(1).optional(),
+    automaticRetryLimit: z.number().int().min(0).max(3).optional(),
     check: z.array(z.string().min(1)).min(1).optional(),
     /**
      * Quick commands the implementer and repairer are told to run before
@@ -543,6 +544,7 @@ async function repoSettings(
   const commit = config?.commit
   return {
     specStages,
+    automaticRetryLimit: config?.automaticRetryLimit ?? 1,
     settings: {
       ...(config?.name !== undefined ? { name: config.name } : {}),
       baseRef: a['base'] ?? config?.base ?? 'HEAD',
@@ -725,6 +727,7 @@ function assembleInput(a: Record<string, string>, resolved: ResolvedTarget) {
   })
   return {
     provider: profiles.code.provider,
+    automaticRetryLimit: config?.automaticRetryLimit ?? 1,
     profiles: {
       code: requested(profiles.code),
       correctness: requested(profiles.correctness),
@@ -800,7 +803,7 @@ export async function reloadTriggerInput(stored: StoredInput): Promise<{
     throw new Error(
       '--reload-config needs a repository run; the bundled sample reads no factory.json',
     )
-  if (stored.repairOf)
+  if (stored.repairOf || ('recheckOf' in stored && stored.recheckOf))
     throw new Error(
       "--reload-config does not apply to a repair run: it keeps its parent's settings. To run with other settings, start a normal run with trigger",
     )
@@ -876,6 +879,7 @@ export interface RepairFiles {
   findings: { content: string; ref: FindingsRef }
   dispositions: { content: string; ref: InputFileRef } | null
   /** Absent or null: the parent's context is inherited. */
+  scope?: { content: string; ref: InputFileRef } | null
   context?: { content: string; ref: InputFileRef } | null
 }
 
@@ -900,6 +904,7 @@ const REPAIR_FLAGS = [
   'findings-file',
   'dispositions-file',
   'context-file',
+  'scope-file',
   'max-iterations',
 ]
 
@@ -919,7 +924,7 @@ export async function readRepairFiles(
   const other = Object.keys(a).filter((flag) => !REPAIR_FLAGS.includes(flag))
   if (other.length > 0)
     throw new Error(
-      `repair takes only --run, --findings-file, --dispositions-file, --context-file and --max-iterations; not accepted: ${other.map((f) => `--${f}`).join(', ')}. A repair run keeps the parent run's other stored settings; to run with other settings, start a normal run with trigger`,
+      `repair takes only --run, --findings-file, --dispositions-file, --context-file, --scope-file and --max-iterations; not accepted: ${other.map((f) => `--${f}`).join(', ')}. A repair run keeps the parent run's other stored settings; to run with other settings, start a normal run with trigger`,
     )
   const iterations = a['max-iterations']
   const maxIterations =
@@ -935,6 +940,12 @@ export async function readRepairFiles(
       ? await readInputFile(dispositions, { name: '--dispositions-file' })
       : null,
     context: context ? await readContextFile(context) : null,
+    scope: a['scope-file']
+      ? await readInputFile(a['scope-file'], {
+          name: '--scope-file',
+          maxBytes: 32 * 1024,
+        })
+      : null,
     ...(maxIterations !== undefined ? { maxIterations } : {}),
   }
 }
@@ -965,6 +976,7 @@ interface StoredRepairInput {
       spec?: InputFileRef | null
       dispositions?: InputFileRef | null
       context?: InputFileRef | null
+      scope?: InputFileRef | null
     }
     commit?: CommitSettings
     selfCheck?: string[][] | null
@@ -1086,7 +1098,10 @@ export function checkFailureFindings(
     return where ? [{ ...where, output: s.output }] : []
   })
   const sealed = done
-    .filter((s) => s.stage === 'code' && s.part === 'candidate')
+    .filter(
+      (s) =>
+        (s.stage === 'code' || s.stage === 'recheck') && s.part === 'candidate',
+    )
     .sort((x, y) => x.sequence - y.sequence)
     .at(-1)
   const sealedCandidate = sealed?.output as {
@@ -1272,6 +1287,8 @@ export function buildRepairInput(
     : (storedFiles.dispositions ?? null)
   // A parent set up before the context existed has none to pass on.
   const context = files.context ? files.context.content : (t.context ?? null)
+  const scope = files.scope ? files.scope.content : (t.scope ?? null)
+  const scopeRef = files.scope ? files.scope.ref : (storedFiles.scope ?? null)
   const contextRef = files.context
     ? files.context.ref
     : (storedFiles.context ?? null)
@@ -1289,6 +1306,10 @@ export function buildRepairInput(
     ...(parentInput.model !== undefined ? { model: parentInput.model } : {}),
     ...(parentInput.effort !== undefined ? { effort: parentInput.effort } : {}),
     context: stored.contextMode,
+    automaticRetryLimit:
+      (parent.input as AgentLoopInput).automaticRetryLimit ??
+      stored.automaticRetryLimit ??
+      0,
     maxIterations: maxIterations ?? stored.maxIterations,
     // The requested settings, for the report's profile rows; the worker
     // uses the resolved ones in `repairOf`.
@@ -1304,11 +1325,13 @@ export function buildRepairInput(
       spec: fixed.spec ?? t.spec,
       dispositions,
       context,
+      scope,
       inputFiles: {
         task: storedFiles.task ?? null,
         spec: storedFiles.spec ?? null,
         dispositions: dispositionsRef,
         context: contextRef,
+        ...(scopeRef ? { scope: scopeRef } : {}),
       },
       issue: t.issue,
       checkCommand: fixed.check ?? t.checkCommand,
@@ -1392,6 +1415,7 @@ export function buildRepairInput(
     `findings-${sha256Of(files.findings.content)}`,
     `dispositions-${dispositions ? sha256Of(dispositions) : 'none'}`,
     ...(context ? [`context-${sha256Of(context)}`] : []),
+    ...(scope ? [`scope-${sha256Of(scope)}`] : []),
     ...(input.maxIterations !== stored.maxIterations
       ? [`max-iterations-${input.maxIterations}`]
       : []),
@@ -1463,7 +1487,12 @@ export async function startableRepair(
   const built = buildRepairInput(
     parent,
     setup,
-    { findings, dispositions: files.dispositions, context: files.context },
+    {
+      findings,
+      dispositions: files.dispositions,
+      context: files.context,
+      scope: files.scope,
+    },
     fakeScenario,
     fixed,
     files.maxIterations,
@@ -1475,4 +1504,68 @@ export async function startableRepair(
     repairOf.candidateBranch,
   )
   return built
+}
+
+/** Regrade a fixed candidate, with the parent's settled spec, check and profiles. */
+export async function startableRecheck(
+  durably: RepairSource,
+  parentId: string,
+) {
+  const run = await durably.getRun(parentId)
+  if (!run) throw new Error(`no run ${parentId}`)
+  const parent = { ...run, steps: await durably.storage.getSteps(parentId) }
+  const setup = (await durably.storage.getCompletedStep(parentId, 'setup'))
+    ?.output
+  const source = repairableCandidate(parent, setup)
+  const final = await durably.storage.getCompletedStep(
+    parentId,
+    SPEC_FINAL_STEP,
+  )
+  const check = await durably.storage.getCompletedStep(
+    parentId,
+    SPEC_CHECK_STEP,
+  )
+  // Reuse the inheritance of resolved profiles/settings, then remove the
+  // repair-only findings. Recheck never runs an implementer or repairer.
+  const built = buildRepairInput(
+    parent,
+    setup,
+    {
+      findings: { content: 'recheck', ref: { parentRun: parentId } },
+      dispositions: null,
+    },
+    (parent.input as AgentLoopInput).fakeScenario,
+    {
+      spec: (final?.output as { content?: string } | null)?.content,
+      check: (check?.output as { check?: string[] } | null)?.check,
+    },
+    1,
+  )
+  const { repairOf, ...inherited } = built.input
+  const input = {
+    ...inherited,
+    // Resolved settings are inherited, without resolving requested aliases anew.
+    target: {
+      ...inherited.target,
+      baseRef: source.setup.target.baseCommit,
+      baselineCheck: false,
+      publish: false,
+    },
+    recheckOf: {
+      runId: parentId,
+      candidateCommit: source.commit,
+      candidateBranch: source.branch,
+      profiles: repairOf.profiles,
+    },
+  }
+  await assertCandidateUnmoved(
+    source.setup.target.repoPath,
+    source.commit,
+    source.branch,
+  )
+  return {
+    input,
+    idempotencyKey: `recheck-of-${parentId}`,
+    labels: repairLabels(input),
+  }
 }

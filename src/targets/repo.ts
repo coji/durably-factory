@@ -89,7 +89,11 @@ import {
   testProbeBaseRecordOf,
   worktreeRetiredMarkerOf,
 } from '../factory/layout.js'
-import { changedPathsLine, trustedContextLines } from '../factory/prompts.js'
+import {
+  changedPathsLine,
+  scopeContext,
+  trustedContextLines,
+} from '../factory/prompts.js'
 import {
   DEFAULT_COMMIT_SETTINGS,
   featureBaseOf,
@@ -284,6 +288,10 @@ export class RepoTarget implements Target {
 
   ownerContext(): string | null {
     return this.config.context ?? null
+  }
+
+  repairScope(): string | null {
+    return this.config.scope ?? null
   }
 
   implementationRules(): string[] {
@@ -719,6 +727,7 @@ export class RepoTarget implements Target {
       `Candidate: ${candidate.id}`,
       changedPathsLine(changes, candidate.changes?.changedFilesPath),
       ...trustedContextLines(this.ownerContext(), this.stageCopies()),
+      ...scopeContext(this.config.scope),
       '',
       'The task the implementer was given is in the untrusted TASK block below.',
     ].join('\n')

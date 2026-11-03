@@ -133,6 +133,7 @@ fake の事前確認、待ち時間、使用量、`fakeScenario` は [仕組み�
 | `demo waits` / `approve` / `reject` | 承認待ちを見る、承認する、却下する             | このページの「実行」                                |
 | `demo spec-revise`                  | レビューで止まった仕様を、メモを付けて直させる | [見立て、レビュー、修正](docs/review-and-repair.md) |
 | `demo retrigger`                    | 保存した入力で、新しい実行を作る               | [日々の操作](docs/operations.md)                    |
+| `demo recheck`                      | 同じ候補の検査とレビューをやり直す             | [見立て、レビュー、修正](docs/review-and-repair.md) |
 | `demo repair`                       | 外部の指摘から、修正の実行を作る               | [見立て、レビュー、修正](docs/review-and-repair.md) |
 | `demo archive` / `unarchive`        | 止まった実行をアーカイブする、戻す             | [日々の操作](docs/operations.md)                    |
 | `demo prune`                        | 終わった実行の作業ツリーを片付ける             | [日々の操作](docs/operations.md)                    |

@@ -129,6 +129,9 @@ export const FAKE_TRIAGE_KINDS = [
 
 /** Per-run fake behavior. Every field is optional; absent means "use env". */
 export interface FakeScenario {
+  providerError?: string
+  /** Test fixture: absent named requirement, unless excluded in trusted scope. */
+  scopeRequirement?: string
   /** Leading implement iterations that leave the bug in place. */
   failIterations?: number
   /**
@@ -627,6 +630,8 @@ export class FakeProvider implements AgentProvider {
   async call(options: AgentCallOptions): Promise<AgentResult> {
     // Timed from before the scripted output, so its delay counts as work.
     const started = Date.now()
+    if (this.run?.scenario.providerError)
+      throw new Error(this.run.scenario.providerError)
     if (this.run?.scenario.earlyUsage?.roles.includes(options.role)) {
       options.onSession?.(options.sessionId ?? `fake-${randomUUID()}`)
       const { model } = this.resolveExecution(options)
@@ -849,13 +854,29 @@ export class FakeProvider implements AgentProvider {
     }
     const scripted = this.run?.review(options.reviewRound ?? 1, options.role)
     // A scripted reply is the whole answer, so no verdict is taken for it.
-    const decision =
+    const scoped =
+      /<<<TRUSTED REPAIR SCOPE ([a-f0-9]{16})>>>\n([\s\S]*?)\n<<<END TRUSTED REPAIR SCOPE \1>>>/.exec(
+        options.prompt,
+      )?.[2]
+    const scopeDecision = scenario.scopeRequirement
+      ? scoped?.includes(scenario.scopeRequirement)
+        ? 'pass'
+        : 'needsChanges'
+      : undefined
+    const scriptedDecision =
       scripted?.decision ??
       (scripted?.output !== undefined
         ? 'pass'
         : nextFromEnv('FAKE_REVIEW_SEQUENCE', 'pass'))
+    const decision =
+      scriptedDecision === 'pass'
+        ? (scopeDecision ?? scriptedDecision)
+        : scriptedDecision
     const notes =
       scripted?.note ??
+      (scopeDecision === 'needsChanges'
+        ? `Missing ${scenario.scopeRequirement}`
+        : undefined) ??
       `fake ${options.role ?? 'review'} deterministic ${decision}`
     if (record) {
       if (review?.context === 'local-instructions')

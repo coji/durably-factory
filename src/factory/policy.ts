@@ -8,6 +8,11 @@ export function availableActions(state: FactoryState): StageName[] {
   if (!state.verification || state.verification.targetId !== state.candidate.id)
     return ['verify']
   if (!state.verification.passed) {
+    if (
+      state.verification.failureKind === 'timeout' ||
+      state.verification.failureKind === 'setup'
+    )
+      return ['stop']
     return state.iteration < state.setup.maxIterations ? ['code'] : ['stop']
   }
   if (state.reviews.length === 0) return ['review']

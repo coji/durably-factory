@@ -259,6 +259,7 @@ export const codeStage: StageHandler = async ({
     // The owner's confirmed decisions, trusted and apart from the
     // data above; the stages' results are for the reviewers.
     ownerContext: target.ownerContext(),
+    scope: target.repairScope?.(),
     // Told it starts a new session only when it does. A repair on the
     // code profile keeps the prompt it always had, unless it repairs a
     // stopped call's work in a new session.
@@ -476,6 +477,7 @@ export const verifyStage: StageHandler = async (args) => {
     targetId: candidate.id,
     passed: result.passed,
     stdout: result.stdout,
+    failureKind: result.failureKind,
     exitCode: result.exitCode,
     log: result.log ?? null,
     ...(probe ? { stageContext: probe } : {}),
@@ -628,6 +630,7 @@ const verifyReviewStage: StageHandler = async (args) => {
     targetId: candidate.id,
     passed: verification.passed,
     stdout: verification.stdout,
+    failureKind: verification.failureKind,
     exitCode: verification.exitCode,
     log: verification.log ?? null,
     ...(verification.passed

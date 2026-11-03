@@ -39,30 +39,32 @@ What we considered and why we didn't do it.
 
 ## Index
 
-| ADR                                                             | Title                                         | Status   |
-| --------------------------------------------------------------- | --------------------------------------------- | -------- |
-| [0017](0017-local-agent-loop-pinned-checkout.md)                | local-agent-loop from a pinned checkout       | accepted |
-| [0018](0018-local-agent-loop-adaptive-routing.md)               | local-agent-loop adaptive routing             | proposed |
-| [0019](0019-local-agent-loop-stop-before-llm.md)                | local-agent-loop stops before any LLM call    | accepted |
-| [0020](0020-local-agent-loop-rejected-invocations.md)           | local-agent-loop rejected invocations         | accepted |
-| [0021](0021-local-agent-loop-squashed-delivery-branch.md)       | local-agent-loop squashed delivery branch     | accepted |
-| [0022](0022-local-agent-loop-external-repair-runs.md)           | local-agent-loop repair runs from findings    | accepted |
-| [0023](0023-local-agent-loop-configurable-review-invocation.md) | local-agent-loop configurable reviewers       | accepted |
-| [0024](0024-local-agent-loop-claude-effort-session-reuse.md)    | local-agent-loop effort-only repair sessions  | accepted |
-| [0025](0025-local-agent-loop-baseline-reuse.md)                 | local-agent-loop baseline result reuse        | accepted |
-| [0026](0026-local-agent-loop-spec-stages.md)                    | local-agent-loop spec stages                  | accepted |
-| [0027](0027-local-agent-loop-web-ui-writes.md)                  | local-agent-loop web UI writes                | accepted |
-| [0028](0028-local-agent-loop-worktree-retention.md)             | local-agent-loop worktree retention           | accepted |
-| [0029](0029-local-agent-loop-parallel-verification-review.md)   | local-agent-loop parallel verification review | accepted |
-| [0030](0030-local-agent-loop-verification-failed-repair.md)     | local-agent-loop verification-failed repair   | accepted |
-| [0031](0031-local-agent-loop-self-check.md)                     | local-agent-loop prompt-only self checks      | accepted |
-| [0032](0032-local-agent-loop-idle-timeout.md)                   | local-agent-loop idle timeout                 | accepted |
-| [0033](0033-local-agent-loop-series-archive.md)                 | local-agent-loop series archive               | accepted |
-| [0034](0034-local-agent-loop-stopped-call-usage.md)             | local-agent-loop stopped-call usage           | accepted |
-| [0037](0037-local-agent-loop-on-demand-worker.md)               | local-agent-loop on-demand worker             | accepted |
-| [0038](0038-local-agent-loop-trusted-context.md)                | local-agent-loop trusted context              | accepted |
-| [0039](0039-local-agent-loop-test-probe.md)                     | local-agent-loop test probe                   | accepted |
-| [0040](0040-local-agent-loop-review-blocker-threshold.md)       | local-agent-loop review blocker threshold     | accepted |
-| [0041](0041-feature-base-for-repair-tests.md)                   | Feature base for repair tests                 | accepted |
-| [0042](0042-self-reported-implementer-checks.md)                | Self-reported implementer checks              | accepted |
-| [0043](0043-per-finding-repair-treatments.md)                   | Per-finding repair treatments                 | accepted |
+| ADR                                                             | Title                                            | Status   |
+| --------------------------------------------------------------- | ------------------------------------------------ | -------- |
+| [0017](0017-local-agent-loop-pinned-checkout.md)                | local-agent-loop from a pinned checkout          | accepted |
+| [0018](0018-local-agent-loop-adaptive-routing.md)               | local-agent-loop adaptive routing                | proposed |
+| [0019](0019-local-agent-loop-stop-before-llm.md)                | local-agent-loop stops before any LLM call       | accepted |
+| [0020](0020-local-agent-loop-rejected-invocations.md)           | local-agent-loop rejected invocations            | accepted |
+| [0021](0021-local-agent-loop-squashed-delivery-branch.md)       | local-agent-loop squashed delivery branch        | accepted |
+| [0022](0022-local-agent-loop-external-repair-runs.md)           | local-agent-loop repair runs from findings       | accepted |
+| [0023](0023-local-agent-loop-configurable-review-invocation.md) | local-agent-loop configurable reviewers          | accepted |
+| [0024](0024-local-agent-loop-claude-effort-session-reuse.md)    | local-agent-loop effort-only repair sessions     | accepted |
+| [0025](0025-local-agent-loop-baseline-reuse.md)                 | local-agent-loop baseline result reuse           | accepted |
+| [0026](0026-local-agent-loop-spec-stages.md)                    | local-agent-loop spec stages                     | accepted |
+| [0027](0027-local-agent-loop-web-ui-writes.md)                  | local-agent-loop web UI writes                   | accepted |
+| [0028](0028-local-agent-loop-worktree-retention.md)             | local-agent-loop worktree retention              | accepted |
+| [0029](0029-local-agent-loop-parallel-verification-review.md)   | local-agent-loop parallel verification review    | accepted |
+| [0030](0030-local-agent-loop-verification-failed-repair.md)     | local-agent-loop verification-failed repair      | accepted |
+| [0031](0031-local-agent-loop-self-check.md)                     | local-agent-loop prompt-only self checks         | accepted |
+| [0032](0032-local-agent-loop-idle-timeout.md)                   | local-agent-loop idle timeout                    | accepted |
+| [0033](0033-local-agent-loop-series-archive.md)                 | local-agent-loop series archive                  | accepted |
+| [0034](0034-local-agent-loop-stopped-call-usage.md)             | local-agent-loop stopped-call usage              | accepted |
+| [0037](0037-local-agent-loop-on-demand-worker.md)               | local-agent-loop on-demand worker                | accepted |
+| [0038](0038-local-agent-loop-trusted-context.md)                | local-agent-loop trusted context                 | accepted |
+| [0039](0039-local-agent-loop-test-probe.md)                     | local-agent-loop test probe                      | accepted |
+| [0040](0040-local-agent-loop-review-blocker-threshold.md)       | local-agent-loop review blocker threshold        | accepted |
+| [0041](0041-feature-base-for-repair-tests.md)                   | Feature base for repair tests                    | accepted |
+| [0042](0042-self-reported-implementer-checks.md)                | Self-reported implementer checks                 | accepted |
+| [0043](0043-per-finding-repair-treatments.md)                   | Per-finding repair treatments                    | accepted |
+| [0044](0044-check-failures-and-automatic-retries.md)            | Check failure classification and bounded retries | accepted |
+| [0045](0045-repair-scope-and-candidate-recheck.md)              | Trusted repair scope and candidate recheck       | accepted |

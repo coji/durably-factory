@@ -604,3 +604,43 @@ F3: deferred — outside this repair
 レポートの `codeResponses` には、最初の回答と訂正の両方について、finding、処置、未回答のIDを残します。
 処置の回答は自己申告であり、実際に直したか、反対する理由が妥当かはレビューで判断します。
 機能追加前のsetupで始まった実行には、途中からこの回答ゲートを適用しません。
+
+## この修正で扱う範囲を変える
+
+`repair --scope-file`で、対象外とするtask/specの節とsandboxの制約を指定できます。
+ファイルは空でないUTF-8テキストで、上限は32 KiBです。
+開始時に内容を保存し、あとでファイルを編集してもrunの範囲は変わりません。
+
+```bash
+pnpm demo repair --run <id> --findings-file findings.md --scope-file scope.md
+```
+
+scopeには、たとえば「spec §3のブラウザ画面は今回の対象外。sandboxではDockerとネットワークを使えない」と書きます。
+修正担当とレビュアーの両方が、findingsとは別のtrusted contextとして読みます。
+レビュアーには、対象外の要件の欠落をfindingにせず、sandboxの制約だけで確認できない事項は検証の不足として報告するよう求めます。
+その他のコードの欠陥はレビュー対象のままです。
+固定検査の結果はscopeでは変わりません。
+
+scopeは次のrepairにも継承し、別の`--scope-file`を渡すと置き換えます。
+reportには保存した内容、入力元とSHA-256を残します。
+ownerが確認した製品上の決定は、引き続き`--context-file`で渡します。
+
+## 候補を変えずに検査とレビューをやり直す
+
+```bash
+pnpm demo recheck --run <id>
+```
+
+`recheck`は親候補と同じcommitから、固定検査と独立レビューを再実行します。
+findingsは不要です。
+親はrepairと同じ条件（承認と配信が完了、検査失敗、レビュー上限、検査成功後の未完了レビュー）を満たし、記録した候補branchも動いていない必要があります。
+同じ親に繰り返し実行しても、作成するrecheckは1件です。
+
+親が保存した仕様、検査、解決済みprofile、scopeとfeature baseを使います。
+設定ファイルを読み直さず、仕様生成、triage、baseline検査と実装修正を省きます。
+検査やレビューが通らなくてもコードを自動修正しません。
+承認方針は親から継承し、成果物はローカルに保存します。
+pushとPR作成は行いません。
+reportには親runと再検査したcommitを記録します。
+
+元の入力から実装も含めて繰り返す場合は、`retrigger`を使います。

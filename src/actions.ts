@@ -117,15 +117,29 @@ export async function retriggerableRun(
  * `demo retrigger` without `--reload-config`: a new run with the stored
  * input. One retry per stopped run: asking again returns the run it already
  * started instead of paying for another, or pushing twice. A repair run's
- * retry names the same parent, and its setup checks the parent's candidate
- * branch again before creating anything.
+ * retry retains its original repair candidate and checks that branch again.
+ * Every retry also records the immediate stopped run and its retry count.
  */
-export async function retriggerRun(durably: AgentLoopDurably, runId: string) {
+export async function retriggerRun(
+  durably: AgentLoopDurably,
+  runId: string,
+  reason: 'manual' | 'provider-capacity' | 'review-incomplete' = 'manual',
+) {
   const run = await retriggerableRun(durably, runId)
   type Input = Parameters<typeof durably.jobs.agentLoop.trigger>[0]
-  const next = await durably.jobs.agentLoop.trigger(run.input as Input, {
+  const prior = run.input as Input
+  const input: Input = {
+    ...prior,
+    retryOf: {
+      runId,
+      rootRunId: prior.retryOf?.rootRunId ?? runId,
+      attempt: (prior.retryOf?.attempt ?? 0) + 1,
+      reason,
+    },
+  }
+  const next = await durably.jobs.agentLoop.trigger(input, {
     idempotencyKey: `retrigger-of-${runId}`,
-    labels: repairLabels(run.input),
+    labels: repairLabels(input),
   })
   return { runId: next.id, disposition: next.disposition }
 }

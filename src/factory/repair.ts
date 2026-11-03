@@ -12,10 +12,10 @@
  * read this, so none of them has to remember the exception.
  */
 export function triageThatRuns<T>(
-  run: { repairOf?: unknown } | null | undefined,
+  run: { repairOf?: unknown; recheckOf?: unknown } | null | undefined,
   triage: T | null | undefined,
 ): T | null {
-  return run?.repairOf ? null : (triage ?? null)
+  return run?.repairOf || run?.recheckOf ? null : (triage ?? null)
 }
 
 /**
@@ -31,7 +31,12 @@ export const REPAIR_OF_LABEL = 'repairOf'
  * the seed) passes these, so the parent can find it.
  */
 export function repairLabels(input: unknown): Record<string, string> {
-  const parent = (input as { repairOf?: { runId?: string } } | null)?.repairOf
+  const stored = input as {
+    repairOf?: { runId?: string }
+    retryOf?: { runId?: string }
+    recheckOf?: { runId?: string }
+  } | null
+  const parent = (stored?.retryOf ?? stored?.recheckOf ?? stored?.repairOf)
     ?.runId
   return parent ? { [REPAIR_OF_LABEL]: parent } : {}
 }

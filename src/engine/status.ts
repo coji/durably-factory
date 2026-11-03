@@ -597,7 +597,9 @@ export function diagnosisLines(run: Run, d: Diagnosis): string[] {
   const lines = [`${run.id}  ${run.status}  (created ${run.createdAt})`]
   lines.push(`  reason:  ${d.reason}`)
   if (d.failure) {
-    lines.push(`  retry:   ${retryText(d.failure.retryable)}`)
+    lines.push(
+      `  retry:   ${retryText(d.failure.retryable, d.failure.automaticRetry)}`,
+    )
     lines.push(`  check:   ${d.failure.humanCheck}`)
     for (const detail of d.failure.details) lines.push(`  detail:  ${detail}`)
   }

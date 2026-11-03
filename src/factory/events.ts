@@ -142,6 +142,10 @@ export const FactoryEventSchema = z.discriminatedUnion('type', [
     type: z.literal('verify.completed'),
     targetId: z.string(),
     passed: z.boolean(),
+    failureKind: z
+      .enum(['timeout', 'setup', 'test', 'unknown'])
+      .nullable()
+      .optional(),
     stdout: z.string(),
     exitCode: z.number().nullable(),
     // Optional so a verification recorded before logs existed still parses.
@@ -162,6 +166,10 @@ export const FactoryEventSchema = z.discriminatedUnion('type', [
     type: z.literal('verify-review.completed'),
     targetId: z.string(),
     passed: z.boolean(),
+    failureKind: z
+      .enum(['timeout', 'setup', 'test', 'unknown'])
+      .nullable()
+      .optional(),
     stdout: z.string(),
     exitCode: z.number().nullable(),
     log: verificationLogSchema.nullable(),

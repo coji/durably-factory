@@ -7,12 +7,18 @@ import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import { automaticRetries } from '../src/automatic-retry.js'
 import { createAgentDurably } from '../src/durably.js'
 import { buildReport } from '../src/engine/build-report.js'
 import { runChild } from '../src/engine/child.js'
 import { reportToMarkdown } from '../src/engine/report.js'
 import type { FactorySetup, TestProbeRecord } from '../src/factory/types.js'
-import { buildRepairInput } from '../src/trigger-input.js'
+import {
+  buildRepairInput,
+  startableRecheck,
+  startableRepair,
+  readRepairFiles,
+} from '../src/trigger-input.js'
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const regression = [
@@ -329,3 +335,406 @@ describe('repair workflow evidence', { timeout: 180000 }, () => {
     )
   }
 })
+
+describe('failure recovery and scoped rechecks', { timeout: 180000 }, () => {
+  for (const [kind, script] of [
+    ['timeout', 'setTimeout(() => {}, 30000)'],
+    [
+      'setup',
+      'console.error("install failed: dependency unavailable"); process.exit(1)',
+    ],
+    ['test', 'console.error("not ok 1 - assertion failed"); process.exit(1)'],
+    ['unknown', 'console.error("unrecognised failure"); process.exit(1)'],
+  ] as const) {
+    it(`records ${kind} and preserves repair budget for environmental failures`, async () => {
+      const b = await box()
+      try {
+        const run = await b.durably.jobs.agentLoop.trigger({
+          ...b.input,
+          maxIterations: 3,
+          checkTimeoutMs: kind === 'timeout' ? 20 : 10000,
+          fakeScenario: {
+            ...b.input.fakeScenario,
+            changes: { 'check.mjs': script },
+          },
+        })
+        b.start()
+        const done = await b.settled(run.id)
+        assert.equal(done.status, 'completed', done.error ?? '')
+        const report = await buildReport(b.durably, run.id)
+        assert.equal(report.failure?.checkFailure, kind)
+        assert.match(
+          reportToMarkdown(report),
+          new RegExp(`check failed \\(${kind}\\)`),
+        )
+        const output = done.output as { iterations: number }
+        assert.equal(
+          output.iterations,
+          ['timeout', 'setup'].includes(kind) ? 1 : 3,
+        )
+        if (['timeout', 'setup'].includes(kind))
+          assert.match(report.failure!.humanCheck, /suspected environment/)
+      } finally {
+        await b.close()
+      }
+    })
+  }
+
+  for (const [reason, providerError] of [
+    ['provider-capacity', 'Selected model is at capacity'],
+    ['provider-capacity', 'Rate limit exceeded (429)'],
+    ['review-incomplete', null],
+  ] as const) {
+    it(`automatically retriggers ${providerError ?? reason} once, records its parent and survives another scan`, async () => {
+      const b = await box()
+      try {
+        const run = await b.durably.jobs.agentLoop.trigger({
+          ...b.input,
+          automaticRetryLimit: 1,
+          fakeScenario:
+            reason === 'provider-capacity'
+              ? { providerError }
+              : {
+                  ...b.input.fakeScenario,
+                  reviewSequence: ['invalid', 'invalid'],
+                },
+        })
+        b.start()
+        assert.equal((await b.settled(run.id)).status, 'failed')
+        const deadline = Date.now() + 20000
+        let children: Awaited<ReturnType<typeof b.durably.getRuns>> = []
+        while (Date.now() < deadline) {
+          children = (await b.durably.getRuns()).filter(
+            (r) =>
+              (r.input as { retryOf?: { runId: string } }).retryOf?.runId ===
+              run.id,
+          )
+          if (children.length) break
+          // sleep-ok(poll): wait for the worker's automatic follow-up to be stored
+          await new Promise((resolve) => setTimeout(resolve, 50))
+        }
+        assert.equal(children.length, 1)
+        const child = children[0]!
+        assert.equal((await b.settled(child.id)).status, 'failed')
+        const report = await buildReport(b.durably, child.id)
+        assert.deepEqual(report.retryOf, {
+          runId: run.id,
+          rootRunId: run.id,
+          attempt: 1,
+          reason,
+        })
+        assert.match(
+          reportToMarkdown(report),
+          new RegExp(`retry of: ${run.id}`),
+        )
+        const recovery = automaticRetries(
+          b.durably,
+          () => false,
+          () => {},
+        )
+        try {
+          await recovery.scan()
+          await recovery.scan()
+        } finally {
+          await recovery.stop()
+        }
+        assert.equal((await b.durably.getRuns()).length, 2)
+      } finally {
+        await b.close()
+      }
+    })
+  }
+
+  it('does not retry a different unknown provider error', async () => {
+    const b = await box()
+    try {
+      const run = await b.durably.jobs.agentLoop.trigger({
+        ...b.input,
+        automaticRetryLimit: 1,
+        fakeScenario: { providerError: 'connection lost after request' },
+      })
+      b.start()
+      await b.settled(run.id)
+      const recovery = automaticRetries(
+        b.durably,
+        () => false,
+        () => {},
+      )
+      try {
+        await recovery.scan()
+      } finally {
+        await recovery.stop()
+      }
+      assert.equal((await b.durably.getRuns()).length, 1)
+      assert.equal(
+        (await buildReport(b.durably, run.id)).failure?.retryable,
+        false,
+      )
+    } finally {
+      await b.close()
+    }
+  })
+
+  it('keeps scope trusted for repair and review, then rechecks exactly that candidate without code calls or findings', async () => {
+    const b = await box()
+    try {
+      const parent = await b.durably.jobs.agentLoop.trigger({
+        ...b.input,
+        fakeScenario: {
+          ...b.input.fakeScenario,
+          scopeRequirement: 'spec §3 browser dashboard',
+        },
+      })
+      b.start()
+      const done = await b.settled(parent.id)
+      assert.equal(
+        (done.output as { conclusion: string }).conclusion,
+        'review-cap-reached',
+      )
+      const path = join(b.home, 'scope.md')
+      const scope =
+        'Excluded requirement: spec §3 browser dashboard. Sandbox: no browser, Docker or network.'
+      await writeFile(path, scope)
+      const files = await readRepairFiles({
+        run: parent.id,
+        'scope-file': path,
+      })
+      const built = buildRepairInput(
+        done,
+        await b.setup(parent.id),
+        {
+          ...files,
+          findings: {
+            content: 'F1: Keep the decimal addition fix.',
+            ref: { path: '/tmp/findings.md' },
+          },
+        },
+        {
+          ...b.input.fakeScenario,
+          scopeRequirement: 'spec §3 browser dashboard',
+        },
+      )
+      const repair = await b.durably.jobs.agentLoop.trigger(built.input, {
+        idempotencyKey: built.idempotencyKey,
+        labels: built.labels,
+      })
+      const repaired = await b.settled(repair.id)
+      assert.equal(
+        (repaired.output as { conclusion: string }).conclusion,
+        'approved',
+        repaired.error ?? '',
+      )
+      const report = await buildReport(b.durably, repair.id)
+      assert.equal(report.inputs.scope?.content, scope)
+      assert.match(reportToMarkdown(report), /Repair scope \(trusted\)/)
+      assert.equal(
+        report.reviews.every((r) => r.decision === 'pass'),
+        true,
+      )
+      const check = await startableRecheck(b.durably, repair.id)
+      const recheck = await b.durably.jobs.agentLoop.trigger(check.input, {
+        idempotencyKey: check.idempotencyKey,
+        labels: check.labels,
+      })
+      const checked = await b.settled(recheck.id)
+      assert.equal(checked.status, 'completed', checked.error ?? '')
+      assert.equal(
+        (checked.output as { conclusion: string }).conclusion,
+        'approved',
+      )
+      assert.equal(
+        (checked.output as { candidate: { commit: string } }).candidate.commit,
+        (repaired.output as { candidate: { commit: string } }).candidate.commit,
+      )
+      const steps = await b.durably.storage.getSteps(recheck.id)
+      assert.equal(
+        steps.some((s) => s.name.includes(':code:')),
+        false,
+      )
+      assert.equal((check.input as { repairOf?: unknown }).repairOf, undefined)
+      const recheckedReport = await buildReport(b.durably, recheck.id)
+      assert.equal(recheckedReport.recheckOf?.runId, repair.id)
+      assert.equal(recheckedReport.inputs.findings, null)
+      const again = await b.durably.jobs.agentLoop.trigger(check.input, {
+        idempotencyKey: check.idempotencyKey,
+        labels: check.labels,
+      })
+      assert.equal(again.id, recheck.id)
+      const cli = await runChild(
+        join(packageRoot, 'node_modules/.bin/tsx'),
+        [
+          join(packageRoot, 'src/cli.ts'),
+          'recheck',
+          '--run',
+          repair.id,
+          '--no-auto-worker',
+        ],
+        {
+          cwd: b.home,
+          env: { ...process.env, HOME: b.home },
+          timeoutMs: 10000,
+        },
+      )
+      assert.equal(cli.code, 0, cli.stderr)
+      assert.match(cli.stdout, new RegExp(recheck.id))
+      assert.match(cli.stdout, /already rechecked as/)
+      const moved = await runChild(
+        'git',
+        [
+          'update-ref',
+          `refs/heads/${check.input.recheckOf.candidateBranch}`,
+          b.base,
+        ],
+        { cwd: b.repo, timeoutMs: 10000 },
+      )
+      assert.equal(moved.code, 0, moved.stderr)
+      await assert.rejects(
+        startableRecheck(b.durably, repair.id),
+        /candidate branch .* moved/,
+      )
+    } finally {
+      await b.close()
+    }
+  })
+})
+
+it(
+  'builds default repair findings from a failed recheck without asking for a findings file',
+  { timeout: 60000 },
+  async () => {
+    const b = await box()
+    try {
+      const parent = await b.durably.jobs.agentLoop.trigger({
+        ...b.input,
+        fakeScenario: {
+          ...b.input.fakeScenario,
+          changes: {
+            'check.mjs':
+              "import { existsSync } from 'node:fs'; if (existsSync(process.env.HOME + '/check-fails')) { console.error('not ok 1 - environment flag'); process.exit(1) }",
+          },
+        },
+      })
+      b.start()
+      const done = await b.settled(parent.id)
+      assert.equal(
+        (done.output as { conclusion: string }).conclusion,
+        'approved',
+      )
+      await writeFile(join(b.home, 'check-fails'), 'fail')
+      const built = await startableRecheck(b.durably, parent.id)
+      const recheck = await b.durably.jobs.agentLoop.trigger(built.input, {
+        idempotencyKey: built.idempotencyKey,
+        labels: built.labels,
+      })
+      const checked = await b.settled(recheck.id)
+      assert.equal(
+        (checked.output as { conclusion: string }).conclusion,
+        'verification-failed',
+      )
+      const repair = await startableRepair(b.durably, recheck.id, {
+        findings: null,
+        dispositions: null,
+      })
+      assert.match(
+        repair.input.repairOf.findings,
+        /not ok 1 - environment flag/,
+      )
+      assert.equal(repair.input.repairOf.runId, recheck.id)
+      assert.equal(
+        repair.input.target.baseRef,
+        built.input.recheckOf.candidateCommit,
+      )
+    } finally {
+      await b.close()
+    }
+  },
+)
+
+it(
+  'honours a disabled automatic retry policy despite an explicit capacity error',
+  { timeout: 60000 },
+  async () => {
+    const b = await box()
+    try {
+      const run = await b.durably.jobs.agentLoop.trigger({
+        ...b.input,
+        automaticRetryLimit: 0,
+        fakeScenario: { providerError: 'Selected model is at capacity' },
+      })
+      b.start()
+      await b.settled(run.id)
+      const recovery = automaticRetries(
+        b.durably,
+        () => false,
+        () => {},
+      )
+      try {
+        await recovery.scan()
+      } finally {
+        await recovery.stop()
+      }
+      assert.equal((await b.durably.getRuns()).length, 1)
+    } finally {
+      await b.close()
+    }
+  },
+)
+
+it(
+  'rechecks when unused triage, implementation and repair profiles are no longer available',
+  { timeout: 60000 },
+  async () => {
+    const b = await box()
+    try {
+      const profile = {
+        provider: 'fake' as const,
+        requestedModel: null,
+        requestedEffort: null,
+      }
+      const parent = await b.durably.jobs.agentLoop.trigger({
+        ...b.input,
+        profiles: {
+          code: profile,
+          correctness: profile,
+          'edge-cases': profile,
+          triage: { ...profile, requestedModel: 'triage-ok' },
+        },
+      })
+      b.start()
+      assert.equal((await b.settled(parent.id)).status, 'completed')
+      const built = await startableRecheck(b.durably, parent.id)
+      const profiles = built.input.recheckOf.profiles
+      profiles.triage = {
+        ...profiles.code,
+        requestedModel: 'unlisted-triage-now-unavailable',
+      }
+      profiles.code = {
+        ...profiles.code,
+        requestedModel: 'unlisted-code-now-unavailable',
+      }
+      profiles.repair = {
+        ...profiles.code,
+        requestedModel: 'unlisted-repair-now-unavailable',
+      }
+      const next = await b.durably.jobs.agentLoop.trigger(built.input, {
+        idempotencyKey: built.idempotencyKey,
+        labels: built.labels,
+      })
+      const done = await b.settled(next.id)
+      assert.equal(done.status, 'completed', done.error ?? '')
+      assert.equal(
+        (done.output as { conclusion: string }).conclusion,
+        'approved',
+      )
+      const report = await buildReport(b.durably, next.id)
+      assert.equal(
+        report.preflight?.checks.some((c) =>
+          c.roles.some((r) => ['code', 'repair', 'triage'].includes(r)),
+        ),
+        false,
+      )
+    } finally {
+      await b.close()
+    }
+  },
+)
