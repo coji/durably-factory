@@ -1,5 +1,5 @@
 /**
- * API-equivalent price estimates (USD per 1K tokens).
+ * API-equivalent price estimates (catalog rates are USD per million tokens).
  *
  * Comparison labels for local cost reasoning only — NOT subscription billing.
  * Unknown models, and usage missing either priced leg, yield null (never
@@ -11,12 +11,55 @@
  * rate and each cache leg at its own multiplier. When it reports none, the
  * whole input is billed at the input rate and the breakdown says so.
  */
+import catalog from './model-prices.json' with { type: 'json' }
+
 export const PRICE_BASIS = {
-  source:
-    'developers.openai.com/api/docs/pricing (standard, short context); platform.claude.com/docs/en/about-claude/pricing',
-  checkedAt: '2026-11-03',
   basis: 'api-equivalent-estimate',
+  source:
+    'Per-invocation costPrices contain the applied rates, source and verification date.',
 } as const
+
+export interface ModelPrice {
+  provider: 'openai' | 'anthropic'
+  /** USD per million tokens, Standard processing, short context. */
+  input: number
+  output: number
+  cacheRead: number | null
+  /** OpenAI 30-minute / Anthropic 5-minute writes; null if not published. */
+  cacheWrite: number | null
+  source: string
+  checkedAt: string
+  /** False for historical entries not present in the monitored tables. */
+  monitor: boolean
+  /** Only individually verified IDs may share this entry's rates. */
+  aliases: string[]
+}
+
+export interface PriceCatalog {
+  version: number
+  models: Record<string, ModelPrice>
+}
+
+export const MODEL_PRICES: PriceCatalog = catalog as PriceCatalog
+
+const pricesById = new Map<string, { model: string; price: ModelPrice }>()
+for (const [model, price] of Object.entries(MODEL_PRICES.models)) {
+  for (const id of [model, ...price.aliases]) {
+    if (pricesById.has(id)) throw new Error(`Duplicate pricing ID: ${id}`)
+    pricesById.set(id, { model, price })
+  }
+}
+
+/** Exact IDs and explicitly verified aliases only; never match a family. */
+export function resolveModelPrice(model: string | null, prices = MODEL_PRICES) {
+  if (!model) return null
+  const id = model.toLowerCase()
+  if (prices === MODEL_PRICES) return pricesById.get(id) ?? null
+  const match = Object.entries(prices.models).find(
+    ([key, price]) => key === id || price.aliases.includes(id),
+  )
+  return match ? { model: match[0], price: match[1] } : null
+}
 
 /** Named price meters, one per billable token kind. */
 export const PRICING_METERS = [
@@ -26,92 +69,6 @@ export const PRICING_METERS = [
   'output_tokens',
 ] as const
 export type PricingMeter = (typeof PRICING_METERS)[number]
-
-interface ModelPrice {
-  in: number
-  out: number
-  /** Cache read price as a multiple of `in`. Varies by model, not by vendor. */
-  cacheRead: number
-  /** Cache write price as a multiple of `in`. */
-  cacheWrite: number
-}
-
-/**
- * OpenAI's 30-minute cache writes cost 1.25x input; cache reads default to
- * 0.1x, with model-specific overrides below. Not modelled: 12-hour cache
- * writes (2.5x input) or the long-context tier (2x input and cache rates,
- * 1.5x output above 272K input tokens).
- */
-const OPENAI_CACHE = { cacheRead: 0.1, cacheWrite: 1.25 }
-/**
- * Anthropic's 5-minute cache write is 1.25x input; the 1-hour write (2x) is
- * not modelled. Cache reads are 0.1x except where a model's row says
- * otherwise.
- */
-const ANTHROPIC_CACHE = { cacheRead: 0.1, cacheWrite: 1.25 }
-
-const PRICE_PER_1K: Record<string, ModelPrice> = {
-  // OpenAI, standard processing, short context.
-  'gpt-6-astra': { in: 0.01, out: 0.05, ...OPENAI_CACHE },
-  // GPT-6.1 cache reads cost 5% of input, rather than the older models' 10%.
-  'gpt-6.1-sol': {
-    in: 0.002,
-    out: 0.01,
-    ...OPENAI_CACHE,
-    cacheRead: 0.05,
-  },
-  'gpt-6.1-terra': {
-    in: 0.001,
-    out: 0.005,
-    ...OPENAI_CACHE,
-    cacheRead: 0.05,
-  },
-  'gpt-6-sol': { in: 0.002, out: 0.01, ...OPENAI_CACHE },
-  'gpt-6-luna': { in: 0.0001, out: 0.0005, ...OPENAI_CACHE },
-  // Promotional price, stated as available at least through 2026-11-21.
-  'gpt-5.6-sol': { in: 0.004, out: 0.02, ...OPENAI_CACHE },
-  'gpt-5.6-terra': { in: 0.002, out: 0.012, ...OPENAI_CACHE },
-  'gpt-5.6-luna': { in: 0.0002, out: 0.0012, ...OPENAI_CACHE },
-  'gpt-5-codex': { in: 0.00125, out: 0.01, ...OPENAI_CACHE },
-  'gpt-5': { in: 0.00125, out: 0.01, ...OPENAI_CACHE },
-  // Anthropic. Cache reads are 0.025x on Fable 5.1 and 0.05x on Opus 5.5.
-  'claude-fable-5-1': {
-    in: 0.01,
-    out: 0.05,
-    ...ANTHROPIC_CACHE,
-    cacheRead: 0.025,
-  },
-  'claude-opus-5-5': {
-    in: 0.004,
-    out: 0.02,
-    ...ANTHROPIC_CACHE,
-    cacheRead: 0.05,
-  },
-  'claude-opus-5': { in: 0.005, out: 0.025, ...ANTHROPIC_CACHE },
-  'claude-sonnet-5': { in: 0.002, out: 0.01, ...ANTHROPIC_CACHE },
-  'claude-opus-4-6': { in: 0.005, out: 0.025, ...ANTHROPIC_CACHE },
-  'claude-sonnet-4-6': { in: 0.003, out: 0.015, ...ANTHROPIC_CACHE },
-  // Claude Code runs some built-in subagents (Explore, for one) on Haiku.
-  'claude-haiku-4-5': { in: 0.001, out: 0.005, ...ANTHROPIC_CACHE },
-}
-
-/**
- * Longest first, so `gpt-5-codex` wins over `gpt-5`. Computed once: pricing is
- * consulted on every measurement write, including each streamed usage
- * snapshot.
- */
-const PRICE_KEYS_LONGEST_FIRST = Object.keys(PRICE_PER_1K).sort(
-  (a, b) => b.length - a.length,
-)
-
-function matchPrice(model: string | null): ModelPrice | null {
-  if (!model) return null
-  const key = model.toLowerCase()
-  for (const name of PRICE_KEYS_LONGEST_FIRST) {
-    if (key.includes(name)) return PRICE_PER_1K[name]
-  }
-  return null
-}
 
 export interface PriceableUsage {
   inputTokens: number | null
@@ -126,6 +83,8 @@ export interface CostBreakdown {
   meters: Partial<Record<PricingMeter, number>>
   /** False when no cache leg was reported and the whole input was priced flat. */
   cacheAware: boolean
+  /** Applied catalog entries, saved with the invocation rather than re-read later. */
+  prices: Record<string, ModelPrice>
 }
 
 /**
@@ -136,30 +95,36 @@ export interface CostBreakdown {
 export function estimateCostBreakdown(
   model: string | null,
   usage: PriceableUsage | null,
+  prices = MODEL_PRICES,
 ): CostBreakdown | null {
   if (!usage) return null
   if (usage.inputTokens == null || usage.outputTokens == null) return null
-  const price = matchPrice(model)
-  if (!price) return null
+  const matched = resolveModelPrice(model, prices)
+  if (!matched) return null
+  const { price } = matched
   const cacheRead = usage.cacheReadTokens ?? null
   const cacheWrite = usage.cacheWriteTokens ?? null
   const cacheAware = cacheRead !== null || cacheWrite !== null
+  if (cacheRead != null && cacheRead > 0 && price.cacheRead === null)
+    return null
+  if (cacheWrite != null && cacheWrite > 0 && price.cacheWrite === null)
+    return null
   const cached = (cacheRead ?? 0) + (cacheWrite ?? 0)
   // Providers that report cache legs count them inside inputTokens; never let
   // an inconsistent report produce a negative non-cached remainder.
   const nonCached = Math.max(0, usage.inputTokens - cached)
   const meters: Partial<Record<PricingMeter, number>> = {
-    input_tokens: (nonCached / 1000) * price.in,
-    output_tokens: (usage.outputTokens / 1000) * price.out,
+    input_tokens: (nonCached / 1_000_000) * price.input,
+    output_tokens: (usage.outputTokens / 1_000_000) * price.output,
   }
   if (cacheRead !== null)
     meters.input_cache_read_tokens =
-      (cacheRead / 1000) * price.in * price.cacheRead
+      (cacheRead / 1_000_000) * (price.cacheRead ?? 0)
   if (cacheWrite !== null)
     meters.input_cache_write_tokens =
-      (cacheWrite / 1000) * price.in * price.cacheWrite
+      (cacheWrite / 1_000_000) * (price.cacheWrite ?? 0)
   const totalUsd = Object.values(meters).reduce((sum, v) => sum + v, 0)
-  return { totalUsd, meters, cacheAware }
+  return { totalUsd, meters, cacheAware, prices: { [matched.model]: price } }
 }
 
 /** Total of `estimateCostBreakdown`; null under the same conditions. */
@@ -178,15 +143,18 @@ export function estimateCostUsd(
  */
 export function estimateCostBreakdownByModel(
   byModel: Record<string, PriceableUsage>,
+  catalog = MODEL_PRICES,
 ): CostBreakdown | null {
   const entries = Object.entries(byModel)
   if (entries.length === 0) return null
   const meters: Partial<Record<PricingMeter, number>> = {}
   let cacheAware = false
+  const prices: Record<string, ModelPrice> = {}
   for (const [model, usage] of entries) {
-    const part = estimateCostBreakdown(model, usage)
+    const part = estimateCostBreakdown(model, usage, catalog)
     if (!part) return null
     cacheAware ||= part.cacheAware
+    Object.assign(prices, part.prices)
     for (const [meter, usd] of Object.entries(part.meters) as [
       PricingMeter,
       number,
@@ -194,5 +162,25 @@ export function estimateCostBreakdownByModel(
       meters[meter] = (meters[meter] ?? 0) + usd
   }
   const totalUsd = Object.values(meters).reduce((sum, v) => sum + v, 0)
-  return { totalUsd, meters, cacheAware }
+  return { totalUsd, meters, cacheAware, prices }
+}
+
+/** Models with observed usage that cannot be priced, including unsupported meters. */
+export function unpricedModels(
+  byModel: Record<string, PriceableUsage>,
+  catalog = MODEL_PRICES,
+): string[] {
+  return Object.entries(byModel)
+    .filter(
+      ([model, usage]) =>
+        !resolveModelPrice(model, catalog) ||
+        (usage.cacheReadTokens != null &&
+          usage.cacheReadTokens > 0 &&
+          resolveModelPrice(model, catalog)?.price.cacheRead === null) ||
+        (usage.cacheWriteTokens != null &&
+          usage.cacheWriteTokens > 0 &&
+          resolveModelPrice(model, catalog)?.price.cacheWrite === null),
+    )
+    .map(([model]) => model)
+    .sort()
 }

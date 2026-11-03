@@ -1,3 +1,4 @@
+import { unpricedModelsOf } from '../../engine/pricing-status'
 import type { Act } from '../components/ActionNotice'
 import { CopyAnnouncer, CopyButton, useCopy } from '../components/copy'
 import { Collapsible, Panel } from '../components/Layout'
@@ -114,6 +115,7 @@ export function RunScreen({
               baselineSource={data.baselineSource}
               now={data.now}
             />
+            <PricingNotice attempts={r.attempts} />
           </div>
         </div>
       </Panel>
@@ -126,4 +128,18 @@ export function RunScreen({
       </Collapsible>
     </div>
   )
+}
+
+/** The reason a measured call has no cost, next to the visible cost totals. */
+export function PricingNotice({
+  attempts,
+}: {
+  attempts: import('../../engine/report').AttemptRow[]
+}) {
+  const models = unpricedModelsOf(attempts)
+  return models.length > 0 ? (
+    <p className="text-fg-2 text-sm break-words">
+      {DETAIL.unpricedModels(models)}
+    </p>
+  ) : null
 }

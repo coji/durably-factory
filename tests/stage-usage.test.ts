@@ -1031,6 +1031,10 @@ describe('Claude usage with subagents', () => {
       } as Partial<AttemptMeasurement>,
     )
     assert.ok(Math.abs((priced.costUsdEstimate ?? 0) - mixed.totalUsd) < 1e-12)
+    assert.deepEqual(priced.unpricedModels, [])
+    assert.equal(priced.costPrices?.['claude-opus-5-5'].input, 4)
+    assert.equal(priced.costPrices?.['claude-fable-5-1'].cacheRead, 0.25)
+    assert.match(priced.costPrices?.['claude-opus-5-5'].source ?? '', /^https:/)
     const unpriced = await writeMeasurement(
       attempt,
       { ...base, reportedModel: 'claude-opus-5-5', usage: null },
@@ -1043,6 +1047,7 @@ describe('Claude usage with subagents', () => {
       } as Partial<AttemptMeasurement>,
     )
     assert.equal(unpriced.costUsdEstimate, null)
+    assert.deepEqual(unpriced.unpricedModels, ['mystery-model'])
     assert.equal(written.length, 2)
   })
 

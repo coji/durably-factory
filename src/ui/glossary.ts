@@ -686,6 +686,8 @@ export const COLUMN = {
 // ---------------------------------------------------------------- run detail
 
 export const DETAIL = {
+  unpricedModels: (models: string[]) =>
+    `価格が未登録、または料金の条件に未対応のモデルがあります: ${models.join('、')}。費用は不明です。今後の実行のために価格表を更新してください。`,
   conclusion: 'いまの状況',
   noNext: 'あなたの操作は要りません。',
   stopRecord: '停止の記録を見る',

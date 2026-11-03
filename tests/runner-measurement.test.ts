@@ -22,6 +22,7 @@ import {
   lastVerificationLogs,
   uncertainCheckpoints,
 } from '../src/engine/failure-reasons.js'
+import { MODEL_PRICES } from '../src/engine/pricing.js'
 import { claudeOutput } from '../src/engine/providers/claude.js'
 import { watchActivity } from '../src/engine/providers/codex.js'
 import type {
@@ -93,9 +94,17 @@ describe('runner measurement on the real launch path', () => {
         session: { id: 'native-session' },
         resolvedModel: 'resolved-model',
         resolvedEffort: 'low',
-        reportedModel: null,
+        reportedModel: 'gpt-6.1-sol',
         reportedEffort: null,
-        usage: null,
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 1000,
+          cachedInputTokens: null,
+          cacheReadTokens: null,
+          cacheWriteTokens: null,
+          totalTokens: 2000,
+          usageSource: 'provider-final',
+        },
         elapsedMs: 5,
       }
     })
@@ -121,11 +130,25 @@ describe('runner measurement on the real launch path', () => {
       fakeAttempt() as never,
       spec,
     )
-    const second = await runAgentCall(
-      new AbortController().signal,
-      fakeAttempt() as never,
-      spec,
+    const price = MODEL_PRICES.models['gpt-6.1-sol']
+    const originalInput = price.input
+    let second: Awaited<ReturnType<typeof runAgentCall>>
+    try {
+      // Simulate a catalog update between the call and checkpoint recovery.
+      price.input = 200
+      second = await runAgentCall(
+        new AbortController().signal,
+        fakeAttempt() as never,
+        spec,
+      )
+    } finally {
+      price.input = originalInput
+    }
+    assert.equal(
+      second.measurement.costUsdEstimate,
+      first.measurement.costUsdEstimate,
     )
+    assert.equal(second.measurement.costPrices?.['gpt-6.1-sol'].input, 2)
     assert.equal(calls, 1)
     assert.equal(second.recovered, true)
     assert.equal(second.invocationId, first.invocationId)

@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "pricing:check": "tsx scripts/update-pricing.ts",
     "demo": "tsx src/cli.ts",
     "worker": "tsx src/cli.ts worker",
     "build:ui": "vite build",

@@ -159,7 +159,7 @@ import {
 } from '../src/ui/screens/run/ReviewsPanel.js'
 import { SummaryPanel } from '../src/ui/screens/run/SummaryPanel.js'
 import { UsagePanels } from '../src/ui/screens/run/UsagePanels.js'
-import { RunScreen } from '../src/ui/screens/RunScreen.js'
+import { RunScreen, PricingNotice } from '../src/ui/screens/RunScreen.js'
 import { RunsScreen } from '../src/ui/screens/RunsScreen.js'
 import {
   derivePipeline,
@@ -201,6 +201,26 @@ const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const cli = join(packageRoot, 'src', 'cli.ts')
 
 describe('runName', () => {
+  it('explains unpriced models beside costs and stays absent for older records', () => {
+    assert.equal(
+      renderToStaticMarkup(createElement(PricingNotice, { attempts: [] })),
+      '',
+    )
+    const attempts = [
+      {
+        measurement: {
+          unpricedModels: ['gpt-6.1-sol-mini', 'gpt-6.1-sol-mini'],
+        },
+      },
+    ] as unknown as AttemptRow[]
+    const html = renderToStaticMarkup(
+      createElement(PricingNotice, { attempts }),
+    )
+    assert.match(html, /価格が未登録/)
+    assert.match(html, /費用は不明/)
+    assert.equal(html.match(/gpt-6\.1-sol-mini/g)?.length, 1)
+  })
+
   const repo = (extra: Record<string, unknown>) => ({
     target: { kind: 'repo', task: 'unused', issue: null, ...extra },
   })

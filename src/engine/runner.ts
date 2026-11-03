@@ -16,6 +16,9 @@ import { MAX_TIMEOUT_MS, timerDelay } from './child.js'
 import {
   estimateCostBreakdown,
   estimateCostBreakdownByModel,
+  unpricedModels,
+  MODEL_PRICES,
+  type PriceCatalog,
 } from './pricing.js'
 import {
   boundedDenials,
@@ -134,6 +137,7 @@ interface StartedCheckpoint {
   operationKey: string
   invocationId: string
   status: 'started'
+  priceCatalog?: PriceCatalog
   invocationStartedAt: string
 }
 
@@ -157,6 +161,7 @@ interface CompletedCheckpoint {
   operationKey: string
   invocationId: string
   status: 'completed'
+  priceCatalog?: PriceCatalog
   /** Null only for a call the provider refused; see `rejection`. */
   result: AgentResult | null
   /** Why the provider refused the call outright; absent otherwise. */
@@ -293,6 +298,7 @@ export async function writeMeasurement(
   attempt: StepAttemptContext,
   current: AttemptMeasurement,
   patch: Partial<AttemptMeasurement> & { usagePatch?: TokenUsage | null },
+  catalog: PriceCatalog = MODEL_PRICES,
 ): Promise<AttemptMeasurement> {
   const { usagePatch, ...rest } = patch
   const next: AttemptMeasurement = {
@@ -304,12 +310,20 @@ export async function writeMeasurement(
         : current.usage,
   }
   const breakdown = next.usageByModel
-    ? estimateCostBreakdownByModel(next.usageByModel)
-    : estimateCostBreakdown(next.reportedModel, next.usage)
+    ? estimateCostBreakdownByModel(next.usageByModel, catalog)
+    : estimateCostBreakdown(next.reportedModel, next.usage, catalog)
   next.costUsdEstimate = breakdown?.totalUsd ?? null
   next.costBasis = next.usage ? 'api-equivalent-estimate' : null
   next.costMeters = breakdown?.meters ?? null
   next.costCacheAware = breakdown?.cacheAware ?? null
+  next.costPrices = breakdown?.prices ?? null
+  next.unpricedModels = unpricedModels(
+    next.usageByModel ??
+      (next.reportedModel && next.usage
+        ? { [next.reportedModel]: next.usage }
+        : {}),
+    catalog,
+  )
   await attempt.setMetadata(next as unknown as JsonValue)
   return next
 }
@@ -333,6 +347,12 @@ export async function runAgentCall(
   const paths = checkpointPaths(checkpointsDir, operationKey)
   const saved = await readJson<CompletedCheckpoint>(paths.completed)
   const existingStart = await readJson<StartedCheckpoint>(paths.started)
+  // Pin the catalog before invoking the provider, including for checkpoint replay.
+  let callPrices = saved?.priceCatalog ?? MODEL_PRICES
+  const recordMeasurement = (
+    current: AttemptMeasurement,
+    patch: Partial<AttemptMeasurement> & { usagePatch?: TokenUsage | null },
+  ) => writeMeasurement(attempt, current, patch, callPrices)
   let invocationId =
     saved?.invocationId ?? existingStart?.invocationId ?? randomUUID()
 
@@ -432,7 +452,10 @@ export async function runAgentCall(
     recovered: boolean,
     checkpoint?: CompletedCheckpoint,
   ): Promise<AgentCallOutcome> => {
-    if (checkpoint) invocationId = checkpoint.invocationId
+    if (checkpoint) {
+      invocationId = checkpoint.invocationId
+      callPrices = checkpoint.priceCatalog ?? callPrices
+    }
     await settleMeasurement()
     // The outcome's session comes from the result alone, so the call and a
     // replay of its checkpoint return the same one. A session reported
@@ -459,7 +482,7 @@ export async function runAgentCall(
       delete base.usageByModel
     }
     const usageByModel = result.usage ? result.usageByModel : early.usageByModel
-    measurement = await writeMeasurement(attempt, base, {
+    measurement = await recordMeasurement(base, {
       reportedModel: result.reportedModel,
       reportedEffort: result.reportedEffort,
       invocationId,
@@ -501,8 +524,9 @@ export async function runAgentCall(
     recovered: boolean,
   ): Promise<AgentCallOutcome> => {
     invocationId = checkpoint.invocationId
+    callPrices = checkpoint.priceCatalog ?? callPrices
     await settleMeasurement()
-    measurement = await writeMeasurement(attempt, measurement, {
+    measurement = await recordMeasurement(measurement, {
       invocationId,
       elapsedMs:
         Date.parse(checkpoint.invocationCompletedAt) -
@@ -539,8 +563,9 @@ export async function runAgentCall(
     recovered: boolean,
   ): Promise<AgentCallOutcome> => {
     invocationId = checkpoint.invocationId
+    callPrices = checkpoint.priceCatalog ?? callPrices
     await settleMeasurement()
-    measurement = await writeMeasurement(attempt, measurement, {
+    measurement = await recordMeasurement(measurement, {
       invocationId,
       elapsedMs:
         Date.parse(checkpoint.invocationCompletedAt) -
@@ -578,8 +603,9 @@ export async function runAgentCall(
     recovered: boolean,
   ): Promise<AgentCallOutcome> => {
     invocationId = checkpoint.invocationId
+    callPrices = checkpoint.priceCatalog ?? callPrices
     await settleMeasurement()
-    measurement = await writeMeasurement(attempt, measurement, {
+    measurement = await recordMeasurement(measurement, {
       invocationId,
       elapsedMs:
         Date.parse(checkpoint.invocationCompletedAt) -
@@ -644,7 +670,7 @@ export async function runAgentCall(
   // Superseded before anything was sent: there is no call to settle, and
   // nothing was spent. Recorded as `not-sent`, which no usage sum counts.
   if (spec.supersede?.signal.aborted) {
-    measurement = await writeMeasurement(attempt, measurement, {
+    measurement = await recordMeasurement(measurement, {
       result: NOT_SENT,
       interruptionReason: spec.supersede.reason,
     })
@@ -663,6 +689,7 @@ export async function runAgentCall(
   }
 
   const startRecord: StartedCheckpoint = {
+    priceCatalog: callPrices,
     operationKey,
     invocationId,
     status: 'started',
@@ -690,7 +717,7 @@ export async function runAgentCall(
   agentLog = spec.agentLogsDir
     ? await createAgentLog(spec.agentLogsDir, attempt.id)
     : null
-  measurement = await writeMeasurement(attempt, measurement, {
+  measurement = await recordMeasurement(measurement, {
     invocationStartedAt: startRecord.invocationStartedAt,
     ...(agentLog ? { agentLog: { ...agentLog } } : {}),
   })
@@ -792,7 +819,7 @@ export async function runAgentCall(
         partialWrites = partialWrites
           .then(async () => {
             if (finalized) return
-            measurement = await writeMeasurement(attempt, measurement, {
+            measurement = await recordMeasurement(measurement, {
               usagePatch,
               ...(split ? { usageByModel: split } : {}),
               elapsedMs: at - startedAt,
@@ -810,7 +837,7 @@ export async function runAgentCall(
         partialWrites = partialWrites
           .then(async () => {
             if (finalized) return
-            measurement = await writeMeasurement(attempt, measurement, {
+            measurement = await recordMeasurement(measurement, {
               sessionId,
             })
           })
@@ -938,7 +965,7 @@ export async function runAgentCall(
       reported,
       interruptionReason ?? 'error',
     )
-    measurement = await writeMeasurement(attempt, measurement, {
+    measurement = await recordMeasurement(measurement, {
       elapsedMs: Date.now() - startedAt,
       result: 'uncertain',
       error: message.slice(0, 2000),

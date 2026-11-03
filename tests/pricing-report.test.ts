@@ -112,6 +112,15 @@ function baseReport(): LoopReport {
 }
 
 describe('pricing/report', () => {
+  it('names stored unpriced models even if their prices have since been registered', () => {
+    const report = baseReport()
+    report.attempts[0].measurement!.unpricedModels = ['gpt-6.1-sol']
+    const md = reportToMarkdown(report)
+    assert.match(md, /## Unpriced models\n\n- gpt-6\.1-sol/)
+    assert.match(md, /at invocation time/)
+    assert.equal(report.summary.costUsd, null)
+  })
+
   it('returns null when usage is missing (never zero-filled)', () => {
     assert.equal(estimateCostUsd('gpt-5', null), null)
     assert.equal(
@@ -325,7 +334,6 @@ describe('pricing/report', () => {
       md,
       /aggregate cost \(stored per-invocation estimates\): \$1\.75/,
     )
-    assert.ok(!md.includes(PRICE_BASIS.checkedAt))
     assert.ok(!md.includes(PRICE_BASIS.source))
   })
 })

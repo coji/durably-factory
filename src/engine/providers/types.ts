@@ -1,3 +1,4 @@
+import type { ModelPrice } from '../pricing.js'
 /**
  * Provider contract + attempt measurement stored in Durably metadata.
  *
@@ -500,6 +501,10 @@ export interface AttemptMeasurement {
   costMeters?: Partial<Record<string, number>> | null
   /** True when cache legs were reported and priced at their own rates. */
   costCacheAware?: boolean | null
+  /** Exact prices used at measurement time; absent on older measurements. */
+  costPrices?: Record<string, ModelPrice> | null
+  /** Observed model IDs with missing prices or unsupported cache meters. */
+  unpricedModels?: string[]
   /**
    * Hash of the run's fixed configuration (provider, models, efforts,
    * context mode, instructions version). Runs sharing it are comparable.

@@ -1,0 +1,91 @@
+name: Model pricing
+
+on:
+  schedule:
+    - cron: '17 23 * * *' # 08:17 JST; scheduled runs may be delayed by GitHub.
+  workflow_dispatch:
+
+concurrency:
+  group: model-pricing
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      UPDATE_BRANCH: automation/model-prices
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Prepare the update branch
+        id: branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git show "origin/$DEFAULT_BRANCH:src/engine/model-prices.json" > "$RUNNER_TEMP/base-prices.json"
+          if git show-ref --verify --quiet "refs/remotes/origin/$UPDATE_BRANCH"; then
+            echo "previous=$(git rev-parse "origin/$UPDATE_BRANCH")" >> "$GITHUB_OUTPUT"
+            git switch --create "$UPDATE_BRANCH" "origin/$UPDATE_BRANCH"
+            # Preserve pending edits and reviews. A conflict requires human review.
+            git merge --no-edit "origin/$DEFAULT_BRANCH"
+          else
+            echo 'previous=' >> "$GITHUB_OUTPUT"
+            git switch --create "$UPDATE_BRANCH"
+          fi
+
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with:
+          cache: true
+          install: false
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check official pricing and prepare the proposed catalog
+        id: prices
+        env:
+          PREVIOUS_HEAD: ${{ steps.branch.outputs.previous }}
+        run: |
+          export PRICING_PR_BODY="$RUNNER_TEMP/model-pricing-pr.md"
+          pnpm pricing:check --write --base "$RUNNER_TEMP/base-prices.json"
+          pnpm exec oxfmt --write src/engine/model-prices.json
+          git add src/engine/model-prices.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: update official model prices'
+          fi
+          if ! git diff --quiet "origin/$DEFAULT_BRANCH" -- src/engine/model-prices.json && [ "$(git rev-parse HEAD)" != "$PREVIOUS_HEAD" ]; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate the updater and catalog
+        if: steps.prices.outputs.changed == 'true'
+        run: |
+          pnpm typecheck
+          pnpm exec tsx --test tests/pricing-maintenance.test.ts
+
+      - name: Open or update the review PR and request CI
+        if: steps.prices.outputs.changed == 'true'
+        run: |
+          PRICING_PR_BODY="$RUNNER_TEMP/model-pricing-pr.md"
+          git push --set-upstream origin "$UPDATE_BRANCH"
+          number=$(gh pr list --head "$UPDATE_BRANCH" --base "$DEFAULT_BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --body-file "$PRICING_PR_BODY"
+          else
+            gh pr create --base "$DEFAULT_BRANCH" --head "$UPDATE_BRANCH" \
+              --title 'chore: update official model prices' --body-file "$PRICING_PR_BODY"
+          fi
+          # GITHUB_TOKEN-created PR runs may require approval. Dispatch explicitly
+          # so the same CI validates the proposed branch without a personal token.
+          gh workflow run ci.yml --ref "$UPDATE_BRANCH"
