@@ -6,7 +6,7 @@ import { CopyAnnouncer, CopyButton, useCopy } from './copy'
 function commandLabel(command: string): string {
   if (/^git .* worktree remove /.test(command))
     return COMMAND_COPY.worktreeRemove
-  const sub = /\bdemo (\S+)/.exec(command)?.[1]
+  const sub = /\bfactory (\S+)/.exec(command)?.[1]
   switch (sub) {
     case 'approve':
       return COMMAND_COPY.approve

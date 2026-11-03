@@ -1,5 +1,5 @@
 /**
- * `demo ui`: a web UI over the factory's database (ADR-0027).
+ * `factory ui`: a web UI over the factory's database (ADR-0027).
  *
  * - Listens on 127.0.0.1 only. The API answers only to a loopback Host
  *   header, so a page on another origin cannot read runs through DNS
@@ -12,7 +12,7 @@
  *   every reason and command from `diagnose`, and the task list from
  *   `groupTasks`: the same code the CLI prints from.
  * - Writes are `POST /api/runs/<id>/<action>`, each calling the function
- *   its `demo` subcommand calls (`actions.ts`). A write needs the token this
+ *   its `factory` subcommand calls (`actions.ts`). A write needs the token this
  *   process made at start and put in the page, and an Origin naming this
  *   server; anything else is refused before the action runs. Reads never
  *   write.
@@ -73,7 +73,7 @@ import {
 import {
   checkLogFiles,
   classifyRun,
-  DEMO,
+  FACTORY_COMMAND,
   type CheckLogFile,
 } from '../engine/failure-reasons.js'
 import { formatCount } from '../engine/format.js'
@@ -158,10 +158,10 @@ export interface RunRow {
   uncertainCall: boolean
   /** Approval, a stop, or an unknown wait: a person decides next. */
   needsHuman: boolean
-  /** A person archived the stopped run (`demo archive`). */
+  /** A person archived the stopped run (`factory archive`). */
   archived: boolean
   /**
-   * `demo unarchive` for an archived run, `demo archive` for a stopped one
+   * `factory unarchive` for an archived run, `factory archive` for a stopped one
    * that is not; null for any other run.
    */
   archiveCommand: string | null
@@ -208,7 +208,7 @@ export interface RunsResponse extends RepoScope {
   runs: RunRow[]
   /**
    * The runs as tasks, in the order the list shows them, from `groupTasks`:
-   * what `demo status --format json` prints as its `tasks`.
+   * what `factory status --format json` prints as its `tasks`.
    */
   tasks: Task[]
 }
@@ -223,7 +223,7 @@ export interface RunDetailResponse {
   diagnosis: Diagnosis
   uncertainCall: boolean
   needsHuman: boolean
-  /** A person archived the stopped run (`demo archive`). */
+  /** A person archived the stopped run (`factory archive`). */
   archived: boolean
   /** As on `RunRow`. */
   archiveCommand: string | null
@@ -1591,7 +1591,7 @@ export function finishedReportCache(build = buildReport) {
             ) ?? hit.report.baseline)
           : hit.report.baseline
         // Whether the worktree is still there is a fact about the disk: an
-        // archive or `demo prune --apply` removes it without touching the
+        // archive or `factory prune --apply` removes it without touching the
         // run's row.
         const worktree = currentWorktree(hit.report.worktree)
         const cached = { ...hit.report, lineage, baseline, worktree }
@@ -1686,9 +1686,9 @@ async function inspect(
     needsHuman: needsHuman(diagnosis.kind),
     archived: shelved,
     archiveCommand: shelved
-      ? `${DEMO} unarchive --run ${run.id}`
+      ? `${FACTORY_COMMAND} unarchive --run ${run.id}`
       : archivable(diagnosis.kind)
-        ? `${DEMO} archive --run ${run.id}`
+        ? `${FACTORY_COMMAND} archive --run ${run.id}`
         : null,
     waitId: decides ? (run.waitingOnWaitId ?? null) : null,
     live,
@@ -2088,7 +2088,7 @@ function createUiApi() {
   }
 
   /**
-   * One write, through the function its `demo` subcommand calls. The caller
+   * One write, through the function its `factory` subcommand calls. The caller
    * has already checked the method, the Origin and the token.
    */
   async function write(

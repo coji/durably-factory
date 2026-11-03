@@ -359,7 +359,7 @@ describe('git engine', () => {
     // directory and the ways to finish, not git's exit code.
     const stopped = await forceRemoveWorktree(repo, wt, 1)
     assert.deepEqual(stopped, {
-      message: `git worktree remove was stopped at its <0.1s limit before it finished; ${wt} may be partly removed. git still lists it, so pnpm demo prune --apply continues the removal`,
+      message: `git worktree remove was stopped at its <0.1s limit before it finished; ${wt} may be partly removed. git still lists it, so pnpm factory prune --apply continues the removal`,
       byHand: false,
     })
     // The registration is kept, so asking again with the usual limit
@@ -383,7 +383,7 @@ describe('git engine', () => {
       assert.match(
         failure.message,
         new RegExp(
-          `git no longer lists ${orphan.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} as a worktree, so neither archive nor pnpm demo prune --apply can remove it: remove the directory by hand$`,
+          `git no longer lists ${orphan.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} as a worktree, so neither archive nor pnpm factory prune --apply can remove it: remove the directory by hand$`,
         ),
       )
     }

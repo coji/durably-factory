@@ -4,8 +4,7 @@ dist/
 .DS_Store
 .env*.local
 
-# Left over from before runs moved to ~/.local/state/local-agent-loop.
-local-agent-loop.db
-local-agent-loop.db-*
+*.db
+*.db-*
 runs/
 reports/

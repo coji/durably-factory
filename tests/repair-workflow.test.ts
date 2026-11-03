@@ -59,7 +59,7 @@ async function box() {
       timeoutMs: 10000,
     })
   ).stdout.trim()
-  const stateRoot = join(home, '.local', 'state', 'local-agent-loop')
+  const stateRoot = join(home, '.local', 'state', 'durably-factory')
   const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   let worker: ChildProcess | null = null

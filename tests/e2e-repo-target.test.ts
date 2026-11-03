@@ -2100,7 +2100,7 @@ describe('repair from outside findings', { timeout: 240000 }, () => {
       const { candidate } = parent.output as {
         candidate: { commit: string; branch: string }
       }
-      // `demo repair` checked the branch; it moves before the worker's setup.
+      // `factory repair` checked the branch; it moves before the worker's setup.
       const built = buildRepairInput(
         parent,
         setup,
@@ -2141,7 +2141,7 @@ describe('repair from outside findings', { timeout: 240000 }, () => {
         /^candidate-moved: candidate branch \S+ moved to [0-9a-f]{12}/,
       )
 
-      // A retrigger of the child never goes through `demo repair`; its setup
+      // A retrigger of the child never goes through `factory repair`; its setup
       // refuses the same way, here with the branch deleted.
       await git(repo, ['update-ref', '-d', `refs/heads/${candidate.branch}`])
       const retry = await durably.jobs.agentLoop.trigger(
@@ -2392,7 +2392,7 @@ describe('worktrees of finished runs', { timeout: 300000 }, () => {
       assert.match(refused.warnings.join('\n'), /locked/)
       assert.equal(refused.retryable, true)
       assert.ok(existsSync(await work(archived.id)))
-      // `status` then offers the forced removal `demo prune --apply` makes;
+      // `status` then offers the forced removal `factory prune --apply` makes;
       // a stop nobody archived keeps the git removal a change refuses.
       const runOf = async (id: string) => (await durably.getRun(id)) as Run
       assert.equal(
@@ -2792,7 +2792,7 @@ describe(
           retryable: false,
         })
 
-        // An archived one is offered by `demo prune` and removed by --apply.
+        // An archived one is offered by `factory prune` and removed by --apply.
         await writeFile(archiveMarkerOf(stateRoot, runs.pruned.id), '{}\n')
         const plan = await planPrune(durably, { deleteBranches: true })
         assert.deepEqual(
@@ -2829,7 +2829,7 @@ describe(
         assert.equal(orphan.warnings.length, 1)
         assert.match(
           orphan.warnings[0] ?? '',
-          /^worktree \S+\/work: .*git no longer lists \S+ as a worktree, so neither archive nor pnpm demo prune --apply can remove it: remove the directory by hand$/,
+          /^worktree \S+\/work: .*git no longer lists \S+ as a worktree, so neither archive nor pnpm factory prune --apply can remove it: remove the directory by hand$/,
         )
         assert.ok(existsSync(work(runs.orphan.id)))
 
@@ -3809,7 +3809,7 @@ describe('configured reviewers', { timeout: 240000 }, () => {
     const repo = await seedRepo(root)
     const home = join(root, 'home')
     await mkdir(home)
-    const stateRoot = join(home, '.local', 'state', 'local-agent-loop')
+    const stateRoot = join(home, '.local', 'state', 'durably-factory')
     recording = recordFakeReviewCalls()
     const durably = createAgentDurably({ stateRoot })
     await durably.migrate()
@@ -4004,7 +4004,7 @@ describe('configured reviewers', { timeout: 240000 }, () => {
     const repo = await seedRepo(root)
     const home = join(root, 'home')
     await mkdir(home)
-    const stateRoot = join(home, '.local', 'state', 'local-agent-loop')
+    const stateRoot = join(home, '.local', 'state', 'durably-factory')
     // Never init: no worker in this process.
     const durably = createAgentDurably({ stateRoot })
     await durably.migrate()
@@ -5210,7 +5210,7 @@ describe(
     it('commits what it left as a candidate that is verified and repaired, and stops retryable when it left nothing', async () => {
       const home = await mkdtemp(join(tmpdir(), 'repo-target-timeout-'))
       const repo = await seedRepo(home)
-      const stateRoot = join(home, '.local', 'state', 'local-agent-loop')
+      const stateRoot = join(home, '.local', 'state', 'durably-factory')
       delete process.env.FAKE_FAIL_FIRST
       delete process.env.FAKE_REVIEW_SEQUENCE
       const durably = createAgentDurably({ stateRoot })
@@ -5306,7 +5306,7 @@ describe(
         res.stdout.split('\n\n').find((b) => b.startsWith(emptyId)) ?? ''
       assert.match(block, /agent-timeout:/)
       assert.match(block, /retry: +yes/)
-      assert.match(block, new RegExp(`demo retrigger --run ${emptyId}`))
+      assert.match(block, new RegExp(`factory retrigger --run ${emptyId}`))
     })
   },
 )
@@ -6278,7 +6278,7 @@ describe('the test probe', { timeout: 300000 }, () => {
     const repo = await probeRepo(root)
     const home = join(root, 'home')
     await mkdir(home)
-    const stateRoot = join(home, '.local', 'state', 'local-agent-loop')
+    const stateRoot = join(home, '.local', 'state', 'durably-factory')
     const log = join(root, 'probe.log')
     process.env.PROBE_LOG = log
     process.env.HOLD_CHECK = '1'
@@ -7687,7 +7687,7 @@ describe('the test probe', { timeout: 300000 }, () => {
     const repo = await probeRepo(root)
     const home = join(root, 'home')
     await mkdir(home)
-    const stateRoot = join(home, '.local', 'state', 'local-agent-loop')
+    const stateRoot = join(home, '.local', 'state', 'durably-factory')
     const log = join(root, 'probe.log')
     process.env.PROBE_LOG = log
     process.env.FAKE_FAIL_FIRST = '0'

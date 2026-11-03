@@ -40,7 +40,7 @@ export function archiveMarkerOf(stateRoot: string, runId: string): string {
  * A repository run's worktree, where the agent edits and reviewers read.
  * With the review snapshots, it is all of a run's directory that is ever
  * removed while the run is kept (ADR-0028): after an approved delivery is
- * recorded, when a stopped run is archived, and by `demo prune --apply`.
+ * recorded, when a stopped run is archived, and by `factory prune --apply`.
  * The spec, checkpoints, logs, candidate diffs and delivery stay.
  */
 export function repoWorkdirOf(runRoot: string): string {
@@ -50,7 +50,7 @@ export function repoWorkdirOf(runRoot: string): string {
 /**
  * The run's agent output: one file per attempt that sent a call, written
  * while the call runs and read by the web UI. Kept with the run, like its
- * checkpoints: neither a worktree cleanup nor `demo prune` removes it.
+ * checkpoints: neither a worktree cleanup nor `factory prune` removes it.
  */
 export function agentLogsDirOf(runRoot: string): string {
   return join(runRoot, 'agent-logs')
@@ -78,7 +78,7 @@ export function stageContextDirOf(runRoot: string): string {
 /**
  * The test probe's detached worktree at the base commit (ADR-0039), beside
  * the agent's and made only with `testProbe`. The run keeps it across its
- * waits and removes it when it ends; an archive and `demo prune --apply`
+ * waits and removes it when it ends; an archive and `factory prune --apply`
  * remove what is left of it with the worktree.
  */
 export function baseWorkdirOf(runRoot: string): string {

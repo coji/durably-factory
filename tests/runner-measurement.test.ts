@@ -318,7 +318,7 @@ describe('runner measurement on the real launch path', () => {
     assert.deepEqual(cancel(false)?.details, [
       'error: setup failed | fatal: bad ref',
     ])
-    assert.ok(cancel(false)?.next.every((n) => !/demo trigger/.test(n)))
+    assert.ok(cancel(false)?.next.every((n) => !/factory trigger/.test(n)))
   })
 
   it('keeps requested, effective, and reported settings separate', async () => {
@@ -1148,7 +1148,7 @@ describe('a refused call after preflight stops the run, settled', () => {
     assert.ok(
       repo?.next.some((n) =>
         n.startsWith(
-          'pnpm demo retrigger --run run-1 --reload-config  # after fixing factory.json',
+          'pnpm factory retrigger --run run-1 --reload-config  # after fixing factory.json',
         ),
       ),
     )

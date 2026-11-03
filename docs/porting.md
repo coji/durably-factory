@@ -14,7 +14,7 @@
 
 ### checkoutを固定して呼ぶ
 
-durably-factoryのcheckoutを特定のcommitに固定し、そこから `demo worker` と `demo trigger`
+durably-factoryのcheckoutを特定のcommitに固定し、そこから `factory worker` と `factory trigger`
 を実行します。対象リポジトリ側はコードを持ちません。
 
 1. durably-factoryを任意の場所にcloneし、使うcommitをcheckoutして `pnpm install` する。
@@ -22,14 +22,14 @@ durably-factoryのcheckoutを特定のcommitに固定し、そこから `demo wo
 2. 対象リポジトリ直下に `factory.json` を置き、`check`、必要なら `setup`、
    `base`、役割ごとの `profiles` を書く。書式は
    [「実際のリポジトリで動かす」](configuration.md)にある。
-3. 固定したcheckoutでworkerを一つ起動し、`demo trigger --repo <path> --task-file <file>`
+3. 固定したcheckoutでworkerを一つ起動し、`factory trigger --repo <path> --task-file <file>`
    で渡す。workerを起動しなくても `trigger` が自動で起動するが、そのworkerは
    コマンドを実行したcheckoutのCLIで動く。固定したcheckoutのworkerで処理
    させるには、先にそこでworkerを起動しておく。
-4. 結果は `demo status` と `demo report --format json` で読む。使用量を台帳に
+4. 結果は `factory status` と `factory report --format json` で読む。使用量を台帳に
    つけるなら、run後に利用側がこのJSONを取り込む。
 
-DBと作業物は `~/.local/state/local-agent-loop/` に置かれ、checkoutの中にも対象
+DBと作業物は `~/.local/state/durably-factory/` に置かれ、checkoutの中にも対象
 リポジトリの中にも作られません。checkoutを別のcommitへ切り替えても過去のrunは
 残ります。上げるときは意図してcheckoutし直し、fake providerで一周させてから
 実LLMで使ってください。
@@ -60,7 +60,7 @@ snapshotによる最終計測の巻き戻し、孫プロセスの取り残し、
 2. `src/targets/repo.ts` と `src/targets/index.ts` をコピーする。多くの場合、
    実リポジトリ向けの `RepoTarget` はそのまま使えます。
 3. `src/durably.ts` と `src/cli.ts` を、そのプロジェクトのDB配置と起動方法に
-   合わせて書き換える。既定のDBと作業物は `~/.local/state/local-agent-loop/` に
+   合わせて書き換える。既定のDBと作業物は `~/.local/state/durably-factory/` に
    置かれるので、同じマシンで固定checkout方式と併用するなら別の場所にする。
 4. 採点コマンドを決める。これが一番重要な判断です（下記）。
 5. fake providerで一周させて配線を確かめる。実LLMはそのあと。
@@ -112,7 +112,7 @@ setup時に記録し、shellを介さずargvとして実行します。
 - fake providerで一周する。`--provider fake` で実LLMを呼ばずに配線を検証できます。
 - worktreeが期待した場所にでき、元のcheckoutが動いていないこと。
 - 検証が失敗したときに、失敗理由が修正promptに渡っていること。
-- `demo report --run <id>` が工程別の時間とtokenを出すこと。
+- `factory report --run <id>` が工程別の時間とtokenを出すこと。
 
 ## やらないこと
 
@@ -121,12 +121,3 @@ setup時に記録し、shellを介さずargvとして実行します。
 - 最初から `--publish` を付ける。まずpatchで確かめてください。
 - 承認待ちを消す判断を、成果物がレビュー可能かどうかを見ずに決める。Draft PRなら
   人間はそこで見られますが、patchを黙って置くだけなら誰も見ません。
-
-## 別packageへの切り出しを考え直す条件
-
-local-agent-loopはexampleとして本体と同じリポジトリに置いています。次のどれかが
-起きたら、独立したpackageへ切り出すことを検討し直します。
-
-- 実運用で渡している引数が変わらなくなり、設定として固定できるようになった。
-- checkout固定方式でもコピー方式でもない、二つ目の利用先が現れた。
-- 本体のリリース周期と、このファクトリーを変えたい周期が合わなくなった。

@@ -292,7 +292,7 @@ describe('fake runs that stop', { timeout: 180000 }, () => {
   it('shows verification failure, review cap and an uncertain call differently in status and report', async () => {
     // The CLI resolves the state root from HOME, so put the database there.
     const home = await mkdtemp(join(tmpdir(), 'e2e-stops-'))
-    const dir = join(home, '.local', 'state', 'local-agent-loop')
+    const dir = join(home, '.local', 'state', 'durably-factory')
     delete process.env.FAKE_FAIL_FIRST
     delete process.env.FAKE_REVIEW_SEQUENCE
     delete process.env.FAKE_REVIEW_SLOW_MS
@@ -416,8 +416,8 @@ describe('fake runs that stop', { timeout: 180000 }, () => {
     assert.match(uncertain, /retry: +NO/)
     assert.match(uncertain, /start checkpoint without completion/)
     // Nothing that would send the lost prompt again.
-    assert.doesNotMatch(uncertain, /trigger|demo worker/)
-    assert.match(verification, /demo retrigger --run /)
+    assert.doesNotMatch(uncertain, /trigger|factory worker/)
+    assert.match(verification, /factory retrigger --run /)
     // retrigger refuses a stop that is not safe to repeat, and starts a new
     // run from the stored input for one that is.
     const retrigger = (id: string) =>
@@ -428,7 +428,7 @@ describe('fake runs that stop', { timeout: 180000 }, () => {
           cwd: home,
           timeoutMs: 60000,
           // No auto-started worker: the new run stays pending.
-          env: { HOME: home, LOCAL_AGENT_LOOP_NO_AUTO_WORKER: '1' },
+          env: { HOME: home, DURABLY_FACTORY_NO_AUTO_WORKER: '1' },
         },
       )
     const refused = await retrigger(ids['uncertain'] ?? '')
@@ -473,7 +473,7 @@ describe('shadow triage', { timeout: 300000 }, () => {
     })
   it('records each judgment once before code and changes nothing after it', async () => {
     const home = await mkdtemp(join(tmpdir(), 'e2e-triage-'))
-    const dir = join(home, '.local', 'state', 'local-agent-loop')
+    const dir = join(home, '.local', 'state', 'durably-factory')
     process.env.FAKE_FAIL_FIRST = '0'
     delete process.env.FAKE_REVIEW_SEQUENCE
     delete process.env.FAKE_REVIEW_SLOW_MS
@@ -758,7 +758,7 @@ describe('preflight before the first agent call', { timeout: 300000 }, () => {
   })
   it('stops on an unusable role before any call, and records a paid check only when the free one cannot tell', async () => {
     const home = await mkdtemp(join(tmpdir(), 'e2e-preflight-'))
-    const dir = join(home, '.local', 'state', 'local-agent-loop')
+    const dir = join(home, '.local', 'state', 'durably-factory')
     process.env.FAKE_FAIL_FIRST = '0'
     delete process.env.FAKE_REVIEW_SEQUENCE
     delete process.env.FAKE_TRIAGE
@@ -975,7 +975,7 @@ describe(
 
     it('stops a failing base before any agent call, and skips the check when it is off', async () => {
       const home = await mkdtemp(join(tmpdir(), 'e2e-baseline-'))
-      const dir = join(home, '.local', 'state', 'local-agent-loop')
+      const dir = join(home, '.local', 'state', 'durably-factory')
       const repo = await brokenRepo(home)
       process.env.FAKE_FAIL_FIRST = '0'
       delete process.env.FAKE_REVIEW_SEQUENCE
@@ -1157,7 +1157,7 @@ describe(
       assert.match(block, /retry: +yes/)
       assert.match(block, /fix the check command or the environment/)
       assert.match(block, /check exit code: 1/)
-      assert.match(block, /demo retrigger --run /)
+      assert.match(block, /factory retrigger --run /)
     })
 
     /**
@@ -1219,7 +1219,7 @@ describe(
 
     it('reuses a matching passing result after setup, and runs the check otherwise', async () => {
       const home = await mkdtemp(join(tmpdir(), 'e2e-baseline-reuse-'))
-      const dir = join(home, '.local', 'state', 'local-agent-loop')
+      const dir = join(home, '.local', 'state', 'durably-factory')
       const fixture = await passingRepo(home)
       process.env.FAKE_FAIL_FIRST = '0'
       delete process.env.FAKE_REVIEW_SEQUENCE
@@ -1539,7 +1539,7 @@ describe(
 
     it("records a resumed check's own completion time, and indexes it under that time", async () => {
       const home = await mkdtemp(join(tmpdir(), 'e2e-baseline-resume-'))
-      const dir = join(home, '.local', 'state', 'local-agent-loop')
+      const dir = join(home, '.local', 'state', 'durably-factory')
       const fixture = await passingRepo(home)
       process.env.FAKE_FAIL_FIRST = '0'
       delete process.env.FAKE_REVIEW_SEQUENCE
@@ -1974,7 +1974,7 @@ describe('refused calls and the repair profile', { timeout: 300000 }, () => {
   })
   it('stops every refused stage as rejected-invocation, and repairs on its own profile in a new session', async () => {
     const home = await mkdtemp(join(tmpdir(), 'e2e-rejected-'))
-    const dir = join(home, '.local', 'state', 'local-agent-loop')
+    const dir = join(home, '.local', 'state', 'durably-factory')
     delete process.env.FAKE_FAIL_FIRST
     delete process.env.FAKE_REVIEW_SEQUENCE
     delete process.env.FAKE_TRIAGE
@@ -2254,7 +2254,7 @@ describe('refused calls and the repair profile', { timeout: 300000 }, () => {
       block,
       /refusal: fake: the review-a call on rejects-review is refused/,
     )
-    assert.match(block, /demo retrigger --run /)
+    assert.match(block, /factory retrigger --run /)
   })
 
   it('hands a new repair session the task, the spec and the repair notes', () => {
@@ -2909,7 +2909,7 @@ describe('verification and review side by side', { timeout: 300000 }, () => {
 
   it('overlaps the two, keeps the step names, and approves only a candidate that passes both', async () => {
     const home = await mkdtemp(join(tmpdir(), 'e2e-parallel-'))
-    const dir = join(home, '.local', 'state', 'local-agent-loop')
+    const dir = join(home, '.local', 'state', 'durably-factory')
     const repo = await slowCheckRepo(home)
     delete process.env.FAKE_FAIL_FIRST
     delete process.env.FAKE_REVIEW_SEQUENCE
@@ -3370,7 +3370,7 @@ describe('verification and review side by side', { timeout: 300000 }, () => {
 
   it('hands the repair a review that answered before the check failed, and none that was cancelled', async () => {
     const home = await mkdtemp(join(tmpdir(), 'e2e-parallel-mixed-'))
-    const dir = join(home, '.local', 'state', 'local-agent-loop')
+    const dir = join(home, '.local', 'state', 'durably-factory')
     const repo = await slowCheckRepo(home)
     delete process.env.FAKE_FAIL_FIRST
     delete process.env.FAKE_REVIEW_SEQUENCE
@@ -3459,7 +3459,7 @@ describe('verification and review side by side', { timeout: 300000 }, () => {
 
   it('counts no round whose check has not completed: still running, or thrown', async () => {
     const home = await mkdtemp(join(tmpdir(), 'e2e-parallel-pending-'))
-    const dir = join(home, '.local', 'state', 'local-agent-loop')
+    const dir = join(home, '.local', 'state', 'durably-factory')
     const repo = await slowCheckRepo(home)
     delete process.env.FAKE_FAIL_FIRST
     delete process.env.FAKE_REVIEW_SEQUENCE
@@ -3565,7 +3565,7 @@ describe('verification and review side by side', { timeout: 300000 }, () => {
 
   it('stops as uncertain on a review a stopped worker left started, and sends it no more', async () => {
     const home = await mkdtemp(join(tmpdir(), 'e2e-parallel-lost-'))
-    const dir = join(home, '.local', 'state', 'local-agent-loop')
+    const dir = join(home, '.local', 'state', 'durably-factory')
     const repo = await slowCheckRepo(home)
     delete process.env.FAKE_FAIL_FIRST
     delete process.env.FAKE_REVIEW_SEQUENCE
@@ -3888,7 +3888,7 @@ describe(
         assert.equal(none.failure?.retryable, true)
         assert.ok(
           none.failure?.next.some((n) =>
-            n.includes(`demo retrigger --run ${empty.id}`),
+            n.includes(`factory retrigger --run ${empty.id}`),
           ),
         )
         assert.match(
@@ -3965,7 +3965,7 @@ describe('the test probe', { timeout: 300000 }, () => {
 
   it('hands both reviewers what failed on the base, what passed on it too and what could not run, and reports it', async () => {
     const home = await mkdtemp(join(tmpdir(), 'e2e-test-probe-'))
-    const dir = join(home, '.local', 'state', 'local-agent-loop')
+    const dir = join(home, '.local', 'state', 'durably-factory')
     const repo = await probeRepo(home)
     delete process.env.FAKE_FAIL_FIRST
     delete process.env.FAKE_REVIEW_SEQUENCE
@@ -4212,7 +4212,7 @@ describe('the review blocker threshold', { timeout: 300000 }, () => {
 
   it('passes a round whose low-scored product findings came back as non-blockers, keeps every other blocker, and reports the scores and the threshold', async () => {
     const home = await mkdtemp(join(tmpdir(), 'e2e-blocker-threshold-'))
-    const dir = join(home, '.local', 'state', 'local-agent-loop')
+    const dir = join(home, '.local', 'state', 'durably-factory')
     const repo = await plainRepo(home)
     delete process.env.FAKE_FAIL_FIRST
     delete process.env.FAKE_REVIEW_SEQUENCE

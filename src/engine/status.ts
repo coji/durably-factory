@@ -1,5 +1,5 @@
 /**
- * Why a run is where it is, and what a human does next. `demo status` and the
+ * Why a run is where it is, and what a human does next. `factory status` and the
  * web UI both read this one function, so the two describe a run the same way.
  * Only the CLI looks for a worker: it leaves out the advice to start one
  * while one runs, which the web UI always offers.
@@ -10,7 +10,7 @@ import type { AnyDurably, Run } from '@coji/durably'
 
 import {
   classifyRun,
-  DEMO,
+  FACTORY_COMMAND,
   retryText,
   uncertainCheckpoints,
   type FailureClassification,
@@ -107,7 +107,7 @@ export interface TaskRun {
 
 /**
  * A first run and every repair run below it: one piece of work, however
- * many runs it took. `demo status` and the web UI's list both read tasks
+ * many runs it took. `factory status` and the web UI's list both read tasks
  * from `groupTasks`, so they agree on the task, its run and its place.
  */
 export interface Task {
@@ -148,7 +148,7 @@ const OPEN_KINDS: readonly DiagnosisKind[] = [
  * Whether a person can archive a run of this diagnosis: only a stop, which
  * `diagnose` gives only to a terminal run (failed, cancelled, or completed
  * without an approved delivery). A run that finished approved needs no one,
- * and an open one is decided or worked instead. `demo archive`, `status`,
+ * and an open one is decided or worked instead. `factory archive`, `status`,
  * the web UI and `groupTasks` all ask this one function.
  */
 export function archivable(kind: DiagnosisKind): boolean {
@@ -272,7 +272,7 @@ export function groupTasks(runs: TaskRunInput[]): Task[] {
 
 /**
  * A repository run's worktree as it is now on disk (ADR-0028). An approved
- * delivery, an archive or `demo prune --apply` removes it; the spec, logs,
+ * delivery, an archive or `factory prune --apply` removes it; the spec, logs,
  * checkpoints, candidate diffs and delivery record stay.
  */
 export interface WorktreeState {
@@ -343,7 +343,7 @@ export interface Diagnosis {
   /** Set only for a decided run: the decision its approval wait recorded. */
   decision?: string
   /**
-   * How to remove a finished repo run's worktree: `demo prune --apply` for
+   * How to remove a finished repo run's worktree: `factory prune --apply` for
    * a delivered or archived run, otherwise a non-forcing `git worktree
    * remove` a worktree with changes refuses.
    */
@@ -356,7 +356,7 @@ export interface Diagnosis {
  * The cleanup offered for a worktree its delivered or archived run should
  * already have removed: forced, with its registration pruned (ADR-0028).
  */
-export const PRUNE_APPLY = `${DEMO} prune --apply`
+export const PRUNE_APPLY = `${FACTORY_COMMAND} prune --apply`
 
 /** Quote for a POSIX shell, so a printed command pastes safely. */
 export function shellQuote(value: string): string {
@@ -420,7 +420,7 @@ export async function diagnoseRun(
   now: number,
   known?: { failure: FailureClassification | null },
   worker?: WorkerSeen,
-  /** The run has an archive marker (`demo archive`). */
+  /** The run has an archive marker (`factory archive`). */
   archived = false,
 ): Promise<{ diagnosis: Diagnosis; uncertainCall: boolean }> {
   let uncertainCall = false
@@ -440,15 +440,15 @@ export async function diagnoseRun(
     // there: a subject run has none, and a run that failed before setup
     // finished has no record to trust. One the run should already have
     // removed, after its delivery or when it was archived, goes the way
-    // `demo prune --apply` removes it: forced, and its registration pruned.
+    // `factory prune --apply` removes it: forced, and its registration pruned.
     const cleanup =
       terminal && target?.repoPath && worktree?.present
         ? deliveredRun(run) || archived
           ? PRUNE_APPLY
           : `git -C ${shellQuote(target.repoPath)} worktree remove ${shellQuote(worktree.path)}`
         : null
-    const show = `${DEMO} status --run ${run.id}`
-    const startCmd = `${DEMO} worker`
+    const show = `${FACTORY_COMMAND} status --run ${run.id}`
+    const startCmd = `${FACTORY_COMMAND} worker`
     // Offered unless a worker is known to run; the words stay those the
     // web UI, which does not look for a worker, prints too.
     const startWorker = worker?.running
@@ -529,9 +529,9 @@ export async function diagnoseRun(
             kind: 'approval',
             reason: `waiting for human approval of candidate ${candidateId}`,
             next: [
-              `${DEMO} report --run ${run.id}  # read the reviews first`,
-              `${DEMO} approve --run ${run.id} --wait ${wait.id}`,
-              `${DEMO} reject --run ${run.id} --wait ${wait.id}`,
+              `${FACTORY_COMMAND} report --run ${run.id}  # read the reviews first`,
+              `${FACTORY_COMMAND} approve --run ${run.id} --wait ${wait.id}`,
+              `${FACTORY_COMMAND} reject --run ${run.id} --wait ${wait.id}`,
             ],
             cleanup,
             worktree,
@@ -553,10 +553,10 @@ export async function diagnoseRun(
             kind: 'spec-approval',
             reason: `the spec reviewers still block spec ${version} after round ${typeof spec.round === 'number' ? spec.round : 'unknown'}; waiting for a human decision on it`,
             next: [
-              `${DEMO} report --run ${run.id}  # read the spec reviews first`,
-              `${DEMO} approve --run ${run.id} --wait ${wait.id}  # go on with the spec as it is`,
-              `${DEMO} spec-revise --run ${run.id} --notes-file <file>  # fix it once more with your notes`,
-              `${DEMO} reject --run ${run.id} --wait ${wait.id}  # stop before any implementation`,
+              `${FACTORY_COMMAND} report --run ${run.id}  # read the spec reviews first`,
+              `${FACTORY_COMMAND} approve --run ${run.id} --wait ${wait.id}  # go on with the spec as it is`,
+              `${FACTORY_COMMAND} spec-revise --run ${run.id} --notes-file <file>  # fix it once more with your notes`,
+              `${FACTORY_COMMAND} reject --run ${run.id} --wait ${wait.id}  # stop before any implementation`,
             ],
             cleanup,
             worktree,
@@ -565,7 +565,7 @@ export async function diagnoseRun(
       return {
         kind: 'other-wait',
         reason: 'waiting on an input that is not a candidate approval',
-        next: [`${DEMO} waits --run ${run.id}`],
+        next: [`${FACTORY_COMMAND} waits --run ${run.id}`],
         cleanup,
         worktree,
       }

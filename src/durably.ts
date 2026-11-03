@@ -36,32 +36,11 @@ import {
  * database without arguments. Deliberately not overridable by users.
  */
 export function defaultStateRoot(): string {
-  return join(homedir(), '.local', 'state', 'local-agent-loop')
+  return join(homedir(), '.local', 'state', 'durably-factory')
 }
 
 export function dbPath(stateRoot: string = defaultStateRoot()): string {
-  return join(stateRoot, 'local-agent-loop.db')
-}
-
-/** Where versions before the fixed state root kept the database. */
-export function legacyDbPath(): string {
-  return join(
-    dirname(fileURLToPath(import.meta.url)),
-    '..',
-    'local-agent-loop.db',
-  )
-}
-
-/**
- * A one-line warning when the checkout still has a database from before the
- * fixed state root. Runs in it are not read, and are not migrated.
- */
-export function legacyDbWarning(
-  legacy: string = legacyDbPath(),
-  current: string = dbPath(),
-): string | null {
-  if (!existsSync(legacy)) return null
-  return `warning: ${legacy} is from an older version and is no longer read; the database is now ${current}. Finish or discard runs in the old one with the older version (see README "Upgrading").`
+  return join(stateRoot, 'durably-factory.db')
 }
 
 /** Who holds a state root's worker lock, as that worker recorded it. */
@@ -228,7 +207,7 @@ function build(options: AgentDurablyOptions) {
   const database = new Database(dbPath(stateRoot))
   // The documented workflow is two processes: a polling worker in one
   // terminal and the CLI in another. Under the default rollback journal a
-  // writer locks the whole database, so `demo approve` and `demo report`
+  // writer locks the whole database, so `factory approve` and `factory report`
   // contend with the worker's 500ms poll and eventually die on SQLITE_BUSY.
   database.pragma('journal_mode = WAL')
   return withDatabase(database, stateRoot, options.maxConcurrentRuns)

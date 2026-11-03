@@ -27,7 +27,6 @@ import {
   createAgentDurably,
   dbPath,
   LEASE_MS,
-  legacyDbWarning,
   probeWorkerLock,
   sweepRunScratch,
   type AgentLoopDurably,
@@ -49,7 +48,7 @@ import {
   trendRunIds,
   trendToMarkdown,
 } from './engine/compare.js'
-import { DEMO } from './engine/failure-reasons.js'
+import { FACTORY_COMMAND } from './engine/failure-reasons.js'
 import { formatCost, formatDuration } from './engine/format.js'
 import {
   reportToJson,
@@ -164,7 +163,7 @@ function workerStatus() {
     pid: running ? (holder?.pid ?? null) : null,
     startedAt: running ? (holder?.startedAt ?? null) : null,
     /** The command that starts one; null unless none is known to run. */
-    start: running === false ? `${DEMO} worker` : null,
+    start: running === false ? `${FACTORY_COMMAND} worker` : null,
     /** Why `running` is unknown; null otherwise. */
     unknownReason,
   }
@@ -350,10 +349,10 @@ async function waitCommand(
   if (stop.exit !== WAIT_EXIT.noWorker || !worker) worker = workerStatus()
   const diagnosis = await diagnose(durably, run, now, worker)
   const report = await buildReport(durably, runId)
-  const again = `${DEMO} wait --run ${runId}`
+  const again = `${FACTORY_COMMAND} wait --run ${runId}`
   const next =
     stop.exit === WAIT_EXIT.noWorker
-      ? [`${DEMO} worker`, again]
+      ? [`${FACTORY_COMMAND} worker`, again]
       : stop.exit === WAIT_EXIT.timeout
         ? [...diagnosis.next, again]
         : diagnosis.next
@@ -526,8 +525,8 @@ function flushed(stream: NodeJS.WriteStream): Promise<void> {
 }
 
 /** Environment variables that steer the auto-started worker. */
-const NO_AUTO_WORKER_ENV = 'LOCAL_AGENT_LOOP_NO_AUTO_WORKER'
-const IDLE_MS_ENV = 'LOCAL_AGENT_LOOP_IDLE_MS'
+const NO_AUTO_WORKER_ENV = 'DURABLY_FACTORY_NO_AUTO_WORKER'
+const IDLE_MS_ENV = 'DURABLY_FACTORY_IDLE_MS'
 
 /** `a` without `--no-auto-worker`, for commands that refuse unknown flags. */
 function withoutAutoWorkerFlag(
@@ -538,7 +537,7 @@ function withoutAutoWorkerFlag(
   return rest
 }
 
-/** The auto-started worker's idle period: LOCAL_AGENT_LOOP_IDLE_MS or 30000. */
+/** The auto-started worker's idle period: DURABLY_FACTORY_IDLE_MS or 30000. */
 function idleMsFromEnv(): number {
   const raw = process.env[IDLE_MS_ENV]
   if (raw === undefined) return DEFAULT_IDLE_MS
@@ -577,14 +576,14 @@ interface AutoStartedWorker {
 async function startWorkerIfNeeded(
   durably: AgentLoopDurably,
   a: Record<string, string>,
-  /** The idle period to give the worker; LOCAL_AGENT_LOOP_IDLE_MS or 30000 by default. */
+  /** The idle period to give the worker; DURABLY_FACTORY_IDLE_MS or 30000 by default. */
   idleMsOverride?: number,
 ): Promise<AutoStartedWorker | null> {
   if (a['no-auto-worker'] === 'true' || process.env[NO_AUTO_WORKER_ENV] === '1')
     return null
   const warn = (why: string): null => {
     console.error(
-      `warning: no worker started: ${why}. Start one with ${DEMO} worker`,
+      `warning: no worker started: ${why}. Start one with ${FACTORY_COMMAND} worker`,
     )
     return null
   }
@@ -621,7 +620,7 @@ async function startWorkerIfNeeded(
   }
   try {
     // The same Node and loader flags this command runs with (tsx under
-    // `pnpm demo`); the bare `--import tsx` resolves from the package root.
+    // `pnpm factory`); the bare `--import tsx` resolves from the package root.
     const child = spawn(
       process.execPath,
       [
@@ -656,9 +655,9 @@ async function startWorkerIfNeeded(
 }
 
 function usage(): void {
-  console.log(`local-agent-loop — Durably local agent demo
+  console.log(`durably-factory — local agent factory
 Commands (run from the repository root):
-  pnpm demo worker [--exit-when-idle [--idle-ms <ms>]]
+  ${FACTORY_COMMAND} worker [--exit-when-idle [--idle-ms <ms>]]
                                             start worker (long-running; kill -9 to test resume)
                                             one per state root: a second one is refused.
                                             --exit-when-idle stops it once it has had no work
@@ -666,7 +665,7 @@ Commands (run from the repository root):
                                             no pending or leased run and no waiting run whose
                                             wait was decided. SIGTERM, SIGINT and the idle stop
                                             exit 0 and print [shutdown] reason=<SIGTERM|SIGINT|idle>
-  pnpm demo trigger --provider codex|claude|fake [--context reuse|fresh] [--max-iterations 2] [--model X] [--effort Y]
+  ${FACTORY_COMMAND} trigger --provider codex|claude|fake [--context reuse|fresh] [--max-iterations 2] [--model X] [--effort Y]
       --max-iterations: implementation and repair stages per run, 1 to 5 (default 2)
       bundled sample (default): no further flags
       real repository:  --repo <path> (--issue 234 | --task "..." | --task-file <file>)
@@ -674,69 +673,69 @@ Commands (run from the repository root):
                         [--context-file <file>] [--config <file>]
                         [--check "pnpm validate"] [--setup "pnpm install"] [--base <ref>]
                         [--publish] [--approve auto|manual]
-  pnpm demo repair --run <id> [--findings-file <file>] [--dispositions-file <file>] [--scope-file <file>]
+  ${FACTORY_COMMAND} repair --run <id> [--findings-file <file>] [--dispositions-file <file>] [--scope-file <file>]
                   [--context-file <file>]
                   [--max-iterations <n>]    new run that repairs the last candidate of an approved,
                                             delivered repository run from outside findings, or of
                                             one that stopped verification-failed or
                                             review-cap-reached, or failed review-incomplete
                                             after its check passed (see below)
-  pnpm demo status [--format text|json]     tasks that wait on a person, stopped unresolved or
+  ${FACTORY_COMMAND} status [--format text|json]     tasks that wait on a person, stopped unresolved or
                                             run now: a first run and its repair runs are one task,
                                             shown by its representative run's reason and next command
-  pnpm demo status --run <id>
-  pnpm demo wait --run <id> [--timeout <ms>] [--worker-timeout <ms> | --no-worker-timeout] [--format json]
+  ${FACTORY_COMMAND} status --run <id>
+  ${FACTORY_COMMAND} wait --run <id> [--timeout <ms>] [--worker-timeout <ms> | --no-worker-timeout] [--format json]
                                             until the run ends or waits on a person; exit 0 approved
                                             and delivered, 2 waits on a person, 3 failed or not
                                             delivered, 4 cancelled, 5 --timeout, 6 no worker for
                                             --worker-timeout (default 10000), 1 command error
-  pnpm demo waits --run <id>
-  pnpm demo approve --run <id> --wait <waitId>
-  pnpm demo reject --run <id> --wait <waitId>
+  ${FACTORY_COMMAND} waits --run <id>
+  ${FACTORY_COMMAND} approve --run <id> --wait <waitId>
+  ${FACTORY_COMMAND} reject --run <id> --wait <waitId>
                                             also a spec the spec reviewers still block after
                                             the last round: approve goes on with it as it is,
                                             reject stops the run before any implementation
-  pnpm demo spec-revise --run <id> --notes-file <file>
+  ${FACTORY_COMMAND} spec-revise --run <id> --notes-file <file>
                                             fix the blocked spec once more with the notes,
                                             then review it once more
-  pnpm demo recheck --run <id>              check and review the same candidate without implementation or findings
-  pnpm demo retrigger --run <id>            new run with the stored input (only for stops safe to repeat)
-  pnpm demo retrigger --run <id> --reload-config
+  ${FACTORY_COMMAND} recheck --run <id>              check and review the same candidate without implementation or findings
+  ${FACTORY_COMMAND} retrigger --run <id>            new run with the stored input (only for stops safe to repeat)
+  ${FACTORY_COMMAND} retrigger --run <id> --reload-config
                                             the stored task and inputs, settings read again from
                                             the run's factory.json (once per version of the file)
-  pnpm demo archive --run <id> [--delete-branch]
+  ${FACTORY_COMMAND} archive --run <id> [--delete-branch]
                                             take a stopped run out of the runs that need a person;
                                             the run itself is not changed. A repository run's
                                             worktree and review snapshots are removed (again, when
                                             already archived); --delete-branch also deletes its
                                             recorded factory branch and squashed branch
-  pnpm demo archive --series <id> [--delete-branch]
+  ${FACTORY_COMMAND} archive --series <id> [--delete-branch]
                                             the same for every stopped run of the task the run
                                             belongs to (any of its runs' IDs; status prints the
                                             first run's); its other runs are left as they are. A
                                             run that cannot be archived is reported and the rest
                                             are archived anyway. Repeat --series for several
                                             tasks; each is archived even when another fails
-  pnpm demo unarchive --run <id>            put an archived run back where it was; a removed
+  ${FACTORY_COMMAND} unarchive --run <id>            put an archived run back where it was; a removed
                                             worktree is not made again. Repeat --run for several
-  pnpm demo prune [--apply] [--delete-branches]
+  ${FACTORY_COMMAND} prune [--apply] [--delete-branches]
                                             worktrees of repository runs that were approved and
                                             delivered, or archived, with their sizes and total;
                                             nothing is removed without --apply. --delete-branches
                                             also lists and deletes the recorded branches of
                                             archived runs, never of delivered ones
-  pnpm demo report --run <id> [--format json|md] [--out <file>]
-  pnpm demo compare --runs <id,id,...> [--format json|md] [--out <file>]
-  pnpm demo compare --trend [--days 30] [--include-fake] [--format json|md] [--out <file>]
+  ${FACTORY_COMMAND} report --run <id> [--format json|md] [--out <file>]
+  ${FACTORY_COMMAND} compare --runs <id,id,...> [--format json|md] [--out <file>]
+  ${FACTORY_COMMAND} compare --trend [--days 30] [--include-fake] [--format json|md] [--out <file>]
                                             tasks whose newest run finished in the last --days days,
                                             by that week (Monday, local time) and the first run's
                                             code model/effort: first-pass and final approval, and
                                             each task's time, cost and repair runs over all its
                                             runs; tasks started on the fake provider left out
-  pnpm demo ui [--port 4380]                web UI on 127.0.0.1: runs, reports, comparison, and the
+  ${FACTORY_COMMAND} ui [--port 4380]                web UI on 127.0.0.1: runs, reports, comparison, and the
                                             approve, reject, spec-revise, retrigger and archive
                                             above, without --reload-config
-  pnpm demo seed [--home <dir>] [--latency 20000-90000]
+  ${FACTORY_COMMAND} seed [--home <dir>] [--latency 20000-90000]
                                             demo data on the fake provider in a throwaway HOME
 Repository config: factory.json at the repository root, or --config <file>:
   { "name": "<name>", "check": ["pnpm", "validate"], "setup": ["pnpm", "install"],
@@ -926,9 +925,6 @@ if (!cmd || cmd === '--help' || cmd === '-h') {
   usage()
   process.exit(0)
 }
-
-const legacyWarning = legacyDbWarning()
-if (legacyWarning) console.error(legacyWarning)
 
 if (cmd === 'worker') {
   const a = args()
@@ -1155,7 +1151,7 @@ if (cmd === 'worker') {
     ).length
     if (stops > 0)
       lines.push(
-        `  stops:   ${stops} stopped run(s) not archived; ${DEMO} archive --series ${task.id}  # archive them all once you are done with them`,
+        `  stops:   ${stops} stopped run(s) not archived; ${FACTORY_COMMAND} archive --series ${task.id}  # archive them all once you are done with them`,
       )
     if (task.runs.length > 1)
       lines.push(
@@ -1198,7 +1194,7 @@ if (cmd === 'worker') {
   if (shelved.length > 0) {
     out.push('', `${shelved.length} stopped run(s) archived:`)
     for (const r of shelved)
-      out.push(`  ${r.id}  ${DEMO} unarchive --run ${r.id}`)
+      out.push(`  ${r.id}  ${FACTORY_COMMAND} unarchive --run ${r.id}`)
   }
   out.push('', workerLine(worker), `database: ${dbPath()}`)
   console.log(
@@ -1433,7 +1429,7 @@ if (cmd === 'worker') {
       for (const r of done.archived) {
         console.log(
           r.changed
-            ? `${r.runId}: archived. Undo with ${DEMO} unarchive --run ${r.runId}`
+            ? `${r.runId}: archived. Undo with ${FACTORY_COMMAND} unarchive --run ${r.runId}`
             : `${r.runId}: already archived; its state did not change`,
         )
         if (r.worktreeRemoved)
@@ -1458,7 +1454,7 @@ if (cmd === 'worker') {
       // looked at first.
       if (done.archived.some((r) => r.retryable))
         console.error(
-          `run ${DEMO} archive --series ${seriesId}${a['delete-branch'] === 'true' ? ' --delete-branch' : ''} again to retry what git refused`,
+          `run ${FACTORY_COMMAND} archive --series ${seriesId}${a['delete-branch'] === 'true' ? ' --delete-branch' : ''} again to retry what git refused`,
         )
       if (done.errors.length > 0)
         failed.push(
@@ -1484,7 +1480,7 @@ if (cmd === 'worker') {
     })
     console.log(
       done.changed
-        ? `archived ${runId}; status and the web UI no longer list it as needing a person. Undo with ${DEMO} unarchive --run ${runId}`
+        ? `archived ${runId}; status and the web UI no longer list it as needing a person. Undo with ${FACTORY_COMMAND} unarchive --run ${runId}`
         : `${runId} is already archived; its state did not change`,
     )
     if (done.worktreeRemoved)
@@ -1496,7 +1492,7 @@ if (cmd === 'worker') {
     printWarnings(done.warnings)
     if (done.retryable)
       console.error(
-        `run ${DEMO} archive --run ${runId}${a['delete-branch'] === 'true' ? ' --delete-branch' : ''} again to retry what git refused`,
+        `run ${FACTORY_COMMAND} archive --run ${runId}${a['delete-branch'] === 'true' ? ' --delete-branch' : ''} again to retry what git refused`,
       )
   } finally {
     await durably.db.destroy()
@@ -1539,7 +1535,7 @@ if (cmd === 'worker') {
     }
     if (!apply) {
       out.push(
-        `dry run: nothing was removed. Run ${DEMO} prune --apply${deleteBranches ? ' --delete-branches' : ''} to remove ${deleteBranches ? 'them' : 'these worktrees; branches are kept'}.`,
+        `dry run: nothing was removed. Run ${FACTORY_COMMAND} prune --apply${deleteBranches ? ' --delete-branches' : ''} to remove ${deleteBranches ? 'them' : 'these worktrees; branches are kept'}.`,
       )
       console.log(out.join('\n'))
     } else {

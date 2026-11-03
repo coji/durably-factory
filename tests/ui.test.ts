@@ -1,5 +1,5 @@
 /**
- * The web UI (`demo ui`): loopback only, showing the same reasons, commands
+ * The web UI (`factory ui`): loopback only, showing the same reasons, commands
  * and numbers as `status`, `report` and `compare`, reads that write nothing,
  * and actions only through the CLI's functions behind the page token.
  *
@@ -2408,9 +2408,9 @@ describe('diagnosis wording on the page', () => {
 
   it('shows a command without its English comment, and verdicts in Japanese', () => {
     for (const line of [
-      'pnpm demo worker  # if none is running',
-      'pnpm demo report --run r1  # read the reviews first',
-      'pnpm demo status --run r1',
+      'pnpm factory worker  # if none is running',
+      'pnpm factory report --run r1  # read the reviews first',
+      'pnpm factory status --run r1',
     ]) {
       const shown = commandText(line)
       assert.doesNotMatch(shown, / # /, shown)
@@ -2789,12 +2789,12 @@ describe('diagnosis wording on the page', () => {
         noteSaidByReason(note)
       )
         continue
-      const ja = commandNote(`pnpm demo x  # ${note}`)
+      const ja = commandNote(`pnpm factory x  # ${note}`)
       assert.ok(ja, note)
       // Only what the user types may stay in English.
       assert.equal(plain(ja.replace(/trigger/g, '')), null, ja)
     }
-    assert.equal(commandNote('pnpm demo status --run r1'), null)
+    assert.equal(commandNote('pnpm factory status --run r1'), null)
   })
 
   it('shows a failure detail as a label and its value', () => {
@@ -2951,7 +2951,7 @@ async function api<T>(port: number, path: string): Promise<T> {
   return JSON.parse(res.body) as T
 }
 
-/** Start `demo ui` and resolve with the URL it prints. */
+/** Start `factory ui` and resolve with the URL it prints. */
 async function startUi(
   home: string,
   port: number,
@@ -2971,19 +2971,19 @@ async function startUi(
       if (m?.[1]) resolve(m[1])
     })
     child.on('exit', (code) =>
-      reject(new Error(`demo ui exited (${code}): ${err}`)),
+      reject(new Error(`factory ui exited (${code}): ${err}`)),
     )
   })
   return { child, url, output: () => out + err }
 }
 
-async function demo(home: string, args: string[]) {
+async function runCli(home: string, args: string[]) {
   return runChild(process.execPath, ['--import', 'tsx', cli, ...args], {
     cwd: packageRoot,
     timeoutMs: 60000,
     maxOutputChars: 10_000_000,
     // No auto-started worker: the test drives the runs itself.
-    env: { HOME: home, LOCAL_AGENT_LOOP_NO_AUTO_WORKER: '1' },
+    env: { HOME: home, DURABLY_FACTORY_NO_AUTO_WORKER: '1' },
   })
 }
 
@@ -3015,21 +3015,21 @@ function snapshot(path: string): string {
   }
 }
 
-describe('demo ui --port', { timeout: 60000 }, () => {
+describe('factory ui --port', { timeout: 60000 }, () => {
   it('rejects a port that is not an integer from 1 to 65535', async () => {
     const home = await mkdtemp(join(tmpdir(), 'ui-port-'))
     for (const port of ['0', '65536', 'abc', '80.5', '-1']) {
-      const res = await demo(home, ['ui', '--port', port])
+      const res = await runCli(home, ['ui', '--port', port])
       assert.notEqual(res.code, 0, port)
       assert.match(res.stderr, /--port must be an integer between 1 and 65535/)
     }
-    const bare = await demo(home, ['ui', '--port'])
+    const bare = await runCli(home, ['ui', '--port'])
     assert.notEqual(bare.code, 0)
     assert.equal(existsSync(join(home, '.local')), false)
   })
 })
 
-describe('demo ui shutdown', { timeout: 60000 }, () => {
+describe('factory ui shutdown', { timeout: 60000 }, () => {
   it('closes the server with a live-reload socket open, without the forced exit', async () => {
     const port = await freePort()
     const ui = await startUiServer({ port })
@@ -3098,7 +3098,7 @@ describe('demo ui shutdown', { timeout: 60000 }, () => {
 describe('web UI over fake runs', { timeout: 300000 }, () => {
   it('shows each run in its place with the CLI reasons, commands and numbers, and writes nothing', async () => {
     const home = await mkdtemp(join(tmpdir(), 'ui-'))
-    const stateRoot = join(home, '.local', 'state', 'local-agent-loop')
+    const stateRoot = join(home, '.local', 'state', 'durably-factory')
     const port = await freePort()
     const ui = await startUi(home, port)
     try {
@@ -3348,7 +3348,7 @@ describe('web UI over fake runs', { timeout: 300000 }, () => {
       // Nothing that would send the lost prompt again.
       assert.doesNotMatch(
         row('uncertain').diagnosis.next.join('\n'),
-        /retrigger|trigger|demo worker/,
+        /retrigger|trigger|factory worker/,
       )
       // A healthy leased run is running; it has provisional times and no
       // settled lead time.
@@ -3373,7 +3373,7 @@ describe('web UI over fake runs', { timeout: 300000 }, () => {
         'expired',
         'decided',
       ]) {
-        const res = await demo(home, ['status', '--run', ids[name] ?? ''])
+        const res = await runCli(home, ['status', '--run', ids[name] ?? ''])
         assert.equal(res.code, 0, res.stderr)
         const shown = JSON.parse(res.stdout) as {
           diagnosis: { next: string[]; reason: string }
@@ -3396,7 +3396,7 @@ describe('web UI over fake runs', { timeout: 300000 }, () => {
           port,
           `/api/runs/${ids[name]}`,
         )
-        const res = await demo(home, [
+        const res = await runCli(home, [
           'report',
           '--run',
           ids[name] ?? '',
@@ -3457,7 +3457,7 @@ describe('web UI over fake runs', { timeout: 300000 }, () => {
       assert.equal(waiting.report.reviews.length, 2)
       assert.ok(waiting.report.reviews.every((r) => r.notes.length > 0))
       assert.ok(waiting.report.candidate?.id)
-      const md = await demo(home, ['report', '--run', ids['approval'] ?? ''])
+      const md = await runCli(home, ['report', '--run', ids['approval'] ?? ''])
       assert.match(md.stdout, /## Reviews\n\n- (correctness|edge-cases): pass/)
       // A fake run records no usage: unknown, never zero.
       const approvedDetail = await api<RunDetailResponse>(
@@ -3473,7 +3473,7 @@ describe('web UI over fake runs', { timeout: 300000 }, () => {
         .filter((r) => ['completed', 'failed', 'cancelled'].includes(r.status))
         .map((r) => r.id)
       assert.deepEqual(compared.runIds, finished)
-      const res = await demo(home, [
+      const res = await runCli(home, [
         'compare',
         '--runs',
         compared.runIds.join(','),
@@ -3485,7 +3485,7 @@ describe('web UI over fake runs', { timeout: 300000 }, () => {
 
       // The tasks, their runs and their place are what `status` prints.
       const tasksNow = await api<RunsResponse>(port, '/api/runs')
-      const statusCli = await demo(home, ['status', '--format', 'json'])
+      const statusCli = await runCli(home, ['status', '--format', 'json'])
       assert.equal(statusCli.code, 0, statusCli.stderr)
       assert.deepEqual(
         tasksNow.tasks,
@@ -3509,7 +3509,7 @@ describe('web UI over fake runs', { timeout: 300000 }, () => {
         .filter((t) => finished.includes(t.runs.at(-1)?.id ?? ''))
         .map((t) => t.id)
       const trend = await api<TrendResponse>(port, '/api/trend')
-      const trendCli = await demo(home, [
+      const trendCli = await runCli(home, [
         'compare',
         '--trend',
         '--format',
@@ -3522,7 +3522,7 @@ describe('web UI over fake runs', { timeout: 300000 }, () => {
       assert.deepEqual(trendOnly, JSON.parse(trendCli.stdout))
       assert.equal(trend.fakeExcluded, finishedTasks.length)
       assert.deepEqual(trend.groups, [])
-      const withFake = await demo(home, [
+      const withFake = await runCli(home, [
         'compare',
         '--trend',
         '--include-fake',
@@ -3598,7 +3598,7 @@ describe('web UI over fake runs', { timeout: 300000 }, () => {
   })
 })
 
-/** A repair run's input, as `demo repair` stores it, for a given parent. */
+/** A repair run's input, as `factory repair` stores it, for a given parent. */
 function repairChildInput(home: string, parentId: string) {
   const profile = (role: string) => ({
     id: `fake:fake-model:low:${role}`,
@@ -3648,7 +3648,7 @@ function repairChildInput(home: string, parentId: string) {
 describe('repositories on the page', { timeout: 120000 }, () => {
   it('names each run by its repository, and narrows the list, the counts and the summary to one', async () => {
     const home = await mkdtemp(join(tmpdir(), 'ui-repos-'))
-    const stateRoot = join(home, '.local', 'state', 'local-agent-loop')
+    const stateRoot = join(home, '.local', 'state', 'durably-factory')
     const port = await freePort()
     const ui = await startUi(home, port)
     try {
@@ -3803,7 +3803,7 @@ describe('repair runs on the page', { timeout: 120000 }, () => {
   it('lists and compares runs without a child query per run, and still shows a child added after the parent finished', async () => {
     const home = await mkdtemp(join(tmpdir(), 'ui-repair-list-'))
     const durably = createAgentDurably({
-      stateRoot: join(home, '.local', 'state', 'local-agent-loop'),
+      stateRoot: join(home, '.local', 'state', 'durably-factory'),
     })
     await durably.migrate()
     try {
@@ -3882,7 +3882,7 @@ describe('repair runs on the page', { timeout: 120000 }, () => {
 
   it('links a parent and its repair runs both ways, even after the parent finished', async () => {
     const home = await mkdtemp(join(tmpdir(), 'ui-repair-'))
-    const stateRoot = join(home, '.local', 'state', 'local-agent-loop')
+    const stateRoot = join(home, '.local', 'state', 'durably-factory')
     const port = await freePort()
     const ui = await startUi(home, port)
     try {
@@ -4058,7 +4058,7 @@ describe('the design page', () => {
       assert.equal(html.match(/scheme-dark/g)?.length, specimens)
       // A confirmed action shown asking: its question and its CLI line.
       assert.match(shown, /再実行しますか/)
-      assert.match(html, /pnpm demo retrigger --run/)
+      assert.match(html, /pnpm factory retrigger --run/)
       // Two timelines per pane, each a treegrid.
       assert.equal(html.match(/role="treegrid"/g)?.length, 4)
       // Every inspector names its log heading with an ID of its own.
@@ -4271,7 +4271,7 @@ describe('numbers on the screens', () => {
         { runId: 'a', name: 'task a' },
         { runId: 'b', name: 'task b' },
       ]),
-      'pnpm demo archive --series a --series b',
+      'pnpm factory archive --series a --series b',
     )
     const text = htmlText(
       renderToStaticMarkup(
@@ -4706,7 +4706,7 @@ describe('numbers on the screens', () => {
   it('offers the way back beside an archived run that does not show its task', () => {
     const first = '01K6D2Q7XB3M9RKT4WFIRST0'
     const repair = '01K6D2Q7XB3M9RKT4WREPAIR'
-    const back = `pnpm demo unarchive --run ${first}`
+    const back = `pnpm factory unarchive --run ${first}`
     const runs = [
       row({
         id: first,
@@ -4775,7 +4775,7 @@ describe('numbers on the screens', () => {
     assert.ok(list.includes(LIST.archived))
     assert.ok(list.includes(back))
     assert.ok(list.includes(ACTION.sameCommand))
-    assert.doesNotMatch(list, / demo archive --run /)
+    assert.doesNotMatch(list, / factory archive --run /)
     assert.match(
       html,
       new RegExp(`class="[^"]*bg-transparent[^"]*"[^>]*>${ACTION.unarchive}<`),
@@ -5181,7 +5181,7 @@ describe('numbers on the screens', () => {
       })?.next ?? []
     const repair = next.find((l) => l.includes(' repair --run r1'))
     assert.ok(repair)
-    assert.match(commandText(repair), / demo repair --run r1$/)
+    assert.match(commandText(repair), / factory repair --run r1$/)
     assert.match(commandNote(repair) ?? '', /最後のレビューの指摘を渡します/)
   })
 })
@@ -5339,7 +5339,7 @@ describe('reviews beside verification on the page', () => {
 describe('web UI actions', { timeout: 300000 }, () => {
   it('acts through the CLI functions, and only for a POST with the page token and this origin', async () => {
     const home = await mkdtemp(join(tmpdir(), 'ui-act-'))
-    const stateRoot = join(home, '.local', 'state', 'local-agent-loop')
+    const stateRoot = join(home, '.local', 'state', 'durably-factory')
     const port = await freePort()
     const ui = await startUi(home, port)
     const origin = `http://127.0.0.1:${port}`
@@ -5503,21 +5503,24 @@ describe('web UI actions', { timeout: 300000 }, () => {
       const row = list.runs.find((r) => r.id === cancelled)
       assert.equal(row?.archived, true)
       assert.equal(row?.diagnosis.kind, 'stopped')
-      assert.match(row?.archiveCommand ?? '', / demo unarchive --run /)
+      assert.match(row?.archiveCommand ?? '', / factory unarchive --run /)
       // `status` reads the same marker and the same grouping.
-      const status = await demo(home, ['status', '--format', 'json'])
+      const status = await runCli(home, ['status', '--format', 'json'])
       assert.equal(status.code, 0, status.stderr)
       const cliTasks = (JSON.parse(status.stdout) as { tasks: Task[] }).tasks
       assert.deepEqual(
         cliTasks.map((t) => [t.id, t.attention]),
         list.tasks.map((t) => [t.id, t.attention]),
       )
-      const text = await demo(home, ['status'])
+      const text = await runCli(home, ['status'])
       assert.doesNotMatch(
         text.stdout.split('stopped run(s) archived')[0] ?? '',
         new RegExp(cancelled),
       )
-      assert.match(text.stdout, new RegExp(`demo unarchive --run ${cancelled}`))
+      assert.match(
+        text.stdout,
+        new RegExp(`factory unarchive --run ${cancelled}`),
+      )
       // Unarchived, it is where it was, with the same diagnosis.
       assert.equal((await post(`/api/runs/${cancelled}/unarchive`)).status, 200)
       assert.equal(archived(cancelled), false)
@@ -5592,7 +5595,7 @@ describe('web UI actions', { timeout: 300000 }, () => {
         disposition: string
       }
       assert.equal(next.disposition, 'created')
-      const cli = await demo(home, ['retrigger', '--run', cancelled])
+      const cli = await runCli(home, ['retrigger', '--run', cancelled])
       assert.equal(cli.code, 0, cli.stderr)
       assert.match(
         cli.stdout,
@@ -5644,7 +5647,7 @@ describe('web UI actions', { timeout: 300000 }, () => {
 describe('worktree cleanup on the page', { timeout: 300000 }, () => {
   it('shows an archived repository run as cleaned up, even from a cached detail, says why when git refuses, and prunes its branches only when asked', async () => {
     const home = await mkdtemp(join(tmpdir(), 'ui-worktree-'))
-    const stateRoot = join(home, '.local', 'state', 'local-agent-loop')
+    const stateRoot = join(home, '.local', 'state', 'durably-factory')
     const git = async (cwd: string, args: string[]) => {
       const res = await runChild('git', args, { cwd, timeoutMs: 60000 })
       assert.equal(res.code, 0, res.stderr)
@@ -5716,7 +5719,7 @@ describe('worktree cleanup on the page', { timeout: 300000 }, () => {
       assert.equal(first.diagnosis.worktree?.present, true)
       assert.ok(!shown(first).includes(DETAIL.worktreeRemoved))
       // An unarchived stop is not pruned.
-      const none = await demo(home, ['prune', '--delete-branches'])
+      const none = await runCli(home, ['prune', '--delete-branches'])
       assert.equal(none.code, 0, none.stderr)
       assert.match(none.stdout, /^0 worktree\(s\)/)
       assert.match(none.stdout, /branches of 0 archived run\(s\)/)
@@ -5779,14 +5782,14 @@ describe('worktree cleanup on the page', { timeout: 300000 }, () => {
       const left = await detail()
       assert.equal(left.archived, true)
       assert.equal(left.report.worktree?.present, true)
-      assert.equal(left.diagnosis.cleanup, 'pnpm demo prune --apply')
+      assert.equal(left.diagnosis.cleanup, 'pnpm factory prune --apply')
       const leftText = shown(left)
       assert.ok(leftText.includes(DETAIL.worktreeLeft))
       assert.ok(leftText.includes(DETAIL.worktreeLeftNote))
       assert.ok(leftText.includes(COPY.cleanupPruneNote))
       assert.ok(!leftText.includes(DETAIL.worktreeRemoved))
       // `status` offers the same forced removal.
-      const leftStatus = await demo(home, ['status', '--run', id])
+      const leftStatus = await runCli(home, ['status', '--run', id])
       assert.equal(leftStatus.code, 0, leftStatus.stderr)
       assert.equal(
         (JSON.parse(leftStatus.stdout) as { diagnosis: Diagnosis }).diagnosis
@@ -5819,28 +5822,28 @@ describe('worktree cleanup on the page', { timeout: 300000 }, () => {
       assert.ok(text.includes(DETAIL.worktreeKept))
       assert.ok(!text.includes(workdir))
       // `status` and `report` say the same.
-      const status = await demo(home, ['status', '--run', id])
+      const status = await runCli(home, ['status', '--run', id])
       assert.equal(status.code, 0, status.stderr)
       assert.equal(
         (JSON.parse(status.stdout) as { diagnosis: Diagnosis }).diagnosis
           .worktree?.present,
         false,
       )
-      const report = await demo(home, ['report', '--run', id])
+      const report = await runCli(home, ['report', '--run', id])
       assert.match(report.stdout, /## Worktree\n\n- removed; /)
 
       // Branches go only with --delete-branches, and only after the dry
       // run lists them.
-      const kept = await demo(home, ['prune', '--apply'])
+      const kept = await runCli(home, ['prune', '--apply'])
       assert.equal(kept.code, 0, kept.stderr)
       assert.ok(await branchOf(repo, branch))
-      const dry = await demo(home, ['prune', '--delete-branches'])
+      const dry = await runCli(home, ['prune', '--delete-branches'])
       assert.equal(dry.code, 0, dry.stderr)
       assert.match(dry.stdout, /^0 worktree\(s\) .*, 0 bytes in total:/)
       assert.match(dry.stdout, new RegExp(`  ${id}  ${branch}\n`))
       assert.match(dry.stdout, /dry run: nothing was removed/)
       assert.ok(await branchOf(repo, branch))
-      const applied = await demo(home, [
+      const applied = await runCli(home, [
         'prune',
         '--delete-branches',
         '--apply',
@@ -6080,7 +6083,7 @@ describe('the log panel', () => {
 describe('agent logs over HTTP', { timeout: 300000 }, () => {
   it("reads a fake run's output while it is written, and only logs the run recorded", async () => {
     const home = await mkdtemp(join(tmpdir(), 'ui-logs-'))
-    const stateRoot = join(home, '.local', 'state', 'local-agent-loop')
+    const stateRoot = join(home, '.local', 'state', 'durably-factory')
     const port = await freePort()
     const ui = await startUi(home, port)
     process.env.FAKE_FAIL_FIRST = '0'

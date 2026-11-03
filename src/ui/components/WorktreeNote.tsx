@@ -44,7 +44,7 @@ export function WorktreeNote({
 
 /**
  * The command that removes a finished repository run's worktree: a plain
- * git removal, or `demo prune --apply` for one its delivered or archived
+ * git removal, or `factory prune --apply` for one its delivered or archived
  * run should already have removed.
  */
 export function CleanupCommand({ cleanup }: { cleanup: string | null }) {

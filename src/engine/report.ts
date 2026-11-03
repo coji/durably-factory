@@ -1065,7 +1065,7 @@ export interface LoopReport {
   delivery: ReportDelivery | null
   /**
    * A repository run's worktree as it is now: removed after an approved
-   * delivery, an archive or `demo prune --apply`, and then not a place to
+   * delivery, an archive or `factory prune --apply`, and then not a place to
    * work. Null for any other run.
    */
   worktree: WorktreeState | null
@@ -1450,7 +1450,7 @@ function repairsOf(visits: StageVisits[], repairRun: boolean): number {
 
 /**
  * A terminal completed run whose candidate was approved: `summary.success`,
- * which `demo status` and the list read from the run's report.
+ * which `factory status` and the list read from the run's report.
  */
 function isApprovedRun(status: string, output: unknown): boolean {
   const o = output as { approved?: boolean; conclusion?: string } | null

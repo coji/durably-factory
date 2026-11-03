@@ -27,7 +27,7 @@ export const REPAIR_OF_LABEL = 'repairOf'
 
 /**
  * The labels to trigger a run input with: a repair run names its parent.
- * Every path that triggers a repair run (`demo repair`, `demo retrigger` and
+ * Every path that triggers a repair run (`factory repair`, `factory retrigger` and
  * the seed) passes these, so the parent can find it.
  */
 export function repairLabels(input: unknown): Record<string, string> {

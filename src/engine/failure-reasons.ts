@@ -12,7 +12,7 @@ import { existsSync } from 'node:fs'
 import type { AnyDurably, Run, StepAttempt } from '@coji/durably'
 
 import { checkFailureKind, type CheckFailureKind } from './check-failure.js'
-import { DEMO } from './demo-command.js'
+import { FACTORY_COMMAND } from './cli-command.js'
 import {
   DETAIL_PREFIX,
   INTERRUPTED_CHECK,
@@ -72,15 +72,15 @@ function setupUntrackedPaths(error: string | null): string[] | null {
   }
 }
 
-// The demo CLI as it runs from anywhere in this repository.
-export { DEMO }
+// The factory CLI as it runs from anywhere in this repository.
+export { FACTORY_COMMAND }
 
 /**
- * Starts a new run with this run's stored input. A bare `demo trigger` would
+ * Starts a new run with this run's stored input. A bare `factory trigger` would
  * run the bundled sample instead, so a retry always goes through here.
  */
 const retrigger = (runId: string) =>
-  `${DEMO} retrigger --run ${runId}  # once, with the same stored input; to change the task or --max-iterations, trigger anew`
+  `${FACTORY_COMMAND} retrigger --run ${runId}  # once, with the same stored input; to change the task or --max-iterations, trigger anew`
 
 /**
  * The same, with the settings read again from the run's factory.json: for a
@@ -92,10 +92,10 @@ const retriggerReloaded = (runId: string, reload: ReloadAdvice): string[] =>
     ? []
     : reload === 'config'
       ? [
-          `${DEMO} retrigger --run ${runId} --reload-config  # after fixing factory.json; the stored task with the settings read again, once per version of the file`,
+          `${FACTORY_COMMAND} retrigger --run ${runId} --reload-config  # after fixing factory.json; the stored task with the settings read again, once per version of the file`,
         ]
       : [
-          `${DEMO} retrigger --run ${runId} --reload-config  # after fixing factory.json; the --check, --setup or --base given at trigger still wins over it, so to change those, trigger anew`,
+          `${FACTORY_COMMAND} retrigger --run ${runId} --reload-config  # after fixing factory.json; the --check, --setup or --base given at trigger still wins over it, so to change those, trigger anew`,
         ]
 
 /**
@@ -169,7 +169,7 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
     humanCheck:
       'read the full check output in the log files named below, then fix the check command or the environment (setup, dependencies, base); retry with --reload-config after editing factory.json, without it after fixing only the environment',
     next: (runId, reload) => [
-      `${DEMO} report --run ${runId}  # the baseline check output`,
+      `${FACTORY_COMMAND} report --run ${runId}  # the baseline check output`,
       ...retriggerReloaded(runId, reload),
       retrigger(runId),
     ],
@@ -181,7 +181,7 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
     humanCheck:
       'read the error below; fix the script or checkFromSpec in factory.json and start a new run with --reload-config. The same run never reads the script again, so its result is not re-read on a replay',
     next: (runId, reload) => [
-      `${DEMO} report --run ${runId}  # the spec the script read`,
+      `${FACTORY_COMMAND} report --run ${runId}  # the spec the script read`,
       ...retriggerReloaded(runId, reload),
       retrigger(runId),
     ],
@@ -193,7 +193,7 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
     humanCheck:
       'fix the profile of the role named in the error below, or codexPath, in factory.json and retry with --reload-config; a login problem is fixed in the provider CLI and retried without it',
     next: (runId, reload) => [
-      `${DEMO} report --run ${runId}  # the preflight result for each role`,
+      `${FACTORY_COMMAND} report --run ${runId}  # the preflight result for each role`,
       ...retriggerReloaded(runId, reload),
       retrigger(runId),
     ],
@@ -205,7 +205,7 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
     humanCheck:
       'someone changed the approved work after the repair run was started: move the branch back to the candidate commit and retry with retrigger, or repair from the run that approved the new work, or start a normal run with trigger',
     next: (runId) => [
-      `${DEMO} report --run ${runId}  # the parent run and the candidate commit`,
+      `${FACTORY_COMMAND} report --run ${runId}  # the parent run and the candidate commit`,
       retrigger(runId),
     ],
   },
@@ -216,7 +216,7 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
     humanCheck:
       'read the refusal below; fix the profile of that role, or codexPath, in factory.json and retry with --reload-config, or fix a login or quota problem in the provider CLI and retry without it',
     next: (runId, reload) => [
-      `${DEMO} report --run ${runId}  # the refused call and its reason`,
+      `${FACTORY_COMMAND} report --run ${runId}  # the refused call and its reason`,
       ...retriggerReloaded(runId, reload),
       retrigger(runId),
     ],
@@ -228,7 +228,7 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
     humanCheck:
       'read the limit and the agent log of the stopped call in the report; if the call needed more time, raise agentTimeoutMs or agentIdleTimeoutMs in factory.json and retry with --reload-config, otherwise retry without it',
     next: (runId, reload) => [
-      `${DEMO} report --run ${runId}  # the stopped call, its limit and its agent log`,
+      `${FACTORY_COMMAND} report --run ${runId}  # the stopped call, its limit and its agent log`,
       ...retriggerReloaded(runId, reload),
       retrigger(runId),
     ],
@@ -240,11 +240,11 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
     humanCheck:
       'read the full check output in the log files named below and decide whether the task, the check or --max-iterations has to change',
     next: (runId, _reload, repo) => [
-      `${DEMO} report --run ${runId} --format json  # the check output is in the verification attempt`,
+      `${FACTORY_COMMAND} report --run ${runId} --format json  # the check output is in the verification attempt`,
       // Only a repository run has a candidate a repair run can start from.
       ...(repo
         ? [
-            `${DEMO} repair --run ${runId}  # go on from the last candidate with a new repair budget; the findings are built from the check failure unless --findings-file is given`,
+            `${FACTORY_COMMAND} repair --run ${runId}  # go on from the last candidate with a new repair budget; the findings are built from the check failure unless --findings-file is given`,
           ]
         : []),
       retrigger(runId),
@@ -257,11 +257,11 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
     humanCheck:
       'read the reviewer notes in the report; finish the candidate by hand or restate the task',
     next: (runId, _reload, repo) => [
-      `${DEMO} report --run ${runId}  # the reviewer notes`,
+      `${FACTORY_COMMAND} report --run ${runId}  # the reviewer notes`,
       // Only a repository run has a candidate a repair run can start from.
       ...(repo
         ? [
-            `${DEMO} repair --run ${runId}  # go on from the last candidate with a new repair budget; the findings are built from the last reviews unless --findings-file is given`,
+            `${FACTORY_COMMAND} repair --run ${runId}  # go on from the last candidate with a new repair budget; the findings are built from the last reviews unless --findings-file is given`,
           ]
         : []),
       retrigger(runId),
@@ -274,8 +274,8 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
     humanCheck:
       "check the provider's own session history and usage for that call, the worktree, and the start checkpoint named below before sending anything again",
     next: (runId) => [
-      `${DEMO} report --run ${runId}`,
-      `${DEMO} status --run ${runId}`,
+      `${FACTORY_COMMAND} report --run ${runId}`,
+      `${FACTORY_COMMAND} status --run ${runId}`,
     ],
   },
   cancelled: {
@@ -283,7 +283,10 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
       'the run was cancelled; no agent call was left without a completed checkpoint',
     retryable: true,
     humanCheck: 'confirm the cancel was intended',
-    next: (runId) => [`${DEMO} report --run ${runId}`, retrigger(runId)],
+    next: (runId) => [
+      `${FACTORY_COMMAND} report --run ${runId}`,
+      retrigger(runId),
+    ],
   },
   'cancelled-publish': {
     reason:
@@ -292,7 +295,7 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
     humanCheck:
       'check the remote for the run branch and a draft pull request before starting another run',
     next: (runId) => [
-      `${DEMO} report --run ${runId}  # delivery shows what was recorded`,
+      `${FACTORY_COMMAND} report --run ${runId}  # delivery shows what was recorded`,
     ],
   },
   unclassified: {
@@ -300,7 +303,7 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
     retryable: false,
     humanCheck:
       'read the run error and the attempts before starting another run',
-    next: (runId) => [`${DEMO} status --run ${runId}`],
+    next: (runId) => [`${FACTORY_COMMAND} status --run ${runId}`],
   },
 }
 
@@ -681,7 +684,7 @@ export function classifyFailure(
       ...entry.next(input.runId, reload, input.repo ?? true),
       ...(kind === 'unclassified' && input.repairable
         ? [
-            `${DEMO} repair --run ${input.runId}  # go on from the last candidate, which passed the check, with a new repair budget; the findings are built from that candidate's finished reviews that asked for changes unless --findings-file is given`,
+            `${FACTORY_COMMAND} repair --run ${input.runId}  # go on from the last candidate, which passed the check, with a new repair budget; the findings are built from that candidate's finished reviews that asked for changes unless --findings-file is given`,
           ]
         : []),
     ],

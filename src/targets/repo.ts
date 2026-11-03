@@ -125,11 +125,11 @@ const UNAPPROVED_BASE: Record<
 /**
  * The candidate commit must still be in the repository and still be the tip
  * of the branch the parent recorded. A branch moved since means someone
- * changed the work after approval, so nothing is started from it. `demo
+ * changed the work after approval, so nothing is started from it. `factory
  * repair` checks this before it triggers, and a repair run's setup checks it
  * again right before it cuts its worktree and branch, after discarding any an
  * earlier attempt left, since the branch can move in between and a retrigger
- * does not go through `demo repair`.
+ * does not go through `factory repair`.
  */
 export async function assertCandidateUnmoved(
   repoPath: string,

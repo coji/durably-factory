@@ -24,4 +24,4 @@ The factory uses only the published `@coji/durably` API. When it needs something
 
 ## Runtime state
 
-The database and every run's data live in `~/.local/state/local-agent-loop/`, outside any checkout. Tests and smoke runs that start a worker must use another `HOME` (see `docs/operations.md`).
+The database and every run's data live in `~/.local/state/durably-factory/`, outside any checkout. Tests and smoke runs that start a worker must use another `HOME` (see `docs/operations.md`).

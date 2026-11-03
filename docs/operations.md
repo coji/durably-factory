@@ -5,19 +5,19 @@
 ## ワーカーは状態のルートごとに 1 つだけ動く
 
 ワーカーは状態のルート（state root）ごとに 1 つだけ動きます。ワーカーは起動するときに
-`~/.local/state/local-agent-loop/worker.lock` を OS のファイルロック（SQLite の排他
+`~/.local/state/durably-factory/worker.lock` を OS のファイルロック（SQLite の排他
 トランザクション）で握ります。同じ状態のルートで 2 つ目を起動すると、動いている
 ワーカーの pid と起動元のチェックアウトを表示し、終了コード 1 で起動を断ります。
 
 ```text
-another worker already runs on ~/.local/state/local-agent-loop: pid 41234, started 2026-09-25T01:02:03.000Z from /Users/me/src/durably-factory. Stop it first (kill 41234); two workers would pick up each other's runs.
+another worker already runs on ~/.local/state/durably-factory: pid 41234, started 2026-09-25T01:02:03.000Z from /Users/me/src/durably-factory. Stop it first (kill 41234); two workers would pick up each other's runs.
 ```
 
 - ロックはプロセスと一緒に消えます。Ctrl-C、SIGTERM、初期化の失敗では自分で
   解放し、`kill -9` やクラッシュでは OS が解放します。pid を書いた
   `worker.json` が残っていても、次のワーカーはロックを取り直して上書きするので、
   古い情報だけで起動を断ることはありません。
-- `demo trigger`、`demo status`、`demo wait` は、同じロックファイルをのぞいて
+- `factory trigger`、`factory status`、`factory wait` は、同じロックファイルをのぞいて
   ワーカーがいるかを確かめます（`wait` は 1 秒ごと。読み取りの瞬間だけ共有ロックを
   握ります）。ワーカーの起動は、この瞬間とぶつかっても最大 2 秒までやり直して
   乗り越えるので、`wait` で見ている最中にワーカーを起動しても失敗しません。1 つ目の
@@ -37,7 +37,7 @@ another worker already runs on ~/.local/state/local-agent-loop: pid 41234, start
 
 - `trigger`、`repair`、`retrigger`、`approve`、`reject`、`spec-revise` が成功した
   あと、ワーカーの仕事があれば、ワーカーのロックを調べます。ワーカーがいなければ
-  `demo worker --exit-when-idle` を起動し、もういれば何もしません。ロックが読めず、
+  `factory worker --exit-when-idle` を起動し、もういれば何もしません。ロックが読めず、
   ワーカーがいるか分からないとき（`running: null`）は起動せず、理由を標準エラー出力に
   出します。失敗したコマンドや、入力の検証で断ったコマンドは起動しません。
 - ワーカーの仕事とは、`pending` と `leased` の実行（リースの期限は問いません）と、
@@ -52,12 +52,12 @@ another worker already runs on ~/.local/state/local-agent-loop: pid 41234, start
   コマンドの終了コードは変わりません（実行はもう保存されています）。起動に成功すると、
   ワーカーの pid とログの場所を 1 行出します。
 - ワーカーの標準出力と標準エラー出力は、状態のルートの
-  `~/.local/state/local-agent-loop/logs/worker-YYYY-MM-DD.log`（起動した日、
+  `~/.local/state/durably-factory/logs/worker-YYYY-MM-DD.log`（起動した日、
   ローカル時刻）に追記します。同じ日に何度起動しても、既存のログは消しません。
 - 自動起動を止めるには、各コマンドに `--no-auto-worker` を付けるか、環境変数
-  `LOCAL_AGENT_LOOP_NO_AUTO_WORKER=1` を設定します。実行は、ワーカーが来るまで
+  `DURABLY_FACTORY_NO_AUTO_WORKER=1` を設定します。実行は、ワーカーが来るまで
   `pending` のままです。
-- 自動起動したワーカーのアイドル期間は `LOCAL_AGENT_LOOP_IDLE_MS`（既定 30000）で
+- 自動起動したワーカーのアイドル期間は `DURABLY_FACTORY_IDLE_MS`（既定 30000）で
   変えられます。1 から 2147483647 までの整数のミリ秒だけを受け付け、範囲の外なら
   ワーカーを起動せずに警告します。
 - 自動起動したワーカーは、コマンドを実行したチェックアウトの CLI で動きます（どの
@@ -67,9 +67,9 @@ another worker already runs on ~/.local/state/local-agent-loop: pid 41234, start
   ことがあります。固定したチェックアウトのワーカーで処理したいときは、その
   チェックアウトでワーカーを動かしておくか、自動起動を止めてください。
 
-`demo worker --exit-when-idle [--idle-ms <ms>]` は、仕事がない状態が `--idle-ms`
+`factory worker --exit-when-idle [--idle-ms <ms>]` は、仕事がない状態が `--idle-ms`
 （既定 30000、1 から 2147483647 までの整数）続くと終わります。オプションなしの
-`demo worker` は、これまでどおり動き続けます。
+`factory worker` は、これまでどおり動き続けます。
 
 - 仕事があるかは 500 ミリ秒ごと（`--idle-ms` がそれより短ければその間隔）に確かめ、
   前の確認が終わってから次を始めます。DB（データベース）を読めなかった確認は
@@ -83,9 +83,9 @@ another worker already runs on ~/.local/state/local-agent-loop: pid 41234, start
 a successor (pid N)` を書きます。次のワーカーも同じようにアイドルで終わるので、
   ワーカーがロックを握っているあいだに作られた実行は、そのワーカーがロックを手放す
   前か後のどちらかで必ず見つかります。次のワーカーが起動しない場合（起動の失敗、
-  自動起動を止めている場合）は、実行が `pending` のまま残ります。`demo wait` は
+  自動起動を止めている場合）は、実行が `pending` のまま残ります。`factory wait` は
   `--worker-timeout`（既定 10 秒）でワーカーがいない状態を見つけ、終了コード 6 で
-  知らせるので、そのときは `demo worker` を起動してください。
+  知らせるので、そのときは `factory worker` を起動してください。
 - SIGTERM、SIGINT、アイドル終了では、`[shutdown] reason=SIGTERM`、
   `[shutdown] reason=SIGINT`、`[shutdown] reason=idle` をログに書きます。その後、
   実行中のエージェントの CLI を止め、進行中のアイドルの確認を待ち、ポーリングを止めて
@@ -96,7 +96,7 @@ a successor (pid N)` を書きます。次のワーカーも同じようにア�
 ## 止まった実行と次の手順を見る
 
 `--run` を付けない `status` は、手を打つ必要があるタスクを一覧にします。タスクは、
-最初の実行と、そこから `demo repair` で始めた修正の実行（修正の修正も含む）を
+最初の実行と、そこから `factory repair` で始めた修正の実行（修正の修正も含む）を
 まとめた単位です。タスクごとに、状態を代表する実行の理由と、次に打つコマンドを
 表示し、その下にタスクの名前と、ほかの実行を `also:` として並べます。
 
@@ -108,12 +108,12 @@ a successor (pid N)` を書きます。次のワーカーも同じようにア�
   `replaced by a later approved repair` と付けます）。
 - 代表の実行は、判断待ちや停止があればその実行、動いている実行があればその実行、
   どれもなければ置き換えられていない最新の実行です。
-- `demo archive` でアーカイブした止まった実行は、終わった実行として数えます
+- `factory archive` でアーカイブした止まった実行は、終わった実行として数えます
   （下の「止まった実行をアーカイブする」）。同じタスクのほかの実行が人の手を
   待っていれば、そのタスクは上部に残ります。アーカイブした実行は、最後に
   `stopped run(s) archived:` として、戻すコマンドと一緒に並べます。
 - 止まったままアーカイブしていない実行があるタスクには、`stops:` の行で、その件数と
-  `demo archive --series <最初の run の ID>` を出します。後の修正の実行が承認されて
+  `factory archive --series <最初の run の ID>` を出します。後の修正の実行が承認されて
   置き換えた停止も数え、アーカイブした停止は数えません。この行はテキストの表示だけで、
   `--format json` と web UI には出しません。
 - 何もなければ `No runs need attention` と表示します。
@@ -124,16 +124,16 @@ a successor (pid N)` を書きます。次のワーカーも同じようにア�
   `tasks`）と同じ値です。
 
 ```bash
-pnpm demo status
-pnpm demo status --format json
+pnpm factory status
+pnpm factory status --format json
 ```
 
 ```text
 01M375ZAYC...  waiting  (created 2026-09-23T13:06:11.530Z)
   reason:  waiting for human approval of candidate candidate-1-9958e915bf52
-  next:    pnpm demo report --run 01M375ZAYC...  # read the reviews first
-           pnpm demo approve --run 01M375ZAYC... --wait 01M375ZC2C...
-           pnpm demo reject --run 01M375ZAYC... --wait 01M375ZC2C...
+  next:    pnpm factory report --run 01M375ZAYC...  # read the reviews first
+           pnpm factory approve --run 01M375ZAYC... --wait 01M375ZC2C...
+           pnpm factory reject --run 01M375ZAYC... --wait 01M375ZC2C...
   task:    #261 Round the report's cost to cents  (first run 01M375ZAYC..., 1 run(s))
 ```
 
@@ -178,13 +178,13 @@ pnpm demo status --format json
 - `--publish` 付きで取り消した実行は、`cancelled-publish` として `retry: NO`
   になります。プッシュやプルリクエストの作成が、記録する前に済んでいるかもしれないので、
   リモートのブランチとプルリクエストを先に確かめてください。
-- `retry: yes` の実行には `demo retrigger --run <id>` を表示します。止まった実行に
+- `retry: yes` の実行には `factory retrigger --run <id>` を表示します。止まった実行に
   保存した入力（タスク、設定、プロファイル）のまま、新しい実行を 1 回だけ始めます。
   同じコマンドをもう一度打っても、最初に始めた実行を返すだけです。`retry: NO` の
-  実行や、まだ止まっていない実行には、実行を断ります。素の `demo trigger` は同梱の
+  実行や、まだ止まっていない実行には、実行を断ります。素の `factory trigger` は同梱の
   題材で動くので、次の手順には出しません。
 - `baseline-check-failed`、`preflight-failed`、`rejected-invocation`、`agent-timeout` には、
-  `demo retrigger --run <id> --reload-config` も表示します。`factory.json` を直してから打つコマンドです。
+  `factory retrigger --run <id> --reload-config` も表示します。`factory.json` を直してから打つコマンドです。
   保存したタスク、仕様、`dispositions`、確定した文脈（context）、イシュー、対象のリポジトリはそのままで、
   `factory.json` だけを読み直します。読み直すのは、`trigger` のときに `--config` で
   渡したファイルで、渡していなければリポジトリ直下の `factory.json` です。
@@ -195,7 +195,7 @@ pnpm demo status --format json
   `baselineCheck`、`baselineReuse` は、`trigger` と同じ規則で決めて検証します。`trigger` のときの
   `--check`、`--setup`、`--base` は、これまでどおり設定より優先します。その実行では、
   次の手順の注記にもそう表示します。これらを変えるときは `trigger` からやり直します。
-  同梱の題材の実行と、外部の指摘からの修正の実行（`demo repair`）は `factory.json` を
+  同梱の題材の実行と、外部の指摘からの修正の実行（`factory repair`）は `factory.json` を
   読まないので、`--reload-config` は表示しません。修正の実行の、人が確かめることの欄も、
   設定を変えるときは通常の `trigger` から始めるか、直したあとに承認された実行から
   修正をやり直すよう案内します。
@@ -209,9 +209,9 @@ pnpm demo status --format json
   パスがあるときだけ出し、強制削除やブランチの削除は含みません。変更が残っている
   作業ツリーは、git が削除を断ります。実行するかどうかは、使う人が決めます。
   承認・納品済みの実行とアーカイブ済みの実行は、本来片付いているはずなので、
-  代わりに `demo prune --apply` を表示します。こちらは強制削除と、Git の登録の
+  代わりに `factory prune --apply` を表示します。こちらは強制削除と、Git の登録の
   片付けまで行い、ブランチは残します。
-  まとめて片付けるときは `demo prune` を使います（下の「終わった実行の作業ツリーを
+  まとめて片付けるときは `factory prune` を使います（下の「終わった実行の作業ツリーを
   片付ける」）。
 - 作業ツリーを片付けた実行には `worktree: removed` と表示します。承認・納品のあとに
   片付けられなかった実行には、git が出したエラーを `warning:` として表示します。
@@ -234,7 +234,7 @@ JSON は下の例のとおりで、`autoStarted` はありません。
   "running": false,
   "pid": null,
   "startedAt": null,
-  "start": "pnpm demo worker"
+  "start": "pnpm factory worker"
 }
 ```
 
@@ -252,7 +252,7 @@ JSON は下の例のとおりで、`autoStarted` はありません。
   "unknownReason": null,
   "autoStarted": {
     "pid": 51234,
-    "log": "~/.local/state/local-agent-loop/logs/worker-2026-10-22.log"
+    "log": "~/.local/state/durably-factory/logs/worker-2026-10-22.log"
   }
 }
 ```
@@ -272,7 +272,7 @@ JSON は下の例のとおりで、`autoStarted` はありません。
 表示して終わります。実行の状態やレポートを何度も確かめる代わりに使います。
 
 ```bash
-pnpm demo wait --run <runId> \
+pnpm factory wait --run <runId> \
   [--timeout <ms>] [--worker-timeout <ms> | --no-worker-timeout] [--format json]
 ```
 
@@ -331,11 +331,11 @@ timing:
 （`wait on a person or stopped`）と web UI の「止まったもの」から外れます。
 
 ```bash
-pnpm demo archive --run <runId>
-pnpm demo archive --run <runId> --delete-branch
-pnpm demo archive --series <runId>
-pnpm demo archive --series <runId> --delete-branch
-pnpm demo unarchive --run <runId>
+pnpm factory archive --run <runId>
+pnpm factory archive --run <runId> --delete-branch
+pnpm factory archive --series <runId>
+pnpm factory archive --series <runId> --delete-branch
+pnpm factory unarchive --run <runId>
 ```
 
 - アーカイブできるのは、止まった実行だけです。`failed` か `cancelled` で終わった実行と、
@@ -361,10 +361,10 @@ pnpm demo unarchive --run <runId>
   作業ツリーは、消すのに数分かかることがあるためです。上限で止まったときは、作業ツリーが
   一部だけ消えて残ることがあり、警告がそのパスと一緒にそう伝えます。消せなかったときは、
   git がまだそのディレクトリを作業ツリーとして登録しているかを確かめ、警告に書きます。
-  登録が残っていれば、`demo prune --apply` で続きを消せます。残っていなければ、git は
+  登録が残っていれば、`factory prune --apply` で続きを消せます。残っていなければ、git は
   そのディレクトリを作業ツリーとして扱えず、ほかの方法では消さないので、手で消すように
   書きます。準備をやり直す前に前回の作業ツリーを消すときも同じ上限で、取り消しや
-  リースを失ったときはそこで止めます。アーカイブ、片付け（`demo prune`）、納品後、
+  リースを失ったときはそこで止めます。アーカイブ、片付け（`factory prune`）、納品後、
   新しいテストの試し実行のベースの片付けは、取り消しのあとにも実行する必要があるので、
   止めずに上限まで待ちます。web UI は書き込みを 1 つずつ処理するので、片付けの
   あいだは、ほかの操作が待ちます。
@@ -401,16 +401,16 @@ pnpm demo unarchive --run <runId>
 
 - 承認して納品した実行は、納品の記録を `step` に残した直後に、自分の作業ツリーを
   片付けます。納品のあとで直すときは、記録したコミットとブランチから新しい実行を
-  作るので（`demo repair`）、元の作業ツリーは要りません。
+  作るので（`factory repair`）、元の作業ツリーは要りません。
 - 止まった実行をアーカイブしたとき（上の「止まった実行をアーカイブする」）。
-- `demo prune --apply` を打ったとき。この変更より前に終わった実行の作業ツリーを、
+- `factory prune --apply` を打ったとき。この変更より前に終わった実行の作業ツリーを、
   まとめて片付けるためのものです。
 
 ```bash
-pnpm demo prune                      # 対象と容量を表示するだけ
-pnpm demo prune --apply              # worktree を片付ける
-pnpm demo prune --delete-branches    # 消すブランチも表示する
-pnpm demo prune --delete-branches --apply
+pnpm factory prune                      # 対象と容量を表示するだけ
+pnpm factory prune --apply              # worktree を片付ける
+pnpm factory prune --delete-branches    # 消すブランチも表示する
+pnpm factory prune --delete-branches --apply
 ```
 
 - 削除は `git worktree remove --force` で行い、続けて `git worktree prune` で
@@ -418,8 +418,8 @@ pnpm demo prune --delete-branches --apply
   消さずに残し、警告にします。
 - 納品のあとの片付けに失敗しても、実行は承認・納品済みとして終わります。失敗の理由は
   実行の出力の `worktreeCleanupWarning` に残り、`status`、レポート、web UI の
-  詳細画面に出ます。`demo prune --apply` でやり直せます。
-- `demo prune` の対象は、終わった、リポジトリが対象の実行のうち、承認して納品したもの
+  詳細画面に出ます。`factory prune --apply` でやり直せます。
+- `factory prune` の対象は、終わった、リポジトリが対象の実行のうち、承認して納品したもの
   か、アーカイブしたもので、作業ツリーがまだ残っているものです。保存した実行、準備、
   納品の記録、アーカイブのファイルから決め、ディレクトリの名前だけからは決めません。
   `--apply` なしでは、対象の実行の ID、作業ツリーごとの容量、合計を表示するだけで、
@@ -428,11 +428,11 @@ pnpm demo prune --delete-branches --apply
 - `pending`、`leased`、`waiting` の実行は、アーカイブのファイルがあっても片付けません。
   アーカイブしていない止まった実行、却下した実行、納品せずに完了した実行も
   対象外です。止まった実行の作業ツリーは、人が原因を調べる材料だからです。
-- ブランチは、通常の片付けでは消しません。`demo prune --delete-branches --apply` は、
+- ブランチは、通常の片付けでは消しません。`factory prune --delete-branches --apply` は、
   アーカイブした実行が記録した factory のブランチと `factory/<runId>-squashed`
   だけを消します。作業ツリーが残っているかどうかは問いません。`--apply` なしでは、
   消す予定のブランチを表示します。納品した実行のブランチは消しません。納品物で
-  あり、`demo repair` の起点だからです。
+  あり、`factory repair` の起点だからです。
 - 片付けたあとも、仕様、検証のログ、エージェントの出力、レポート、チェックポイント、
   候補の差分、納品の記録（パッチと `delivery`）は、そのまま読めます。レポートと
   web UI は、片付けた作業ツリーのパスを作業場所として案内せず、「作業ツリーは
@@ -443,12 +443,12 @@ pnpm demo prune --delete-branches --apply
 
 ## DB と作業物の置き場所
 
-DB（データベース）と、すべての実行のデータは、`~/.local/state/local-agent-loop/`
+DB（データベース）と、すべての実行のデータは、`~/.local/state/durably-factory/`
 に置きます。
 
 ```text
-~/.local/state/local-agent-loop/
-  local-agent-loop.db              run、step、attempt、wait
+~/.local/state/durably-factory/
+  durably-factory.db              run、step、attempt、wait
   runs/<runId>/
     work/                          worktree（同梱題材ではコピー）。repo runでは
                                    納品後やアーカイブ時に片付ける
@@ -486,7 +486,7 @@ DB（データベース）と、すべての実行のデータは、`~/.local/st
   思考や推論のブロック、使用量は書きません。完了のチェックポイントから復旧した
   試行と、送る前に取りやめた試行は、ファイルを作りません。追記に失敗しても呼び出しの
   結果は変えず、エラーを `agentLog.writeError` に残します。作業ツリーの片付けや
-  `demo prune` では消しません。保存の期限やローテーションはありません。
+  `factory prune` では消しません。保存の期限やローテーションはありません。
 - **候補の差分**: リポジトリの実行では、候補を封印するたびに、記録済みのベースの
   コミットと候補のコミットの差分を `candidates/<candidate>/` に書き出します。
   作業ツリーの外なので、エージェントが書き換えることはできません。検証で止まって

@@ -1,5 +1,5 @@
 /**
- * The web UI (`demo ui`). The server runs Vite in middleware mode, so the page
+ * The web UI (`factory ui`). The server runs Vite in middleware mode, so the page
  * is transformed on request and needs no build; `build:ui` only checks that
  * the static assets build.
  */
