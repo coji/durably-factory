@@ -65,3 +65,5 @@ Rejected for now. The copy sits in `stage-context/` beside the trusted stage res
 ### Give stage results to the implementer and the repairer too
 
 Rejected for now. The issue asks for them in the reviewers' TRUSTED CONTEXT and readable files, and the results a stage produces judge the candidate, which is the reviewers' task. The hook can be extended once a stage needs the implementer to see one.
+
+ADR-0045 adds a separate trusted repair scope channel for named requirement exclusions and sandbox limitations, plus a candidate-preserving recheck operation.

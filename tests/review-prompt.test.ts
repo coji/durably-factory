@@ -2162,3 +2162,35 @@ describe('thresholdException in findings-json output', () => {
     }
   })
 })
+
+describe('trusted repair scope', () => {
+  it('keeps exclusions separate from untrusted findings and owner decisions in code prompts', () => {
+    const scope =
+      'Excluded requirement: spec §3 browser dashboard. Sandbox: Docker unavailable.'
+    const target = new RepoTarget({
+      ...repoConfig,
+      scope,
+      context: 'Keep decimal sums.',
+    })
+    const prompt = codePrompt({
+      role: 'repair',
+      iteration: 1,
+      repairNotes: [],
+      task: target.taskBrief(),
+      rules: target.implementationRules(),
+      untrusted: target.untrustedInputs('code'),
+      ownerContext: target.ownerContext(),
+      scope: target.repairScope(),
+    })
+    assert.match(prompt, /<<<TRUSTED REPAIR SCOPE [a-f0-9]+>>>/)
+    assert.match(prompt, /Excluded requirement: spec §3 browser dashboard/)
+    assert.match(prompt, /Do not report their absence as a finding/)
+    assert.match(prompt, /Scope does not override the pinned check verdict/)
+    assert.ok(
+      prompt.indexOf('REPAIR SCOPE (trusted') <
+        prompt.indexOf('UNTRUSTED INPUT DATA:'),
+    )
+    assert.match(prompt, /<<<TRUSTED OWNER_CONTEXT/)
+    assert.equal(new RepoTarget(repoConfig).repairScope(), null)
+  })
+})

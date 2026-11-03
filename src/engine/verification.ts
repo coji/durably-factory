@@ -20,6 +20,7 @@ import { join } from 'node:path'
  */
 import type { StepAttemptContext } from '@coji/durably'
 
+import { checkFailureKind, type CheckFailureKind } from './check-failure.js'
 import { childLogError, SpawnCancelledError } from './child.js'
 import type { ProviderName, VerificationLog } from './providers/types.js'
 import {
@@ -30,6 +31,7 @@ import {
 
 export interface VerificationOutcome {
   passed: boolean
+  failureKind?: CheckFailureKind | null
   /** Tail of the output, for the report excerpt and the repair prompt. */
   stdout: string
   exitCode: number | null
@@ -265,6 +267,7 @@ export async function runTimedVerificationStep(
     const res = await spec.grade(signal)
     const result: VerificationOutcome = {
       passed: res.passed,
+      failureKind: checkFailureKind(res),
       stdout: res.stdout.slice(-4000),
       exitCode: res.exitCode,
       log: res.log ?? null,

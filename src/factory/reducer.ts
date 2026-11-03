@@ -46,6 +46,7 @@ export function reduce(state: FactoryState, event: FactoryEvent): FactoryState {
         verification: {
           targetId: event.targetId,
           passed: event.passed,
+          failureKind: event.failureKind,
           stdout: event.stdout,
           exitCode: event.exitCode,
           log: event.log ?? null,
@@ -73,6 +74,7 @@ export function reduce(state: FactoryState, event: FactoryEvent): FactoryState {
       const verification = {
         targetId: event.targetId,
         passed: event.passed,
+        failureKind: event.failureKind,
         stdout: event.stdout,
         exitCode: event.exitCode,
         log: event.log,

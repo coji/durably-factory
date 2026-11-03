@@ -100,6 +100,7 @@ export function usesReviewMaterials(
 }
 
 export interface FactorySetup {
+  automaticRetryLimit?: number
   /** True when every role runs the fake provider. Roles never mix the two. */
   fake: boolean
   contextMode: ContextMode
@@ -373,6 +374,7 @@ export interface RepairOrigin {
 }
 
 export interface VerificationResult {
+  failureKind?: import('../engine/check-failure.js').CheckFailureKind | null
   targetId: string
   passed: boolean
   stdout: string

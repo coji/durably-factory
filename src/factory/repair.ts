@@ -31,7 +31,12 @@ export const REPAIR_OF_LABEL = 'repairOf'
  * the seed) passes these, so the parent can find it.
  */
 export function repairLabels(input: unknown): Record<string, string> {
-  const parent = (input as { repairOf?: { runId?: string } } | null)?.repairOf
+  const stored = input as {
+    repairOf?: { runId?: string }
+    retryOf?: { runId?: string }
+    recheckOf?: { runId?: string }
+  } | null
+  const parent = (stored?.retryOf ?? stored?.recheckOf ?? stored?.repairOf)
     ?.runId
   return parent ? { [REPAIR_OF_LABEL]: parent } : {}
 }

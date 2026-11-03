@@ -271,6 +271,7 @@ const targetSchema = z
        * stored before it existed: none.
        */
       context: contextSchema.nullable().optional(),
+      scope: contextSchema.nullable().optional(),
       /** Where each input came from, when it was read from a file. */
       inputFiles: z
         .object({
@@ -279,6 +280,7 @@ const targetSchema = z
           dispositions: inputFileSchema.nullable().default(null),
           /** Absent on a run stored before it existed. */
           context: inputFileSchema.nullable().optional(),
+          scope: inputFileSchema.nullable().optional(),
         })
         .default({ task: null, spec: null, dispositions: null }),
       issue: issueSchema.nullable().default(null),
@@ -378,6 +380,8 @@ const agentRoleSchema = z.enum([
 const fakeScenarioSchema = z
   .object({
     failIterations: z.number().int().min(0).optional(),
+    providerError: z.string().min(1).optional(),
+    scopeRequirement: z.string().min(1).optional(),
     reviewSequence: z.array(z.enum(FAKE_REVIEW_DECISIONS)).optional(),
     reviewNotes: z.array(z.string()).optional(),
     reviewOutputs: z.array(z.string()).optional(),
@@ -804,6 +808,23 @@ const inputSchema = z
     fakeScenario: fakeScenarioSchema.optional(),
     /** Set only on a repair run; see `repairOfSchema`. */
     repairOf: repairOfSchema.optional(),
+    automaticRetryLimit: z.number().int().min(0).max(3).optional(),
+    retryOf: z
+      .object({
+        runId: nonBlank,
+        rootRunId: nonBlank,
+        attempt: z.number().int().min(1),
+        reason: z.enum(['provider-capacity', 'review-incomplete', 'manual']),
+      })
+      .optional(),
+    recheckOf: z
+      .object({
+        profiles: repairOfSchema.shape.profiles,
+        runId: nonBlank,
+        candidateCommit: nonBlank,
+        candidateBranch: nonBlank,
+      })
+      .optional(),
     /**
      * Reviewers with their own command, context or output, fixed at
      * trigger. Absent, or a lens left out: the prompt and the verdict.
@@ -822,6 +843,7 @@ const inputSchema = z
       [
         input.provider,
         ...Object.values(input.profiles ?? {}),
+        ...Object.values(input.recheckOf?.profiles ?? {}),
         ...(input.spec
           ? [
               input.spec.author,
@@ -876,6 +898,19 @@ const inputSchema = z
           path: ['spec', 'reviewers', index],
         })
     }
+    if (
+      input.recheckOf &&
+      (target.kind !== 'repo' ||
+        input.repairOf ||
+        input.spec ||
+        input.maxIterations !== 1)
+    )
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'recheck needs a repository, one iteration and no repair or spec stages',
+        path: ['recheckOf'],
+      })
     if (target.kind !== 'repo') return
     if (target.checkFromSpec && !input.spec && target.spec === null)
       ctx.addIssue({
@@ -1490,19 +1525,20 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
             // Profiles first: a bad profile fails before any worktree or branch
             // exists in the target repository.
             const repairOf = input.repairOf ?? null
+            const origin = repairOf ?? input.recheckOf
             const {
               profiles,
               triage,
               repair,
               spec: specProfiles,
-            } = repairOf
+            } = origin
               ? // A repair run takes the profiles its parent resolved, as they
                 // were. It records the parent's triage profile but never runs
                 // triage.
                 {
-                  profiles: byRole((role) => repairOf.profiles[role]),
-                  triage: repairOf.profiles.triage,
-                  repair: repairOf.profiles.repair,
+                  profiles: byRole((role) => origin.profiles[role]),
+                  triage: origin.profiles.triage,
+                  repair: origin.profiles.repair,
                   spec: null,
                 }
               : resolveInputProfiles(input)
@@ -1593,6 +1629,8 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                     spec: input.target.spec,
                     dispositions: input.target.dispositions,
                     context: input.target.context ?? null,
+                    scope: input.target.scope ?? null,
+                    startRef: input.recheckOf?.candidateCommit,
                     issue: input.target.issue,
                     // With `checkFromSpec`, the script names the check later.
                     checkCommand: input.target.checkFromSpec
@@ -1623,17 +1661,17 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                     // replayed setup has discarded its earlier worktree and
                     // branch and right before the new ones are cut, so a
                     // refused repair leaves neither, nor a run directory.
-                    ...(repairOf
+                    ...(origin
                       ? {
                           beforeCreate: (repo: string) =>
                             assertCandidateUnmoved(
                               repo,
-                              repairOf.candidateCommit,
-                              repairOf.candidateBranch,
+                              origin.candidateCommit,
+                              origin.candidateBranch,
                             ).catch(async (error: unknown) => {
                               await rm(root, { recursive: true, force: true })
                               throw new Error(
-                                `${CANDIDATE_MOVED_MESSAGE}: ${error instanceof Error ? error.message : String(error)}; the repair of ${repairOf.runId} stopped without a worktree, branch or run directory and before any agent call`,
+                                `${CANDIDATE_MOVED_MESSAGE}: ${error instanceof Error ? error.message : String(error)}; the repair of ${origin.runId} stopped without a worktree, branch or run directory and before any agent call`,
                               )
                             }),
                         }
@@ -1661,7 +1699,8 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                 : prepared
             const baselineCheck =
               input.target.kind === 'repo' &&
-              input.target.baselineCheck === true
+              input.target.baselineCheck === true &&
+              !input.recheckOf
             // A passing baseline removes every untracked file .gitignore does
             // not cover, so setup must not leave any. Checked here, in the
             // step that ran setup, so a resumed baseline never mistakes the
@@ -1692,7 +1731,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
               input.target.kind === 'repo'
                 ? (input.target.reviewBlockerThreshold ?? null)
                 : null
-            const instructionsVersion = 'local-factory.v4'
+            const instructionsVersion = 'local-factory.v5'
             // Fixed here with the CLI version just recorded, so a restarted
             // worker with another environment never changes how this run's
             // repairs treat the implementation session.
@@ -1738,6 +1777,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                 spec,
               })
             const value: FactorySetup = {
+              automaticRetryLimit: input.automaticRetryLimit ?? 1,
               fake: profiles.code.provider === 'fake',
               contextMode: input.context,
               target,
@@ -2074,7 +2114,9 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
           repair: ownRepair ? providerFor(ownRepair) : roleProviders.code,
         }
         // Shadow mode: the judgment is recorded and nothing below reads it.
-        const triageProfile = triageThatRuns(setup, setup.triage)
+        const triageProfile = input.recheckOf
+          ? null
+          : triageThatRuns(setup, setup.triage)
         const triageKey = `${step.runId}/triage/agent`
         triage = triageProfile
           ? await step.run(
@@ -2103,13 +2145,37 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
         throw error
       }
       let state = initialState(runSetup, repairSession?.confirmed ?? null)
+      const recheck = input.recheckOf
+      if (recheck) {
+        const candidate = await step.run(
+          'stage:0:recheck:candidate',
+          async (signal, attempt) => {
+            const sealed = await target.seal({
+              runId: step.runId,
+              iteration: 1,
+              attemptId: attempt.id,
+              signal,
+            })
+            if (sealed.commit !== recheck.candidateCommit)
+              throw new Error(
+                'recheck candidate changed during setup; refusing to review modified code',
+              )
+            return sealed
+          },
+        )
+        state = { ...state, iteration: 1, candidate }
+      }
       // Deliberately not a `finally`: `step.waitFor` suspends by throwing, so a
       // finally block would run cleanup every time the run parks on the human
       // approval wait, and a target that really removes its worktree would
       // destroy the work mid-approval. The `catch` below removes only the
       // review snapshots, which were already removed before the approval stage.
       try {
-        for (let sequence = 0; state.outcome === null; sequence++) {
+        for (
+          let sequence = input.recheckOf ? 1 : 0;
+          state.outcome === null;
+          sequence++
+        ) {
           const decision = await step.run(
             `decision:${sequence}`,
             async () => decide(state),

@@ -57,6 +57,8 @@ export interface PrepareRepoArgs {
   spec: string | null
   dispositions: string | null
   /** The owner's confirmed context; absent or null: none. */
+  scope?: string | null
+  startRef?: string
   context?: string | null
   issue: { number: number; title: string; url: string } | null
   /** Empty only with `checkFromSpec`, whose script names the check later. */
@@ -103,7 +105,9 @@ export async function prepareRepoTarget(
   await addWorktree({
     repo,
     dir: workdir,
-    baseCommit,
+    baseCommit: args.startRef
+      ? await resolveCommit(repo, args.startRef)
+      : baseCommit,
     branch: args.branch,
     ...(args.signal ? { signal: args.signal } : {}),
   })
@@ -139,6 +143,7 @@ export async function prepareRepoTarget(
     spec: args.spec,
     dispositions: args.dispositions,
     context: args.context ?? null,
+    scope: args.scope ?? null,
     ...(testProbe ? { testProbe, testProbeBase } : {}),
     issue: args.issue,
     deliveryDir: join(args.root, 'delivery'),

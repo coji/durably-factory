@@ -1457,10 +1457,18 @@ describe('retrigger from the stored input', () => {
     })
     assert.deepEqual(calls, [
       [
-        input,
+        {
+          ...input,
+          retryOf: {
+            runId: 'child',
+            rootRunId: 'child',
+            attempt: 1,
+            reason: 'manual',
+          },
+        },
         {
           idempotencyKey: 'retrigger-of-child',
-          labels: { [REPAIR_OF_LABEL]: 'parent' },
+          labels: { [REPAIR_OF_LABEL]: 'child' },
         },
       ],
     ])

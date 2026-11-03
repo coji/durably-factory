@@ -11,6 +11,7 @@ import { existsSync } from 'node:fs'
 
 import type { AnyDurably, Run, StepAttempt } from '@coji/durably'
 
+import { checkFailureKind, type CheckFailureKind } from './check-failure.js'
 import { DEMO } from './demo-command.js'
 import {
   DETAIL_PREFIX,
@@ -306,6 +307,8 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
 /** A classified stop, ready to print or to put in a report. */
 export interface FailureClassification {
   kind: FailureKind
+  checkFailure?: CheckFailureKind | null
+  automaticRetry?: 'provider-capacity' | 'review-incomplete' | null
   reason: string
   retryable: boolean
   humanCheck: string
@@ -399,7 +402,10 @@ export function reviewIncompleteBase(
     }
   const done = staged.filter(({ step }) => step.status === 'completed')
   const sealed = done
-    .filter((s) => s.stage === 'code' && s.part === 'candidate')
+    .filter(
+      (s) =>
+        (s.stage === 'code' || s.stage === 'recheck') && s.part === 'candidate',
+    )
     .sort((x, y) => x.sequence - y.sequence)
     .at(-1)
   const candidate = sealed?.step.output as {
@@ -547,6 +553,8 @@ export interface ClassifyInput {
   uncertain: string[]
   /** From `lastVerificationLogs`: the stopping verification's logs. */
   verificationLogs?: VerificationLog[]
+  checkFailure?: CheckFailureKind | null
+  automaticRetry?: 'provider-capacity' | 'review-incomplete' | null
   /** From `baselineLogs`: the base-commit check's logs. */
   baselineLogs?: VerificationLog[]
   /** A repo run that pushes and opens a pull request once approved. */
@@ -632,6 +640,26 @@ export function classifyFailure(
   return {
     kind,
     ...entry,
+    ...(input.checkFailure
+      ? {
+          checkFailure: input.checkFailure,
+          reason: `pinned check failed (${input.checkFailure})${input.checkFailure === 'timeout' || input.checkFailure === 'setup' ? '; suspected environment problem; inspect check logs before choosing repair or retrigger/recheck' : '; inspect the check log before choosing a repair'}`,
+          ...(input.checkFailure === 'timeout' || input.checkFailure === 'setup'
+            ? {
+                humanCheck:
+                  'suspected environment problem: inspect the check logs, then choose repair for a code defect or retrigger/recheck after fixing the environment; no automatic repair was started',
+              }
+            : {}),
+        }
+      : {}),
+    ...(input.automaticRetry
+      ? {
+          automaticRetry: input.automaticRetry,
+          retryable: true,
+          humanCheck:
+            'a recognised transient provider refusal or incomplete review may be retried with the same stored input, within automaticRetryLimit',
+        }
+      : {}),
     ...(kind === 'preflight-failed' && reload === 'none'
       ? { humanCheck: PREFLIGHT_WITHOUT_CONFIG }
       : {}),
@@ -664,7 +692,13 @@ export function classifyFailure(
 }
 
 /** One wording for the retry verdict, shared by `status` and `report`. */
-export function retryText(retryable: boolean): string {
+export function retryText(
+  retryable: boolean,
+  automaticRetry?: FailureClassification['automaticRetry'],
+): string {
+  if (automaticRetry === 'provider-capacity')
+    return 'yes: recognised capacity/rate limit response; a bounded retry is allowed while the original checkpoint is kept'
+
   return retryable
     ? 'yes: safe to start a new run (no unresolved agent call); it may still fail the same way'
     : 'NO — do not start a new run until a human has checked'
@@ -688,18 +722,54 @@ export async function classifyRun(
     (run.input as { target?: { kind?: unknown } } | null)?.target?.kind ===
     'repo'
   let repairable = false
+  let diagnostic: CheckFailureKind | null = null
+  let automaticRetry: ClassifyInput['automaticRetry'] = null
   if (run.status === 'failed' || run.status === 'cancelled') {
     const setup = (await durably.storage.getCompletedStep(run.id, 'setup'))
       ?.output as { checkpointsDir?: string } | null | undefined
     const attempts = await durably.getStepAttempts(run.id)
     uncertain = uncertainCheckpoints(setup?.checkpointsDir ?? null, attempts)
     baseline = baselineLogs(attempts)
+    // Only current unresolved call attempts count. A successful or settled
+    // call's old error must never make a different unknown call retryable.
+    const latest = new Map<string, AttemptMeasurement>()
+    for (const a of [...attempts].sort(
+      (a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt),
+    )) {
+      const m = a.metadata as AttemptMeasurement | null
+      if (m?.operationKey) latest.set(m.operationKey, m)
+    }
+    const pending = [...latest.values()].filter(
+      (m) =>
+        m.result === 'uncertain' &&
+        uncertain.some(
+          (path) =>
+            path ===
+            checkpointPaths(setup?.checkpointsDir ?? '', m.operationKey ?? '')
+              .started,
+        ),
+    )
+    if (
+      run.status === 'failed' &&
+      pending.length > 0 &&
+      pending.length === uncertain.length &&
+      pending.every(
+        (m) =>
+          /(?:selected model is at capacity|model.{0,60}(?:at capacity|overloaded)|rate[_ -]?limit(?:ed| exceeded| reached)?|too many requests|\b429\b)/i.test(
+            m.error ?? '',
+          ) && !m.interruptionReason,
+      )
+    )
+      automaticRetry = 'provider-capacity'
+
     // The steps are read only when the run or one of its attempts failed
     // with an unfinished review: every list refresh classifies each failed
     // run again. In parallel mode the run's error may be another reviewer's.
     const unfinishedReview = [run.error, ...attempts.map((a) => a.error)].some(
       (e) => (e ?? '').startsWith(REVIEW_INCOMPLETE_MESSAGE),
     )
+    if (run.status === 'failed' && unfinishedReview && uncertain.length === 0)
+      automaticRetry = 'review-incomplete'
     repairable =
       run.status === 'failed' &&
       repo &&
@@ -710,6 +780,28 @@ export async function classifyRun(
     (run.output as { conclusion?: unknown } | null)?.conclusion ===
       'verification-failed'
   ) {
+    const checks = (await durably.storage.getSteps(run.id))
+      .flatMap((s) => {
+        const where = stageStep(s.name)
+        return s.status === 'completed' &&
+          where?.stage === 'verify' &&
+          where.part === 'acceptance'
+          ? [
+              {
+                sequence: where.sequence,
+                output: s.output as {
+                  passed: boolean
+                  stdout: string
+                  failureKind?: CheckFailureKind | null
+                  log?: VerificationLog | null
+                },
+              },
+            ]
+          : []
+      })
+      .sort((a, b) => a.sequence - b.sequence)
+    const last = checks.at(-1)?.output
+    diagnostic = last ? (last.failureKind ?? checkFailureKind(last)) : 'unknown'
     verificationLogs = lastVerificationLogs(
       await durably.getStepAttempts(run.id),
     )
@@ -721,6 +813,8 @@ export async function classifyRun(
     error: run.error,
     uncertain,
     verificationLogs,
+    checkFailure: diagnostic,
+    automaticRetry,
     baselineLogs: baseline,
     publish:
       (run.input as { target?: { publish?: unknown } } | null)?.target

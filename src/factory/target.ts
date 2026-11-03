@@ -109,6 +109,7 @@ export interface RepoTargetConfig {
    * implementer, the repairer and the reviewers as trusted context. Absent
    * on a run set up before it existed.
    */
+  scope?: string | null
   context?: string | null
   /**
    * Files the factory's own stages produced, registered with
@@ -376,6 +377,7 @@ export interface Target {
    * get as trusted, apart from the untrusted data; null without one.
    */
   ownerContext(): string | null
+  repairScope?(): string | null
   /**
    * What each reviewer is asked to check. Reviewers see only the candidate
    * and the trusted context, so the questions have to come from whoever knows
