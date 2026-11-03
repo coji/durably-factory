@@ -14,15 +14,18 @@ import { initialState, type FactorySetup } from '../src/factory/types.js'
 describe('durable repair response correction', () => {
   const cases = (['reuse', 'fresh'] as const).flatMap((contextMode) =>
     [true, false].flatMap((tracked) =>
-      [false, true].map((separateRepair) => ({
-        contextMode,
-        tracked,
-        separateRepair,
-      })),
+      [false, true].flatMap((separateRepair) =>
+        ([1, 2] as const).map((promptVersion) => ({
+          contextMode,
+          tracked,
+          separateRepair,
+          promptVersion,
+        })),
+      ),
     ),
   )
-  for (const { contextMode, tracked, separateRepair } of cases) {
-    it(`${contextMode}/${separateRepair ? 'separate' : 'shared'}: ${tracked ? 'replays the correction without another call or seal' : 'does not add a correction to a legacy setup'}`, async () => {
+  for (const { contextMode, tracked, separateRepair, promptVersion } of cases) {
+    it(`v${promptVersion}/${contextMode}/${separateRepair ? 'separate' : 'shared'}: ${tracked ? 'replays the correction without another call or seal' : 'does not add a correction to a legacy setup'}`, async () => {
       const root = await mkdtemp(join(tmpdir(), 'factory-code-response-'))
       const profile = {
         id: 'p',
@@ -73,7 +76,8 @@ describe('durable repair response correction', () => {
           parentConclusion: 'approved',
         },
         checkpointsDir: root,
-        instructionsVersion: 'test',
+        instructionsVersion:
+          promptVersion === 2 ? 'local-factory.v6' : 'local-factory.v5',
         configVersion: 'test',
         maxIterations: 1,
         agentTimeoutMs: 5000,
@@ -177,7 +181,12 @@ describe('durable repair response correction', () => {
       assert.deepEqual(replay, first)
       assert.equal(seals, 1)
       assert.equal(calls.length, tracked ? 2 : 1)
+      assert.equal(
+        calls[0].prompt.includes('This is an unattended factory run.'),
+        promptVersion === 2,
+      )
       if (tracked) {
+        assert.match(calls[0].prompt, /Always include NOTES/)
         assert.match(
           calls[1].prompt,
           /omitted or malformed the treatments for: F2/,

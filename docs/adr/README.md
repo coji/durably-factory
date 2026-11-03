@@ -68,3 +68,4 @@ What we considered and why we didn't do it.
 | [0043](0043-per-finding-repair-treatments.md)                   | Per-finding repair treatments                    | accepted |
 | [0044](0044-check-failures-and-automatic-retries.md)            | Check failure classification and bounded retries | accepted |
 | [0045](0045-repair-scope-and-candidate-recheck.md)              | Trusted repair scope and candidate recheck       | accepted |
+| [0046](0046-scoped-unattended-prompt-guidance.md)               | Scoped unattended coding and complete reviews    | accepted |

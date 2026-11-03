@@ -86,6 +86,7 @@ import {
   decide,
   reviewCanFollow,
 } from './policy.js'
+import { INSTRUCTIONS_VERSION } from './prompt-version.js'
 import {
   parseTriageOutput,
   reviewCommandPlaceholders,
@@ -1735,7 +1736,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
               input.target.kind === 'repo'
                 ? (input.target.reviewBlockerThreshold ?? null)
                 : null
-            const instructionsVersion = 'local-factory.v5'
+            const instructionsVersion = INSTRUCTIONS_VERSION
             // Fixed here with the CLI version just recorded, so a restarted
             // worker with another environment never changes how this run's
             // repairs treat the implementation session.
