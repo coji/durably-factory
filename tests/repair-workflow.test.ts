@@ -761,6 +761,7 @@ it(
         prompts,
       })
       await writeFile(path, 'OWNER POLICY EDITED')
+      await rm(path)
       b.start()
       const done = await b.settled(parent.id)
       assert.equal(
