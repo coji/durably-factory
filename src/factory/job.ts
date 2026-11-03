@@ -259,6 +259,7 @@ const targetSchema = z
        */
       name: z.string().min(1).optional(),
       baseRef: z.string().default('HEAD'),
+      featureBase: nonBlank.optional(),
       task: z.string().min(1),
       /** Handed to the implementer and both reviewers. */
       spec: z.string().min(1).nullable().default(null),
@@ -393,6 +394,7 @@ const fakeScenarioSchema = z
     usage: z.enum(['none', 'realistic']).optional(),
     summary: z.string().optional(),
     codeReplies: z.array(z.string()).optional(),
+    codeCorrections: z.array(z.string()).optional(),
     changes: z.record(z.string().min(1), z.string()).optional(),
     claudeEffortResume: z.boolean().optional(),
     specText: z.string().min(1).optional(),
@@ -1580,6 +1582,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                 : await prepareRepoTarget({
                     repoPath: input.target.repoPath,
                     baseRef: input.target.baseRef,
+                    featureBase: input.target.featureBase,
                     // A repair run's branch never carries the issue number,
                     // so it cannot be taken for the parent's.
                     branch: repairOf
@@ -1606,6 +1609,11 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                       ? {
                           runId: repairOf.runId,
                           findings: repairOf.findings,
+                          findingsKind:
+                            'parentRun' in repairOf.findingsFile &&
+                            repairOf.parentConclusion === 'verification-failed'
+                              ? 'check-output'
+                              : 'findings',
                           parentConclusion: repairOf.parentConclusion,
                         }
                       : null,
@@ -1684,7 +1692,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
               input.target.kind === 'repo'
                 ? (input.target.reviewBlockerThreshold ?? null)
                 : null
-            const instructionsVersion = 'local-factory.v3'
+            const instructionsVersion = 'local-factory.v4'
             // Fixed here with the CLI version just recorded, so a restarted
             // worker with another environment never changes how this run's
             // repairs treat the implementation session.

@@ -47,6 +47,8 @@ export interface PrepareRepoArgs {
   repoPath: string
   /** Ref the work starts from. */
   baseRef: string
+  /** Original feature base; absent on a new run or an old stored input. */
+  featureBase?: string
   branch: string
   /** Run directory under the fixed state root; never inside the repository. */
   root: string
@@ -94,6 +96,10 @@ export async function prepareRepoTarget(
   await discardWorktree(repo, workdir, args.branch, args.signal)
   await args.beforeCreate?.(repo)
   const baseCommit = await resolveCommit(repo, args.baseRef)
+  const featureBase =
+    args.featureBase && args.featureBase !== args.baseRef
+      ? await resolveCommit(repo, args.featureBase)
+      : baseCommit
   await addWorktree({
     repo,
     dir: workdir,
@@ -111,7 +117,7 @@ export async function prepareRepoTarget(
     ? await prepareTestProbeBase({
         repo,
         root: args.root,
-        baseCommit,
+        baseCommit: featureBase,
         setupCommand: args.setupCommand,
         ...(args.signal ? { signal: args.signal } : {}),
       })
@@ -120,6 +126,8 @@ export async function prepareRepoTarget(
     kind: 'repo',
     repoPath: repo,
     baseCommit,
+    featureBase,
+    codeResponseVersion: 1,
     branch: args.branch,
     workdir,
     setupCommand: args.setupCommand,

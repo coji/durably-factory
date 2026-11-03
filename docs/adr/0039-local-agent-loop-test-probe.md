@@ -4,6 +4,8 @@
 
 accepted
 
+Follow-up: [ADR-0041](0041-feature-base-for-repair-tests.md) changes the probe's coverage base to the original feature base on repair runs. Candidate diffs still use the repair's parent candidate.
+
 ## Context
 
 In `examples/local-agent-loop`, the review rules of a repository run say that a new test which would pass against the base commit does not count, and ask for `needsChanges` when it would. The reviewers cannot check that. A Claude reviewer may only read, a command reviewer gets read and search tools and subagents, and Codex reviews in a read-only sandbox. The review snapshots are trees extracted from commits, without installed dependencies. So a reviewer judges by reading the code whether a test exercises the change.

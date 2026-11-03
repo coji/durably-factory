@@ -404,6 +404,23 @@ web UI では、レビューの欄と工程の時系列の詳細に、「中止�
   ファイルを読み直します。`demo repair` の修正の実行は、修正元の実行の値を
   引き継ぎます。プロンプトが変わるので、書いたときは `configVersion` に入ります。
 
+新しく開始する実行では、各コマンドに `C1`、`C2` のIDを付け、結果を `NOTES:` に記録するよう求めます。
+設定するのは、そのエージェントのsandboxで実行できる検査です。
+ブラウザ、localhost、ネットワークを使うauditなどの検査は、この設定の対象から外してください。
+実行できなかった場合は、合格とせず `not-run` と理由を書かせます。
+
+```text
+NOTES:
+CHECK C1: pass — lint completed without warnings
+CHECK C2: not-run — the sandbox cannot start the required local server
+```
+
+レポートの `codeResponses` は、設定したargvと申告結果を `source: "self-reported"` として記録します。
+結果がない場合は `not-reported`、重複や形式違反があれば `invalid` です。
+これらは実装担当の申告であり、実行を保証する証拠ではありません。
+合否は引き続きfactoryが実行する固定検査で決めます。
+自己申告の欠落だけを理由に追加の呼び出しを行うことはありません。
+
 ## 新しいテストをベースと候補で動かす（testProbe）
 
 レビュアーはコマンドを実行できないので、新しいテストが変更を本当に確かめて

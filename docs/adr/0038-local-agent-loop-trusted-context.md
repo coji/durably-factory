@@ -4,6 +4,8 @@
 
 accepted
 
+Follow-up: [ADR-0043](0043-per-finding-repair-treatments.md) sends explicit non-actionable and deferred dispositions to repairers as untrusted data and requires per-finding response entries on new repository runs. Owner context remains the trusted authority.
+
 ## Context
 
 In `examples/local-agent-loop`, a reviewer's TRUSTED CONTEXT held only what the factory itself produced: the base commit, the candidate and its changed paths. Everything a person supplied (task, spec, `--dispositions-file`, a repair run's findings) went into the prompts as untrusted data, fenced off so that nothing inside it could steer a reviewer. The implementer and the repairer never saw dispositions at all.

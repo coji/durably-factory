@@ -13,6 +13,7 @@
  */
 import type { StepAttempt } from '@coji/durably'
 
+import type { CodeResponse } from '../factory/code-response.js'
 import type { ThresholdException } from '../factory/events.js'
 import { INTERRUPTED_CHECK } from './failure-details.js'
 import { retryText, type FailureClassification } from './failure-reasons.js'
@@ -1003,16 +1004,17 @@ export interface LoopReport {
   candidate: ReportCandidate | null
   /** Every sealed candidate with its size, oldest first. */
   candidates: ReportSealedCandidate[]
-  /**
-   * Every candidate's test probe, oldest first; empty on a run without
-   * `testProbe`. Absent on a report made before it existed.
-   */
+  /** Original feature commit used to judge tests; null before repository setup. */
+  featureBase?: string | null
+  /** Every candidate's test probe, oldest first; absent on old reports. */
   testProbes?: ReportTestProbe[]
   /**
    * Each code attempt's NOTES, oldest first; only the attempts that left
    * any. Absent on a report made before it existed.
    */
   implementerNotes?: ReportImplementerNotes[]
+  /** Stored, untrusted claims from each code response, including a correction. */
+  codeResponses?: CodeResponse[]
   /**
    * Whether a repair on its own profile continues the implementation
    * session, and why; null when repair runs on `code` or the run has not
@@ -1711,6 +1713,7 @@ export function reportToMarkdown(r: LoopReport): string {
   )
   lines.push(`- output: ${JSON.stringify(r.output)}`)
   lines.push(`- config version: ${fmt(r.configVersion)}`)
+  if (r.featureBase) lines.push(`- feature base: ${r.featureBase}`)
   if (r.agentTimeouts)
     lines.push(
       `- agent call limits: total ${formatDuration(r.agentTimeouts.totalMs)}, idle ${r.agentTimeouts.idleMs === null ? 'none' : formatDuration(r.agentTimeouts.idleMs)}`,
@@ -1886,6 +1889,43 @@ export function reportToMarkdown(r: LoopReport): string {
         ...fencedText(n.notes),
         '',
       )
+  }
+  if (r.codeResponses && r.codeResponses.length > 0) {
+    lines.push(
+      '## Self-reported checks and finding treatments',
+      '',
+      'These are implementer claims, not factory-run verification. Missing treatment entries are corrected once before sealing or review.',
+      '',
+    )
+    for (const response of r.codeResponses) {
+      lines.push(
+        `- iteration ${response.iteration} (${response.role}${response.correction ? ', correction' : ''}):`,
+        '',
+      )
+      lines.push(
+        ...fencedText(
+          [
+            ...response.checks.map(
+              (c) =>
+                `CHECK ${c.id}: ${c.status} — ${JSON.stringify(c.command)}${c.detail ? ` — ${c.detail}` : ''}`,
+            ),
+            ...response.findings.map(
+              (finding) =>
+                `${finding.id}: ${finding.text}${finding.disposition ? ` [${finding.disposition}]` : ''}`,
+            ),
+            ...response.treatments.map(
+              (t) => `${t.id}: ${t.status} — ${t.detail}`,
+            ),
+            ...(response.missing.length
+              ? [
+                  `Missing or invalid treatments: ${response.missing.join(', ')}`,
+                ]
+              : []),
+          ].join('\n'),
+        ),
+        '',
+      )
+    }
   }
   if (r.testProbes && r.testProbes.length > 0) {
     lines.push(

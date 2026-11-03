@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 
 import type { AnyDurably, Run } from '@coji/durably'
 
+import type { CodeResponse } from '../factory/code-response.js'
 import { asThresholdException } from '../factory/events.js'
 import { REPAIR_OF_LABEL, triageThatRuns } from '../factory/repair.js'
 import { testProbeOutcomeOf } from '../factory/test-probe.js'
@@ -476,6 +477,25 @@ function implementerNotesOf(steps: StoredStep[]): ReportImplementerNotes[] {
             notes: stored.notes,
           },
         ]
+      : []
+  })
+}
+
+function codeResponsesOf(steps: StoredStep[]): CodeResponse[] {
+  return steps.flatMap((step) => {
+    if (
+      step.status !== 'completed' ||
+      stageStep(step.name)?.stage !== 'code' ||
+      !/:response(?::retry)?$/.test(step.name)
+    )
+      return []
+    const response = step.output as CodeResponse | null
+    return response?.source === 'self-reported' &&
+      Array.isArray(response.checks) &&
+      Array.isArray(response.findings) &&
+      Array.isArray(response.treatments) &&
+      Array.isArray(response.missing)
+      ? [response]
       : []
   })
 }
@@ -1389,7 +1409,12 @@ export async function buildReport(
   const setupOutput = steps.find(
     (s) => s.name === 'setup' && s.status === 'completed',
   )?.output as {
-    target?: { kind?: string; workdir?: string }
+    target?: {
+      kind?: string
+      workdir?: string
+      baseCommit?: string
+      featureBase?: string
+    }
     parallelReview?: unknown
     review?: Partial<Record<string, { output?: string }>>
     reviewBlockerThreshold?: number | null
@@ -1494,8 +1519,13 @@ export async function buildReport(
     },
     candidate,
     candidates,
+    featureBase:
+      setupTarget?.kind === 'repo'
+        ? (setupTarget.featureBase ?? setupTarget.baseCommit ?? null)
+        : null,
     testProbes: testProbesOf(steps),
     implementerNotes: implementerNotesOf(steps),
+    codeResponses: codeResponsesOf(steps),
     repairSession: repairSession?.report ?? null,
     repairCalls: repairCallsOf(rows),
     reviews,

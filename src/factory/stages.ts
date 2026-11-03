@@ -39,12 +39,19 @@ import {
   runVerificationStep,
   type VerificationOutcome,
 } from '../engine/verification.js'
+import {
+  parseCodeResponse,
+  repairFindings,
+  type CodeResponse,
+} from './code-response.js'
 import { SpecEventSchema, type SpecEvent } from './events.js'
 import { readInputFile } from './input-file.js'
 import { agentLogsDirBeside } from './layout.js'
 import { specAction } from './policy.js'
 import {
   codePrompt,
+  blockerNotes,
+  untrustedSection,
   expandReviewCommand,
   LOCAL_INSTRUCTIONS_INPUT,
   localInstructions,
@@ -202,74 +209,186 @@ export const codeStage: StageHandler = async ({
   // implementation starts new even on the code profile.
   const fromTimedOut =
     role === 'repair' && state.candidate?.timedOut !== undefined
-  const call = await step.run(
-    `${key}:agent`,
-    (signal, attempt) =>
-      runAgentCall(signal, attempt, {
-        provider: separateRepair
-          ? services.providers.repair
-          : services.providers.code,
-        providerName: profile.provider,
-        prompt: codePrompt({
+  const tracked =
+    state.setup.target.kind === 'repo' &&
+    state.setup.target.codeResponseVersion === 1
+  const commands =
+    state.setup.target.kind === 'repo'
+      ? (state.setup.target.selfCheck ?? [])
+      : []
+  const untrusted = target.untrustedInputs('code')
+  const checkDiagnostics =
+    state.setup.target.kind === 'repo' &&
+    state.setup.target.repairOf?.findingsKind === 'check-output'
+  const feedback =
+    fromFindings && !checkDiagnostics
+      ? untrusted
+          .filter((entry) => entry.label === 'FINDINGS')
+          .map((entry) => entry.content)
+      : [
+          ...state.reviews
+            .filter((review) => review.decision === 'needsChanges')
+            .map((review) => review.notes),
+          ...state.failedCheckReviews
+            .filter((review) => review.decision === 'needsChanges')
+            .map((review) =>
+              review.findings
+                ? blockerNotes(review.findings.blocker)
+                : review.notes,
+            ),
+        ]
+  const findings =
+    role === 'repair' && tracked
+      ? repairFindings(
+          feedback,
+          state.setup.target.kind === 'repo'
+            ? state.setup.target.dispositions
+            : null,
+        )
+      : []
+  const promptArgs: Parameters<typeof codePrompt>[0] = {
+    repairFindings: findings,
+    requiresNotes: tracked && (commands.length > 0 || findings.length > 0),
+    role,
+    iteration,
+    repairNotes: state.repairNotes,
+    failedCheckReviews: state.failedCheckReviews,
+    task: target.taskBrief(),
+    rules: target.implementationRules(),
+    untrusted: target.untrustedInputs('code'),
+    // The owner's confirmed decisions, trusted and apart from the
+    // data above; the stages' results are for the reviewers.
+    ownerContext: target.ownerContext(),
+    // Told it starts a new session only when it does. A repair on the
+    // code profile keeps the prompt it always had, unless it repairs a
+    // stopped call's work in a new session.
+    newSession: (separateRepair || fromTimedOut) && continuedSession === null,
+    fromFindings,
+    fromTimedOut,
+    // Read from the reviews themselves, never from the notes' text.
+    repairsReviewFeedback: repairsReviewFeedback(state),
+  }
+  const runCodeCall = (
+    suffix: string,
+    prompt: string,
+    session: SessionRef | null,
+    correction = false,
+  ) =>
+    step.run(
+      `${key}:${suffix}`,
+      (signal, attempt) =>
+        runAgentCall(signal, attempt, {
+          provider: separateRepair
+            ? services.providers.repair
+            : services.providers.code,
+          providerName: profile.provider,
+          prompt,
+          workdir: target.workdir,
+          timeoutMs: state.setup.agentTimeoutMs,
+          ...idleLimitOf(state.setup),
+          // A call the factory's timer stops is settled; what it left in the
+          // worktree is sealed below, or the run stops when it left nothing.
+          acceptTimeout: true,
+          requestedModel: profile.requestedModel,
+          requestedEffort: profile.requestedEffort,
+          effectiveModel: profile.effectiveModel,
+          effectiveEffort: profile.effectiveEffort,
           role,
+          stage: 'code',
           iteration,
-          repairNotes: state.repairNotes,
-          failedCheckReviews: state.failedCheckReviews,
-          task: target.taskBrief(),
-          rules: target.implementationRules(),
-          untrusted: target.untrustedInputs('code'),
-          // The owner's confirmed decisions, trusted and apart from the
-          // data above; the stages' results are for the reviewers.
-          ownerContext: target.ownerContext(),
-          // Told it starts a new session only when it does. A repair on the
-          // code profile keeps the prompt it always had, unless it repairs a
-          // stopped call's work in a new session.
-          newSession:
-            (separateRepair || fromTimedOut) && continuedSession === null,
-          fromFindings,
-          fromTimedOut,
-          // Read from the reviews themselves, never from the notes' text.
-          repairsReviewFeedback: repairsReviewFeedback(state),
+          operationKey: `${step.runId}/${key}/${suffix}`,
+          checkpointsDir: state.setup.checkpointsDir,
+          agentLogsDir: agentLogsDirBeside(state.setup.checkpointsDir),
+          session,
+          requireSession: reuse,
+          ...(role === 'repair'
+            ? {
+                sessionHandling: correction
+                  ? session
+                    ? 'continued'
+                    : 'fresh'
+                  : choice.handling,
+                // A repair on its own profile that may not continue says why
+                // preflight or setup refused it.
+                sessionReason: correction
+                  ? session
+                    ? 'continuing the response correction in its own session'
+                    : 'response correction starts a fresh session'
+                  : fromFindings
+                    ? "a repair run's first repair never continues the parent's session"
+                    : reuse
+                      ? choice.reason
+                      : (repairSession?.reason ?? 'context is fresh'),
+              }
+            : {}),
+          configVersion: state.setup.configVersion,
         }),
-        workdir: target.workdir,
-        timeoutMs: state.setup.agentTimeoutMs,
-        ...idleLimitOf(state.setup),
-        // A call the factory's timer stops is settled; what it left in the
-        // worktree is sealed below, or the run stops when it left nothing.
-        acceptTimeout: true,
-        requestedModel: profile.requestedModel,
-        requestedEffort: profile.requestedEffort,
-        effectiveModel: profile.effectiveModel,
-        effectiveEffort: profile.effectiveEffort,
-        role,
-        stage: 'code',
-        iteration,
-        operationKey: `${step.runId}/${key}/agent`,
-        checkpointsDir: state.setup.checkpointsDir,
-        agentLogsDir: agentLogsDirBeside(state.setup.checkpointsDir),
-        session: continuedSession,
-        requireSession: reuse,
-        ...(role === 'repair'
-          ? {
-              sessionHandling: choice.handling,
-              // A repair on its own profile that may not continue says why
-              // preflight or setup refused it.
-              sessionReason: fromFindings
-                ? "a repair run's first repair never continues the parent's session"
-                : reuse
-                  ? choice.reason
-                  : (repairSession?.reason ?? 'context is fresh'),
-            }
-          : {}),
-        configVersion: state.setup.configVersion,
-      }),
-    {
-      metadata: {
-        stage: role,
-        operationKey: `${step.runId}/${key}/agent`,
-      } as unknown as JsonValue,
-    },
+      {
+        metadata: {
+          stage: role,
+          operationKey: `${step.runId}/${key}/${suffix}`,
+        } as unknown as JsonValue,
+      },
+    )
+  let call = await runCodeCall(
+    'agent',
+    codePrompt(promptArgs),
+    continuedSession,
   )
+  let response: CodeResponse | null = null
+  const readResponse = (correction: boolean) =>
+    step.run(`${key}:response${correction ? ':retry' : ''}`, async () =>
+      parseCodeResponse({
+        text: call.timedOut ? '' : call.text,
+        role,
+        iteration,
+        correction,
+        commands,
+        findings,
+      }),
+    )
+  if (tracked && (commands.length > 0 || findings.length > 0)) {
+    response = await readResponse(false)
+    if (response.missing.length > 0) {
+      const session: SessionRef | null =
+        state.setup.contextMode === 'reuse' && call.sessionId
+          ? {
+              provider: profile.provider,
+              nativeId: call.sessionId,
+              profileId: profile.id,
+              model: call.observedModel ?? profile.effectiveModel,
+              cwd: target.workdir,
+              instructionsVersion: state.setup.instructionsVersion,
+            }
+          : null
+      const correction = [
+        codePrompt({ ...promptArgs, newSession: session === null }),
+        '',
+        `Your previous reply omitted or malformed the treatments for: ${response.missing.join(', ')}.`,
+        'Correct this once before the factory seals or reviews your work. Read the current worktree, complete any remaining repair, and return a complete NOTES section with every required finding treatment and configured self-check result, including entries you already supplied. Do not just return the missing entries.',
+        ...untrustedSection([
+          {
+            label: 'PREVIOUS_REPLY',
+            content:
+              call.text.slice(-16 * 1024) ||
+              'The previous call timed out before returning a reply.',
+          },
+        ]),
+      ].join('\n')
+      call = await runCodeCall(
+        'agent:response-retry',
+        correction,
+        session,
+        true,
+      )
+      response = await readResponse(true)
+      if (call.timedOut) throw new AgentTimeoutError(call.timedOut, { role })
+      if (response.missing.length > 0)
+        throw new Error(
+          `incomplete-finding-treatments: missing or invalid treatment for ${response.missing.join(', ')} after one correction; no candidate was sealed or reviewed`,
+        )
+    }
+  }
   // A stopped call's unfinished work is sealed and verified like any other
   // candidate, and says so. One that left nothing ends the run: there is no
   // candidate to verify, and the call is not sent again. The check reads

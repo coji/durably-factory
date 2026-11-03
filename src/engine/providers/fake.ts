@@ -164,6 +164,8 @@ export interface FakeScenario {
    * changes the workdir as it otherwise would.
    */
   codeReplies?: string[]
+  /** The response-correction reply per iteration; falls back to codeReplies. */
+  codeCorrections?: string[]
   /** Files written into the workdir, relative paths, on a successful implement. */
   changes?: Record<string, string>
   /** Stand in for a Claude Code that keeps the cache across an effort change. */
@@ -738,11 +740,31 @@ export class FakeProvider implements AgentProvider {
       const iter = options.prompt.match(/iteration (\d+)/)?.[1] ?? '1'
       const failIterations =
         scenario.failIterations ?? (process.env.FAKE_FAIL_FIRST !== '0' ? 1 : 0)
-      const scripted = scenario.codeReplies?.[Number(iter) - 1]
+      const index = Number(iter) - 1
+      const correction = options.prompt.includes(
+        'Correct this once before the factory seals or reviews your work.',
+      )
+      const scripted =
+        (correction ? scenario.codeCorrections?.[index] : undefined) ??
+        scenario.codeReplies?.[index]
+      const ids =
+        /Required finding IDs: ([A-Z0-9_, -]+)/
+          .exec(options.prompt)?.[1]
+          .split(', ')
+          .filter(Boolean) ?? []
+      const checks = [...options.prompt.matchAll(/^Self-check (C\d+):/gm)].map(
+        (match) => match[1],
+      )
+      const claims = [
+        ...ids.map((id) => `${id}: fixed src/calc.js:1 — fake repair`),
+        ...checks.map((id) => `CHECK ${id}: pass — fake self-check result`),
+      ]
+      const reply = (fallback: string) =>
+        scripted ??
+        `${fallback}${claims.length ? `\nNOTES:\n${claims.join('\n')}` : ''}`
       if (Number(iter) <= failIterations) {
         return result(
-          scripted ??
-            'fake: left the bug in place (simulated first-iteration miss)',
+          reply('fake: left the bug in place (simulated first-iteration miss)'),
           options.sessionId ?? undefined,
         )
       }
@@ -764,7 +786,7 @@ export class FakeProvider implements AgentProvider {
       }
       await writeChanges(options.workdir, scenario.changes ?? {})
       return result(
-        scripted ?? scenario.summary ?? 'fake: fixed add() to return a + b',
+        reply(scenario.summary ?? 'fake: fixed add() to return a + b'),
         options.sessionId ?? undefined,
       )
     }
