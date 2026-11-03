@@ -955,6 +955,7 @@ export interface BelowThresholdBlockers {
 }
 
 export interface LoopReport {
+  prompts?: import('../factory/prompt-policy.js').PromptPolicies
   runId: string
   jobName: string
   status: string
@@ -1843,6 +1844,21 @@ export function reportToMarkdown(r: LoopReport): string {
     lines.push('- none (the run has not reached preflight)')
   }
   lines.push('')
+  if (r.prompts && Object.keys(r.prompts).length) {
+    lines.push('## Custom work policies (trusted)', '')
+    for (const [role, policy] of Object.entries(r.prompts)) {
+      if (!policy) continue
+      lines.push(
+        `### ${role} (${policy.mode})`,
+        '',
+        `- source: ${policy.path}`,
+        `- SHA-256: ${policy.sha256}`,
+        '',
+        ...fencedText(policy.content),
+        '',
+      )
+    }
+  }
   lines.push('## Inputs (SHA-256 of stored content)')
   lines.push('')
   for (const [name, file] of Object.entries(r.inputs)) {

@@ -3,6 +3,10 @@ import { createHash } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 
+import {
+  promptPolicyKey,
+  type PromptPolicies,
+} from '../factory/prompt-policy.js'
 import { runChild } from './child.js'
 import { claudeExecutable } from './providers/claude.js'
 import { codexExecutable } from './providers/codex.js'
@@ -146,6 +150,7 @@ export interface ConfigVersionProfile {
 }
 
 export interface ConfigVersionInput {
+  prompts?: PromptPolicies
   contextMode: string
   instructionsVersion: string
   maxIterations: number
@@ -287,7 +292,9 @@ export function configVersionOf(input: ConfigVersionInput): string {
       ? [[lens, { command: r.command, context: r.context, output: r.output }]]
       : []
   })
+  const customPrompts = promptPolicyKey(input.prompts)
   const canonical = JSON.stringify({
+    ...(customPrompts ? { prompts: customPrompts } : {}),
     contextMode: input.contextMode,
     instructionsVersion: input.instructionsVersion,
     maxIterations: input.maxIterations,

@@ -367,7 +367,7 @@ export interface Target {
   /** What the implementer is asked to accomplish. */
   taskBrief(): string
   /** Constraints appended to the implementation prompt. */
-  implementationRules(): string[]
+  implementationRules(options?: { policy?: boolean }): string[]
   /**
    * Caller-supplied text a role is shown, fenced off as data. The implementer
    * gets the task and the spec; each reviewer gets the task, the spec and the

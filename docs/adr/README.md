@@ -69,3 +69,4 @@ What we considered and why we didn't do it.
 | [0044](0044-check-failures-and-automatic-retries.md)            | Check failure classification and bounded retries | accepted |
 | [0045](0045-repair-scope-and-candidate-recheck.md)              | Trusted repair scope and candidate recheck       | accepted |
 | [0046](0046-scoped-unattended-prompt-guidance.md)               | Scoped unattended coding and complete reviews    | accepted |
+| [0047](0047-custom-work-policies.md)                            | Role-specific custom work policies               | accepted |

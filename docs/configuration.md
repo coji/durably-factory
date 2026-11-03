@@ -832,3 +832,56 @@ Terminal 1 のワーカーは省略できます。ただしそのときは、`tr
 ```json
 { "automaticRetryLimit": 1 }
 ```
+
+### 役ごとのプロンプトをカスタマイズする
+
+`prompts`で役ごとのMarkdownファイルを指定できます。
+`append`はデフォルトの作業方針への追記、`replace`は作業方針の差し替えです。
+モードを省略すると`append`になります。
+
+```json
+{
+  "check": ["pnpm", "validate"],
+  "prompts": {
+    "implement": { "file": "prompts/implement.md", "mode": "append" },
+    "repair": { "file": "prompts/repair.md", "mode": "replace" },
+    "correctness": { "file": "prompts/review.md" }
+  }
+}
+```
+
+指定できる役は次の8つです。
+指定しない役にはデフォルトを使い、他の役のカスタム文面は引き継ぎません。
+同じファイルを複数の役で使うこともできます。
+
+| キー        | 適用先                                        |
+| ----------- | --------------------------------------------- |
+| implement   | 最初の実装                                    |
+| repair      | run内の修正、外部findingsからの修正と応答訂正 |
+| correctness | コードの正しさのレビュー                      |
+| edge-cases  | コードの境界ケースのレビュー                  |
+| triage      | 作業の見立て                                  |
+| spec-author | 仕様作成                                      |
+| spec-fix    | 仕様修正                                      |
+| spec-review | 名前付き仕様レビュアーすべて                  |
+
+ファイルは設定ファイルからの相対パスで、空でないUTF-8テキスト、1件32 KiBまでです。
+拡張子は検査せず、そのままの本文を使います。
+`{head}`などの置換は行いません。
+内容、モード、入力元とSHA-256をtrigger時に保存し、reportにも記録します。
+開始後にファイルを編集または削除しても、そのrunの文面は変わりません。
+
+`replace`で差し替えるのは、範囲やテスト方針、レビューの着眼点などの作業方針です。
+作業場所、固定検査、commitや公開の禁止、selfCheck、trusted context、入力データの扱い、findingへの処置と返答形式はfactoryが引き続き組み立てます。
+カスタム文面には、たとえば「既存のunit testを優先し、性能の指摘には測定結果を添える」のような方針を書きます。
+実行契約と矛盾する指示は書かないでください。
+
+既存の仕様テンプレートと`reviewTemplate`は引き続き適用します。
+`review.command`と`local-instructions`にもカスタム方針を含むレビューcontextを渡します。
+`prompts`だけではtriageや仕様生成を有効にしません。
+それぞれのprofileや仕様工程の設定が必要です。
+
+repairとrecheck、通常のretriggerと自動再試行は、保存した文面を引き継ぎます。
+通常runで文面を読み直す場合は`retrigger --run <id> --reload-config`を使います。
+JSONを変えずMarkdownだけを編集した場合も、新しい文面として区別します。
+内容またはモードが変わると`configVersion`も変わり、ファイルの場所だけの変更では変わりません。

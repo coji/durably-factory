@@ -86,6 +86,7 @@ import {
   decide,
   reviewCanFollow,
 } from './policy.js'
+import { promptPoliciesSchema } from './prompt-policy.js'
 import { INSTRUCTIONS_VERSION } from './prompt-version.js'
 import {
   parseTriageOutput,
@@ -809,6 +810,7 @@ const inputSchema = z
     fakeScenario: fakeScenarioSchema.optional(),
     /** Set only on a repair run; see `repairOfSchema`. */
     repairOf: repairOfSchema.optional(),
+    prompts: promptPoliciesSchema.optional(),
     automaticRetryLimit: z.number().int().min(0).max(3).optional(),
     retryOf: z
       .object({
@@ -1169,7 +1171,11 @@ async function runTriage(
       providerName: profile.provider,
       // The task and spec as stored, fenced as data; dispositions are for
       // reviewers and are not sent.
-      prompt: triagePrompt(target.taskBrief(), target.untrustedInputs('code')),
+      prompt: triagePrompt(
+        target.taskBrief(),
+        target.untrustedInputs('code'),
+        setup.prompts?.triage,
+      ),
       workdir: target.workdir,
       // A one-line judgment; a hung call should not hold the code stage for
       // the full repository agent timeout.
@@ -1780,8 +1786,10 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                 review,
                 reviewBlockerThreshold,
                 spec,
+                prompts: input.prompts,
               })
             const value: FactorySetup = {
+              ...(input.prompts ? { prompts: input.prompts } : {}),
               automaticRetryLimit: input.automaticRetryLimit ?? 1,
               ...(input.recheckOf
                 ? {

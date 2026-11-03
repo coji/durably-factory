@@ -90,6 +90,7 @@ interface PersistedProfile {
 }
 
 interface PersistedInput {
+  prompts?: import('../factory/prompt-policy.js').PromptPolicies
   retryOf?: {
     runId: string
     rootRunId: string
@@ -1535,6 +1536,7 @@ export async function buildReport(
     stageUsage: usage,
     roleUsage: roleUsage(rows, profiles),
     inputs: inputHashes(input),
+    ...(input?.prompts ? { prompts: input.prompts } : {}),
     retryOf: input?.retryOf ?? null,
     recheckOf: input?.recheckOf ?? null,
     lineage: {
