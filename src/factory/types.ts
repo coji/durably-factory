@@ -101,6 +101,7 @@ export function usesReviewMaterials(
 
 export interface FactorySetup {
   automaticRetryLimit?: number
+  recheckOf?: { runId: string; candidateCommit: string }
   /** True when every role runs the fake provider. Roles never mix the two. */
   fake: boolean
   contextMode: ContextMode

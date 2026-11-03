@@ -1270,8 +1270,10 @@ async function runPreflight(
 ): Promise<Map<string, string | null>> {
   const triage = triageThatRuns(setup, setup.triage)
   const roles: [string, ResolvedProfile][] = [
-    ...Object.entries(byRole((role) => setup.profiles[role])),
-    ...(setup.repair
+    ...Object.entries(byRole((role) => setup.profiles[role])).filter(
+      ([role]) => !setup.recheckOf || role !== 'code',
+    ),
+    ...(setup.repair && !setup.recheckOf
       ? [['repair', setup.repair] as [string, ResolvedProfile]]
       : []),
     ...(triage ? [['triage', triage] as [string, ResolvedProfile]] : []),
@@ -1589,9 +1591,11 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
             const triageRuns = triageThatRuns(input, triage)
             const used = new Set(
               [
-                ...Object.values(profiles),
+                ...Object.entries(profiles)
+                  .filter(([role]) => !input.recheckOf || role !== 'code')
+                  .map(([, profile]) => profile),
                 ...(triageRuns ? [triageRuns] : []),
-                ...(ownRepair ? [ownRepair] : []),
+                ...(ownRepair && !input.recheckOf ? [ownRepair] : []),
                 ...(specProfiles
                   ? specRoleEntries(specProfiles).map(([, p]) => p)
                   : []),
@@ -1778,6 +1782,14 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
               })
             const value: FactorySetup = {
               automaticRetryLimit: input.automaticRetryLimit ?? 1,
+              ...(input.recheckOf
+                ? {
+                    recheckOf: {
+                      runId: input.recheckOf.runId,
+                      candidateCommit: input.recheckOf.candidateCommit,
+                    },
+                  }
+                : {}),
               fake: profiles.code.provider === 'fake',
               contextMode: input.context,
               target,
@@ -1900,7 +1912,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
         // repair starts new.
         const observedModelOf = (profile: ResolvedProfile) =>
           observedModels.get(executionKey(profile)) ?? null
-        return ownRepair
+        return ownRepair && !setup.recheckOf
           ? await step.run(REPAIR_SESSION_STEP, async () => {
               const confirmed = confirmRepairSession({
                 setup: setup.repairSession,
@@ -2114,9 +2126,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
           repair: ownRepair ? providerFor(ownRepair) : roleProviders.code,
         }
         // Shadow mode: the judgment is recorded and nothing below reads it.
-        const triageProfile = input.recheckOf
-          ? null
-          : triageThatRuns(setup, setup.triage)
+        const triageProfile = triageThatRuns(setup, setup.triage)
         const triageKey = `${step.runId}/triage/agent`
         triage = triageProfile
           ? await step.run(

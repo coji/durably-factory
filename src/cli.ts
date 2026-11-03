@@ -674,7 +674,7 @@ Commands (run from the repository root):
                         [--context-file <file>] [--config <file>]
                         [--check "pnpm validate"] [--setup "pnpm install"] [--base <ref>]
                         [--publish] [--approve auto|manual]
-  pnpm demo repair --run <id> [--findings-file <file>] [--dispositions-file <file>]
+  pnpm demo repair --run <id> [--findings-file <file>] [--dispositions-file <file>] [--scope-file <file>]
                   [--context-file <file>]
                   [--max-iterations <n>]    new run that repairs the last candidate of an approved,
                                             delivered repository run from outside findings, or of

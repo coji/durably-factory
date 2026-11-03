@@ -863,12 +863,15 @@ export class FakeProvider implements AgentProvider {
         ? 'pass'
         : 'needsChanges'
       : undefined
-    const decision =
-      scopeDecision ??
+    const scriptedDecision =
       scripted?.decision ??
       (scripted?.output !== undefined
         ? 'pass'
         : nextFromEnv('FAKE_REVIEW_SEQUENCE', 'pass'))
+    const decision =
+      scriptedDecision === 'pass'
+        ? (scopeDecision ?? scriptedDecision)
+        : scriptedDecision
     const notes =
       scripted?.note ??
       (scopeDecision === 'needsChanges'

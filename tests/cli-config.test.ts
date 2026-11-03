@@ -3253,7 +3253,7 @@ describe('repair', { timeout: 240000 }, () => {
       await refused(
         ['--findings-file', 'ok.md', ...flag],
         new RegExp(
-          `repair takes only --run, --findings-file, --dispositions-file, --context-file and --max-iterations; not accepted: ${flag[0]}\\.`,
+          `repair takes only --run, --findings-file, --dispositions-file, --context-file, --scope-file and --max-iterations; not accepted: ${flag[0]}\\.`,
         ),
       )
     await refused(
@@ -6087,5 +6087,31 @@ describe('--context-file', { timeout: 180000 }, () => {
       repair(null, { content: 'NEW', path: '/new.md' }).idempotencyKey,
       none.idempotencyKey,
     )
+  })
+})
+
+describe('automaticRetryLimit', { timeout: 60000 }, () => {
+  it('fixes the configured bound including zero, and defaults to one', async () => {
+    for (const limit of [undefined, 0, 3]) {
+      const box = await sandbox({
+        check: CHECK,
+        ...(limit !== undefined ? { automaticRetryLimit: limit } : {}),
+      })
+      const run = await trigger(box, ['--repo', box.repo, '--task', 'x'])
+      const input = (await inputOf(box, run)) as unknown as {
+        automaticRetryLimit: number
+      }
+      assert.equal(input.automaticRetryLimit, limit ?? 1)
+    }
+  })
+  it('rejects limits outside zero through three and nonintegers', async () => {
+    for (const limit of [-1, 4, 1.5]) {
+      const box = await sandbox({ check: CHECK, automaticRetryLimit: limit })
+      await rejected(
+        box,
+        ['--repo', box.repo, '--task', 'x'],
+        /automaticRetryLimit/,
+      )
+    }
   })
 })

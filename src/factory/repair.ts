@@ -12,10 +12,10 @@
  * read this, so none of them has to remember the exception.
  */
 export function triageThatRuns<T>(
-  run: { repairOf?: unknown } | null | undefined,
+  run: { repairOf?: unknown; recheckOf?: unknown } | null | undefined,
   triage: T | null | undefined,
 ): T | null {
-  return run?.repairOf ? null : (triage ?? null)
+  return run?.repairOf || run?.recheckOf ? null : (triage ?? null)
 }
 
 /**

@@ -924,7 +924,7 @@ export async function readRepairFiles(
   const other = Object.keys(a).filter((flag) => !REPAIR_FLAGS.includes(flag))
   if (other.length > 0)
     throw new Error(
-      `repair takes only --run, --findings-file, --dispositions-file, --context-file and --max-iterations; not accepted: ${other.map((f) => `--${f}`).join(', ')}. A repair run keeps the parent run's other stored settings; to run with other settings, start a normal run with trigger`,
+      `repair takes only --run, --findings-file, --dispositions-file, --context-file, --scope-file and --max-iterations; not accepted: ${other.map((f) => `--${f}`).join(', ')}. A repair run keeps the parent run's other stored settings; to run with other settings, start a normal run with trigger`,
     )
   const iterations = a['max-iterations']
   const maxIterations =
@@ -1098,7 +1098,10 @@ export function checkFailureFindings(
     return where ? [{ ...where, output: s.output }] : []
   })
   const sealed = done
-    .filter((s) => s.stage === 'code' && s.part === 'candidate')
+    .filter(
+      (s) =>
+        (s.stage === 'code' || s.stage === 'recheck') && s.part === 'candidate',
+    )
     .sort((x, y) => x.sequence - y.sequence)
     .at(-1)
   const sealedCandidate = sealed?.output as {

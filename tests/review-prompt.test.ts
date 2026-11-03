@@ -9,6 +9,7 @@ import {
   buildClaudeSettings,
   decideToolPermission,
 } from '../src/engine/providers/claude.js'
+import { FakeProvider, FakeRun } from '../src/engine/providers/fake.js'
 import {
   blockerThresholdRules,
   CHANGED_PATHS_INLINE_LIMIT,
@@ -2193,4 +2194,43 @@ describe('trusted repair scope', () => {
     assert.match(prompt, /<<<TRUSTED OWNER_CONTEXT/)
     assert.equal(new RepoTarget(repoConfig).repairScope(), null)
   })
+})
+
+it('keeps unrelated fake blockers and malformed replies when a named requirement is excluded', async () => {
+  const target = new RepoTarget({
+    ...repoConfig,
+    scope: 'Excluded requirement: spec §3 browser dashboard.',
+  })
+  const prompt = codePrompt({
+    role: 'repair',
+    iteration: 1,
+    repairNotes: [],
+    task: target.taskBrief(),
+    rules: [],
+    scope: target.repairScope(),
+  })
+  for (const verdict of ['needsChanges', 'invalid', 'empty'] as const) {
+    const provider = new FakeProvider({
+      run: new FakeRun({
+        scopeRequirement: 'spec §3 browser dashboard',
+        reviewSequence: [verdict],
+        reviewNotes: ['Unrelated decimal regression'],
+        latencyMs: { min: 0, max: 0 },
+      }),
+    })
+    const result = await provider.call({
+      prompt,
+      workdir: tmpdir(),
+      timeoutMs: 1000,
+      requestedModel: 'fake-model',
+      requestedEffort: 'low',
+      role: 'review-a',
+      reviewRound: 1,
+    })
+    if (verdict === 'needsChanges') {
+      assert.match(result.text, /DECISION: needsChanges/)
+      assert.match(result.text, /Unrelated decimal regression/)
+    } else if (verdict === 'empty') assert.equal(result.text, '')
+    else assert.doesNotMatch(result.text, /DECISION:/)
+  }
 })
