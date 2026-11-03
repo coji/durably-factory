@@ -179,6 +179,27 @@ describe('full-output log files', () => {
     )
   })
 
+  it('waits for pending stream errors when closing a log', async () => {
+    for (const destroyed of [true, false]) {
+      const error = new Error('log file open failed')
+      const sink = new Writable({
+        ...(destroyed
+          ? {}
+          : {
+              construct(done) {
+                setImmediate(() => done(error))
+              },
+            }),
+        write(_data, _encoding, done) {
+          done()
+        },
+      })
+      const log = teeLog(null, sink)
+      if (destroyed) sink.destroy(error)
+      assert.equal(await log.close(), error, `destroyed=${destroyed}`)
+    }
+  })
+
   it('keeps every byte of a large output on disk', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'child-log-'))
     const stdoutFile = join(dir, 'stdout.log')

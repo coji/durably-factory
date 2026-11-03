@@ -132,6 +132,7 @@ export async function prepareRepoTarget(
     baseCommit,
     featureBase,
     codeResponseVersion: 1,
+    promptVersion: 2,
     branch: args.branch,
     workdir,
     setupCommand: args.setupCommand,

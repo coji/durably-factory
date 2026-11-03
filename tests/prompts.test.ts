@@ -276,10 +276,14 @@ describe("the code and repair reply's NOTES section", () => {
   it('is asked for in both prompts, as an optional section the owner-context instruction names', () => {
     for (const role of ['implement', 'repair'] as const) {
       const p = prompt(role)
-      assert.match(p, /Reply with a short summary of files changed\./, role)
       assert.match(
         p,
-        /If you left a finding, a piece of feedback or a requested change unfixed on purpose, such as one that would go against the owner context, end your reply with a section that starts with a line of its own, NOTES:, and under it name each one you left and why\. Leave the section out when you left nothing unfixed\./,
+        /Reply with a short summary of the files you changed, in plain sentences\./,
+        role,
+      )
+      assert.match(
+        p,
+        /End your reply with a section[^\n]*NOTES:[^\n]*an assumption you made[^\n]*a follow-up you noticed[^\n]*an instruction file that made you pause\. Leave the section out when there is nothing to report\./,
         role,
       )
       // The owner-context instruction sends the agent to that section.

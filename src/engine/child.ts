@@ -2,6 +2,7 @@
 import { spawn, type SpawnOptions } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
 import type { Readable, Writable } from 'node:stream'
+import { finished } from 'node:stream/promises'
 import { StringDecoder } from 'node:string_decoder'
 
 /**
@@ -129,12 +130,18 @@ export function teeLog(source: Readable | null, stream: Writable) {
       source?.pause()
       stream.once('drain', resume)
     },
-    close: () =>
-      new Promise<Error | null>((resolve) => {
-        if (stream.destroyed) return resolve(failure)
-        stream.end(() => resolve(failure))
-        stream.once('error', () => resolve(failure))
-      }),
+    close: async () => {
+      // An open/destroy error may be pending even after end's callback.
+      // Wait for stream completion instead of reading the event handler early.
+      const completion = finished(stream, { cleanup: true }).then(
+        () => failure,
+        (error: unknown) =>
+          failure ??
+          (error instanceof Error ? error : new Error(String(error))),
+      )
+      if (!stream.destroyed) stream.end()
+      return completion
+    },
   }
 }
 

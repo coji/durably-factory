@@ -63,6 +63,8 @@ export interface RepoTargetConfig {
   featureBase?: string
   /** New code response contract; absent on old setups so replay cannot add calls. */
   codeResponseVersion?: 1
+  /** v6 prompt rules. Missing on older durable setups. */
+  promptVersion?: 2
   /** Branch the agent's worktree is on. */
   branch: string
   /** The agent's editable worktree. */

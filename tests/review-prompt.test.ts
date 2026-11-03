@@ -38,6 +38,7 @@ import { RepoTarget } from '../src/targets/repo.js'
 import { SubjectTarget } from '../src/targets/subject.js'
 
 const repoConfig: RepoTargetConfig = {
+  promptVersion: 2,
   kind: 'repo',
   repoPath: '/tmp/repo',
   baseCommit: 'a'.repeat(40),
@@ -249,7 +250,7 @@ describe('a repair run from outside findings', () => {
     assert.match(prompt, /approved implementation/)
     assert.match(
       prompt,
-      /The findings bound this repair: change only what they require/,
+      /Change what the task requires, and in a repair what the findings or feedback require, and nothing else/,
     )
     const dataStart = prompt.indexOf('UNTRUSTED INPUT DATA:')
     assert.ok(prompt.indexOf(FINDINGS) > dataStart)
@@ -635,7 +636,7 @@ describe('the reviews of a candidate that failed its check', () => {
     // no newline after the feedback, and one after the reply format alone.
     assert.ok(
       repair().endsWith(
-        'Leave the section out when you left nothing unfixed.\n\nVerified feedback to address:\n- acceptance: CHECK-FAILURE add(0.1, 0.2) returned 0',
+        'Leave the section out when there is nothing to report.\n\nVerified feedback to address:\n- acceptance: CHECK-FAILURE add(0.1, 0.2) returned 0',
       ),
     )
     const implement = codePrompt({
@@ -648,7 +649,7 @@ describe('the reviews of a candidate that failed its check', () => {
     })
     assert.ok(
       implement.endsWith(
-        'Leave the section out when you left nothing unfixed.\n',
+        'Leave the section out when there is nothing to report.\n',
       ),
     )
   })
@@ -811,7 +812,7 @@ describe('review procedure', () => {
     )
   })
 
-  it('asks for an independent plan before the diff and a counterexample before pass', async () => {
+  it('keeps an independent plan and reports minor findings without a forced counterexample', async () => {
     const prompts = await promptsFor(withInputs)
     for (const lens of ['correctness', 'edge-cases'] as const) {
       const prompt = prompts[lens]
@@ -819,12 +820,9 @@ describe('review procedure', () => {
         prompt,
         /Before you look at the candidate or its diff[^\n]*PLAN/,
       )
-      assert.match(
-        prompt,
-        /Before answering pass, look for at least one counterexample[^\n]*COUNTEREXAMPLE/,
-      )
+      assert.match(prompt, /Report every problem you find, minor ones included/)
       assert.match(prompt, /^PLAN: /m)
-      assert.match(prompt, /^COUNTEREXAMPLE: /m)
+      assert.doesNotMatch(prompt, /COUNTEREXAMPLE/)
       assert.match(prompt, /^DECISION: pass \| needsChanges$/m)
     }
   })
@@ -1384,7 +1382,11 @@ describe('review invocation prompts', () => {
       }),
       verdict,
     )
-    assert.ok(verdict.endsWith('NOTES: <one or two sentences>'))
+    assert.ok(
+      verdict.endsWith(
+        'NOTES: <every problem found with its severity, or a short explanation when none>',
+      ),
+    )
     const findings = reviewPrompt(
       'correctness',
       'CTX',
@@ -1970,7 +1972,7 @@ describe('the blocker threshold of a findings-json code review', () => {
       iteration: 1,
       repairNotes: [],
       task: 'T',
-      rules: [],
+      rules: new RepoTarget(repoConfig).implementationRules(),
       fromFindings: 'review-cap-reached',
     })
     assert.match(
@@ -1987,7 +1989,7 @@ describe('the blocker threshold of a findings-json code review', () => {
         iteration: 2,
         repairNotes: ['correctness: x'],
         task: 'T',
-        rules: [],
+        rules: new RepoTarget(repoConfig).implementationRules(),
         newSession,
         repairsReviewFeedback: true,
       })
@@ -1997,22 +1999,21 @@ describe('the blocker threshold of a findings-json code review', () => {
         String(newSession),
       )
     }
-    // Not the first implementation, nor a repair the caller did not name a
-    // repair of review feedback, such as one of a failed check alone.
+    // The same scope rule covers initial implementation and failed-check repair.
     for (const other of [
       codePrompt({
         role: 'implement',
         iteration: 1,
         repairNotes: [],
         task: 'T',
-        rules: [],
+        rules: new RepoTarget(repoConfig).implementationRules(),
       }),
       codePrompt({
         role: 'repair',
         iteration: 2,
         repairNotes: ['acceptance: x'],
         task: 'T',
-        rules: [],
+        rules: new RepoTarget(repoConfig).implementationRules(),
         newSession: true,
       }),
       codePrompt({
@@ -2020,11 +2021,11 @@ describe('the blocker threshold of a findings-json code review', () => {
         iteration: 2,
         repairNotes: ['acceptance: x'],
         task: 'T',
-        rules: [],
+        rules: new RepoTarget(repoConfig).implementationRules(),
         repairsReviewFeedback: false,
       }),
     ])
-      assert.doesNotMatch(other, /rare or future cases/)
+      assert.match(other, /rare or future cases/)
   })
 })
 

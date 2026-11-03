@@ -48,6 +48,7 @@ import { SpecEventSchema, type SpecEvent } from './events.js'
 import { readInputFile } from './input-file.js'
 import { agentLogsDirBeside } from './layout.js'
 import { specAction } from './policy.js'
+import { promptVersionOf } from './prompt-version.js'
 import {
   codePrompt,
   blockerNotes,
@@ -258,6 +259,7 @@ export const codeStage: StageHandler = async ({
     untrusted: target.untrustedInputs('code'),
     // The owner's confirmed decisions, trusted and apart from the
     // data above; the stages' results are for the reviewers.
+    promptVersion: promptVersionOf(state.setup.instructionsVersion),
     ownerContext: target.ownerContext(),
     scope: target.repairScope?.(),
     // Told it starts a new session only when it does. A repair on the
@@ -846,6 +848,7 @@ async function reviewRoundOf(args: {
       repairParentConclusion(setup),
       {
         output,
+        promptVersion: promptVersionOf(setup.instructionsVersion),
         // A prompt review in the sealed tree is shown that tree alone.
         snapshots: commandMode ? trees : null,
         // A command-mode reviewer works in a directory of its own, so it
@@ -1373,6 +1376,7 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
     const output = invocation?.output ?? 'verdict'
     const commandMode = usesReviewMaterials(invocation)
     const context = specReviewPrompt({
+      promptVersion: promptVersionOf(setup.instructionsVersion),
       name,
       worktree: target.workdir,
       specPath: spec.specPath,
