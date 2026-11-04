@@ -17,6 +17,7 @@ import type {
   VerificationLog,
 } from '../engine/providers/types.js'
 import type { ReportFinding, ReportReviewFindings } from '../engine/report.js'
+import type { SandboxSettings } from '../engine/sandbox.js'
 import type {
   CandidateRef,
   ContextMode,
@@ -213,6 +214,8 @@ export interface FactorySetup {
    * false: review follows a passing verification, as before (ADR-0029).
    */
   parallelReview?: boolean
+  /** Codex network opt-ins fixed at trigger; absent when disabled. */
+  sandbox?: SandboxSettings
 }
 
 /** One named spec reviewer, as setup resolved it. */

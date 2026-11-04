@@ -42,6 +42,7 @@ import {
   runAgentCall,
   UncertainInvocationError,
 } from '../engine/runner.js'
+import { enabledSandbox, sandboxSchema } from '../engine/sandbox.js'
 import type { ResolvedProfile } from '../engine/types.js'
 import { runTimedVerificationStep } from '../engine/verification.js'
 import {
@@ -334,6 +335,7 @@ const targetSchema = z
        * version: it changes when the reviews run, not what they are.
        */
       parallelReview: z.boolean().optional(),
+      sandbox: sandboxSchema.optional(),
     }),
   ])
   .default({ kind: 'subject' })
@@ -1694,6 +1696,9 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
             // beside the check, so only then are they extracted. Trees an
             // earlier attempt of this setup left are discarded with its
             // worktree.
+            const sandbox = enabledSandbox(
+              input.target.kind === 'repo' ? input.target.sandbox : undefined,
+            )
             const parallelReview =
               input.target.kind === 'repo' &&
               input.target.parallelReview === true
@@ -1787,6 +1792,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                 reviewBlockerThreshold,
                 spec,
                 prompts: input.prompts,
+                sandbox,
               })
             const value: FactorySetup = {
               ...(input.prompts ? { prompts: input.prompts } : {}),
@@ -1836,6 +1842,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
               ...(spec ? { spec } : {}),
               // Only when on, so a run without it keeps the setup it had.
               ...(parallelReview ? { parallelReview } : {}),
+              ...(sandbox ? { sandbox } : {}),
               ...(repairOf
                 ? {
                     repairOf: {

@@ -18,6 +18,11 @@ import {
 import { repoRoot } from './engine/git.js'
 import { fencedText } from './engine/markdown.js'
 import { parseProviderName } from './engine/providers/index.js'
+import {
+  enabledSandbox,
+  sandboxSchema,
+  type SandboxSettings,
+} from './engine/sandbox.js'
 import type { VerificationOutcome } from './engine/verification.js'
 import { readInputFile } from './factory/input-file.js'
 import {
@@ -233,6 +238,7 @@ const factoryConfigSchema = z
      * reviewers then read the candidate's sealed tree and diff (ADR-0029).
      */
     parallelReview: z.boolean().optional(),
+    sandbox: sandboxSchema.optional(),
     /** The Codex CLI file to launch; relative to this file's directory. */
     codexPath: z.string().min(1).optional(),
     /**
@@ -569,6 +575,9 @@ async function repoSettings(
       baselineCheck: config?.baselineCheck ?? false,
       baselineReuse: config?.baselineReuse ?? null,
       parallelReview: config?.parallelReview ?? false,
+      ...(enabledSandbox(config?.sandbox)
+        ? { sandbox: enabledSandbox(config?.sandbox) }
+        : {}),
       // Fixed here with every default filled in, so the run never reads
       // factory.json again and a reload reads it afresh.
       commit: {
@@ -842,11 +851,12 @@ export async function reloadTriggerInput(stored: StoredInput): Promise<{
     (source.path !== null && source.path !== join(root, 'factory.json'))
   const explicit = named && source.path ? source.path : undefined
   const loaded = await loadConfig(root, explicit)
-  // The name is read again too, so a config that dropped it names none.
-  const { name: _storedName, ...storedTarget } = stored.target as Extract<
-    ResolvedTarget['target'],
-    { kind: 'repo' }
-  >
+  // Optional fields must be dropped too when the reloaded config omits them.
+  const {
+    name: _storedName,
+    sandbox: _storedSandbox,
+    ...storedTarget
+  } = stored.target as Extract<ResolvedTarget['target'], { kind: 'repo' }>
   const { settings, codexPath, configSource, specStages, prompts } =
     await repoSettings(
       a,
@@ -1003,6 +1013,7 @@ interface StoredRepairInput {
     baselineCheck?: boolean
     baselineReuse?: BaselineReuse | null
     parallelReview?: boolean
+    sandbox?: SandboxSettings
   }
 }
 
@@ -1387,6 +1398,13 @@ export function buildRepairInput(
         'baselineReuse',
         () => parentInput.target?.baselineReuse ?? null,
       ),
+      ...(enabledSandbox(stored.sandbox ?? parentInput.target?.sandbox)
+        ? {
+            sandbox: enabledSandbox(
+              stored.sandbox ?? parentInput.target?.sandbox,
+            ),
+          }
+        : {}),
       // Setup records it only when on; otherwise the parent's input says.
       parallelReview:
         stored.parallelReview ?? parentInput.target?.parallelReview ?? false,

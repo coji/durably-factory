@@ -648,6 +648,34 @@ CHECK C2: not-run — the sandbox cannot start the required local server
   「Preflight」節には、役割ごとの結果、確かめ方、CLI のパスと版、最小の呼び出しの
   使用量と費用（分からなければ `unknown`）が残ります。
 
+## Codex でローカルサーバーを使う（sandbox.network）
+
+ローカルのテストサーバーを起動する必要がある場合は、ネットワークを許可する役割を指定します。
+
+```json
+{
+  "sandbox": { "network": ["code", "repair"] }
+}
+```
+
+`code` は最初の実装、`repair` は同じ実行内の修正と `factory repair` の修正に適用します。
+修正が `profiles.code` と同じプロファイルやセッションを使う場合も、`repair` の指定で決まります。
+片方だけを指定することもできます。
+この設定は Codex の `workspace-write` サンドボックスでネットワークを許可します。
+localhost での待ち受けに加え、外部への通信も許可されます。
+書き込み範囲と承認の設定は変わりません。
+レビュー、triage、preflight、仕様の作成・修正・レビュー、Claude と fake の権限は変わりません。
+
+省略時と空配列 `[]` は従来の動作を保ち、`configVersion` も変えません。
+有効な役割を指定すると、その組み合わせが `configVersion` に入ります。
+役割名は `code` と `repair` だけを受け付けます。
+配列の順序は設定の違いとして扱いません。
+
+設定は trigger 時に保存し、開始後に `factory.json` を編集しても変わりません。
+repair、recheck、通常の retrigger と自動再試行は保存した設定を引き継ぎます。
+通常 run で読み直す場合は `retrigger --run <id> --reload-config` を使います。
+設定を削除してから読み直すと、許可も解除されます。
+
 ## Codex CLI を固定する（codexPath）
 
 `factory.json` の `"codexPath"` で、起動する Codex CLI を指定できます。相対パスは

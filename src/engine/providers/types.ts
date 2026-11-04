@@ -145,6 +145,8 @@ export interface AgentCallOptions {
   requestedModel: string | null
   requestedEffort: string | null
   role: AgentRole
+  /** Codex workspace network access; honored only for implement and repair. */
+  networkAccess?: boolean
   /**
    * A review call's round, from 1. Only the fake provider reads it, to pick
    * a scripted verdict that does not depend on call order.

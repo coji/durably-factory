@@ -300,6 +300,11 @@ export const codeStage: StageHandler = async ({
           effectiveModel: profile.effectiveModel,
           effectiveEffort: profile.effectiveEffort,
           role,
+          ...(state.setup.sandbox?.network.includes(
+            role === 'implement' ? 'code' : 'repair',
+          )
+            ? { networkAccess: true }
+            : {}),
           stage: 'code',
           iteration,
           operationKey: `${step.runId}/${key}/${suffix}`,
