@@ -124,21 +124,22 @@ fake の事前確認、待ち時間、使用量、`fakeScenario` は [仕組み�
 
 すべてのフラグは `pnpm factory --help` で見られます。
 
-| コマンド                               | すること                                       | 詳しい説明                                          |
-| -------------------------------------- | ---------------------------------------------- | --------------------------------------------------- |
-| `factory worker`                       | ワーカーを起動する                             | [日々の操作](docs/operations.md)                    |
-| `factory trigger`                      | 実行を登録する                                 | [実際のリポジトリで動かす](docs/configuration.md)   |
-| `factory status`                       | 人を待つ実行、止まった実行、実行中の実行を見る | [日々の操作](docs/operations.md)                    |
-| `factory wait`                         | 実行が終わるか、人を待つまで待つ               | [日々の操作](docs/operations.md)                    |
-| `factory waits` / `approve` / `reject` | 承認待ちを見る、承認する、却下する             | このページの「実行」                                |
-| `factory spec-revise`                  | レビューで止まった仕様を、メモを付けて直させる | [見立て、レビュー、修正](docs/review-and-repair.md) |
-| `factory retrigger`                    | 保存した入力で、新しい実行を作る               | [日々の操作](docs/operations.md)                    |
-| `factory recheck`                      | 同じ候補の検査とレビューをやり直す             | [見立て、レビュー、修正](docs/review-and-repair.md) |
-| `factory repair`                       | 外部の指摘から、修正の実行を作る               | [見立て、レビュー、修正](docs/review-and-repair.md) |
-| `factory archive` / `unarchive`        | 止まった実行をアーカイブする、戻す             | [日々の操作](docs/operations.md)                    |
-| `factory prune`                        | 終わった実行の作業ツリーを片付ける             | [日々の操作](docs/operations.md)                    |
-| `factory report` / `compare`           | レポートを作る、実行を比べる                   | [計測とレポート](docs/measurement.md)               |
-| `factory ui` / `seed`                  | web UI を開く、デモデータを入れる              | [ブラウザで見る（web UI）](docs/ui.md)              |
+| コマンド                               | すること                                       | 詳しい説明                                                                          |
+| -------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `factory worker`                       | ワーカーを起動する                             | [日々の操作](docs/operations.md)                                                    |
+| `factory trigger`                      | 実行を登録する                                 | [実際のリポジトリで動かす](docs/configuration.md)                                   |
+| `factory status`                       | 人を待つ実行、止まった実行、実行中の実行を見る | [日々の操作](docs/operations.md)                                                    |
+| `factory wait`                         | 実行が終わるか、人を待つまで待つ               | [日々の操作](docs/operations.md)                                                    |
+| `factory waits` / `approve` / `reject` | 承認待ちを見る、承認する、却下する             | このページの「実行」                                                                |
+| `factory spec-revise`                  | レビューで止まった仕様を、メモを付けて直させる | [見立て、レビュー、修正](docs/review-and-repair.md)                                 |
+| `factory retrigger`                    | 保存した入力で、新しい実行を作る               | [日々の操作](docs/operations.md)                                                    |
+| `factory recheck`                      | 同じ候補の検査とレビューをやり直す             | [見立て、レビュー、修正](docs/review-and-repair.md)                                 |
+| `factory resume`                       | 未確定の呼び出しを人の確認後に再開する         | [スリープと停止からの復旧](docs/operations.md#スリープやワーカーの停止から再開する) |
+| `factory repair`                       | 外部の指摘から、修正の実行を作る               | [見立て、レビュー、修正](docs/review-and-repair.md)                                 |
+| `factory archive` / `unarchive`        | 止まった実行をアーカイブする、戻す             | [日々の操作](docs/operations.md)                                                    |
+| `factory prune`                        | 終わった実行の作業ツリーを片付ける             | [日々の操作](docs/operations.md)                                                    |
+| `factory report` / `compare`           | レポートを作る、実行を比べる                   | [計測とレポート](docs/measurement.md)                                               |
+| `factory ui` / `seed`                  | web UI を開く、デモデータを入れる              | [ブラウザで見る（web UI）](docs/ui.md)                                              |
 
 ## ドキュメント
 

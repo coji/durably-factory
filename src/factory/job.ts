@@ -1513,6 +1513,8 @@ export const AGENT_LOOP_JOB_NAME = 'local-factory.v2'
 export interface AgentLoopJobOptions {
   /** Directory every run's worktree, checkpoints and delivery live under. */
   stateRoot: string
+  /** Completed stage events bypass mechanics that inspect a mutable worktree. */
+  getCompletedStep: BaselineStore['getCompletedStep']
   /**
    * Reads of the state database a baseline reuse decision makes, about the
    * one run the reuse index names. Absent: every baseline check runs,
@@ -2221,14 +2223,26 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
           // for a human.
           if (!reviewCanFollow(selected.stage))
             await target.releaseReviewSnapshots?.({ base: true })
-          const rawEvent = await stages[selected.stage]({
-            step,
-            state,
-            decision: selected,
-            key: `stage:${sequence}:${selected.stage}`,
-            services: { providers, target, createTarget },
-          })
-          state = reduce(state, FactoryEventSchema.parse(rawEvent))
+          const key = `stage:${sequence}:${selected.stage}`
+          const eventName = `${key}:event`
+          const saved = await options.getCompletedStep(step.runId, eventName)
+          // Never wrap a handler in step.run: it can contain a durable wait.
+          // Record its event separately, before a later stage can change the
+          // worktree. Replay reduces completed stages without inspecting an
+          // older candidate against that later worktree.
+          const rawEvent = saved
+            ? FactoryEventSchema.parse(saved.output)
+            : FactoryEventSchema.parse(
+                await stages[selected.stage]({
+                  step,
+                  state,
+                  decision: selected,
+                  key,
+                  services: { providers, target, createTarget },
+                }),
+              )
+          const event = await step.run(eventName, async () => rawEvent)
+          state = reduce(state, event)
           // A stage result registered for the reviewers, such as the test
           // probe's, changes the setup: the next stage gets a target with it.
           syncTarget(state.setup.target)

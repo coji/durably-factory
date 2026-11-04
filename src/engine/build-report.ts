@@ -82,6 +82,7 @@ import {
   type DiagnosisKind,
   type TaskRunInput,
 } from './status.js'
+import { TERMINAL_STATUSES } from './terminal.js'
 
 interface PersistedProfile {
   provider?: string
@@ -1382,7 +1383,7 @@ export async function buildReport(
   // known-only sum is never presented as the whole-run stage cost.
   const stageTotalMs = totalStageMs(timings)
   const runElapsedMs =
-    run.completedAt != null
+    TERMINAL_STATUSES.includes(run.status) && run.completedAt != null
       ? Math.max(0, Date.parse(run.completedAt) - Date.parse(run.createdAt))
       : null
   const versions: Record<string, string | null> = {}

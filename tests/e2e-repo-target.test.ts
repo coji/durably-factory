@@ -38,7 +38,13 @@ import {
   unarchiveRun,
 } from '../src/actions.js'
 import { signalApproval, signalSpecDecision } from '../src/approval.js'
-import { createAgentDurably, sweepRunScratch } from '../src/durably.js'
+import {
+  acquireWorkerLock,
+  createAgentDurably,
+  reclaimWorkerLeases,
+  sweepRunScratch,
+  type AgentLoopDurably,
+} from '../src/durably.js'
 import { buildReport } from '../src/engine/build-report.js'
 import { runChild } from '../src/engine/child.js'
 import { classifyRun } from '../src/engine/failure-reasons.js'
@@ -160,6 +166,17 @@ async function seedRepo(root: string): Promise<string> {
   await git(repo, ['add', '-A'])
   await git(repo, ['commit', '-m', 'seed'])
   return repo
+}
+
+/** Mirror the CLI's lock-protected startup recovery before an isolated in-process restart. */
+async function reclaimAfterWorkerDeath(durably: AgentLoopDurably) {
+  const lock = acquireWorkerLock(durably.stateRoot)
+  assert.ok(lock.acquired)
+  try {
+    await reclaimWorkerLeases(durably, lock)
+  } finally {
+    lock.release()
+  }
 }
 
 async function waitFor(
@@ -3855,6 +3872,7 @@ describe('configured reviewers', { timeout: 240000 }, () => {
       process.kill(pid(), 'SIGKILL')
       // The worker died mid-call: the trees and directories are still there.
       assert.equal(snapshotsLeft(stateRoot, run.id), true)
+      await reclaimAfterWorkerDeath(durably)
       await durably.init()
       await waitFor(
         async () => (await durably.getRun(run.id))?.status === 'failed',
@@ -3965,6 +3983,7 @@ describe('configured reviewers', { timeout: 240000 }, () => {
 
       // Picked up again, the run replays both reviews from their records and
       // waits for approval with nothing left.
+      await reclaimAfterWorkerDeath(durably)
       await durably.init()
       await waitFor(
         async () => (await durably.getRun(run.id))?.status === 'waiting',
@@ -6327,6 +6346,7 @@ describe('the test probe', { timeout: 300000 }, () => {
 
       // Another worker takes the run up: the stored probe is read back.
       await writeFile(join(runRoot, 'release'), '')
+      await reclaimAfterWorkerDeath(durably)
       await durably.init()
       await waitFor(
         async () => (await durably.getRun(run.id))?.status === 'completed',
@@ -7730,6 +7750,7 @@ describe('the test probe', { timeout: 300000 }, () => {
 
       // Another worker takes the run up: the candidate is put back, and the
       // probe, which never completed, runs again.
+      await reclaimAfterWorkerDeath(durably)
       await durably.init()
       await waitFor(
         async () => (await durably.getRun(run.id))?.status === 'completed',
