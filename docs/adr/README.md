@@ -72,3 +72,4 @@ What we considered and why we didn't do it.
 | [0047](0047-custom-work-policies.md)                            | Role-specific custom work policies               | accepted |
 | [0048](0048-factory-naming.md)                                  | Factory CLI and runtime naming                   | accepted |
 | [0049](0049-role-network-access.md)                             | Opt-in network access for coding roles           | accepted |
+| [0050](0050-sleep-and-worker-recovery.md)                       | Recover runs after sleep and worker loss         | accepted |

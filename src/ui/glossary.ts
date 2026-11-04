@@ -397,6 +397,10 @@ export const DETAIL_TEXT = {
  */
 export const COMMAND_NOTES: [string, string][] = [
   [
+    'inspect provider history, usage and worktree first; stop the worker; explicitly permit resending the unknown call',
+    'プロバイダーの履歴と使用量、作業ツリーを確認し、ワーカーを止めてから使います。結果が分からない呼び出しを送り直すことを明示的に許可します。',
+  ],
+  [
     'read the reviews first',
     '承認か却下の前に、レビューの判定とメモを読みます。',
   ],
@@ -481,6 +485,7 @@ export const COMMAND_COPY = {
   worker: 'ワーカー起動コマンドをコピー',
   retriggerReload: '設定を読み直す再実行コマンドをコピー',
   retrigger: '再実行コマンドをコピー',
+  resume: '未確定の呼び出しを再送するコマンドをコピー',
   repair: '最後の候補から修正するコマンドをコピー',
   waits: '待ち一覧コマンドをコピー',
   specRevise: '仕様の修正コマンドをコピー',

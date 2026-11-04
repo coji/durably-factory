@@ -26,6 +26,8 @@ function commandLabel(command: string): string {
         : COMMAND_COPY.retrigger
     case 'repair':
       return COMMAND_COPY.repair
+    case 'resume':
+      return COMMAND_COPY.resume
     case 'waits':
       return COMMAND_COPY.waits
     case 'spec-revise':

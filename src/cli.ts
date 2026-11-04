@@ -17,6 +17,7 @@ import {
   planPrune,
   retriggerableRun,
   retriggerRun,
+  resumeUncertainRun,
   reviseSpec,
   unarchiveRun,
 } from './actions.js'
@@ -28,6 +29,7 @@ import {
   dbPath,
   LEASE_MS,
   probeWorkerLock,
+  reclaimWorkerLeases,
   sweepRunScratch,
   type AgentLoopDurably,
 } from './durably.js'
@@ -699,6 +701,9 @@ Commands (run from the repository root):
                                             fix the blocked spec once more with the notes,
                                             then review it once more
   ${FACTORY_COMMAND} recheck --run <id>              check and review the same candidate without implementation or findings
+  ${FACTORY_COMMAND} resume --run <id> --acknowledge-uncertain
+                                            resend an unknown call after inspecting provider history
+                                            and worktree; stop the worker first; keep completed work
   ${FACTORY_COMMAND} retrigger --run <id>            new run with the stored input (only for stops safe to repeat)
   ${FACTORY_COMMAND} retrigger --run <id> --reload-config
                                             the stored task and inputs, settings read again from
@@ -981,6 +986,10 @@ if (cmd === 'worker') {
     console.log(`[step:complete] ${e.stepName} run=${e.runId}`),
   )
   await durably.migrate()
+  // The exclusive lock proves the preceding worker no longer owns this root.
+  const reclaimed = await reclaimWorkerLeases(durably, lock)
+  if (reclaimed.length)
+    console.log(`[reclaim] abandoned leases: ${reclaimed.join(', ')}`)
   // Runs that ended while no worker could clean up after them.
   const swept = await sweepRunScratch(durably)
   if (swept.length > 0)
@@ -1343,6 +1352,32 @@ if (cmd === 'worker') {
       console.log(line),
     )
     console.log(JSON.stringify(receipt, null, 2))
+    await startWorkerIfNeeded(durably, a)
+  } finally {
+    await durably.db.destroy()
+  }
+} else if (cmd === 'resume') {
+  const a = args()
+  const runId = a['run']
+  if (!runId) throw new Error('--run <id> required')
+  const other = Object.keys(a).filter(
+    (key) => !['run', 'acknowledge-uncertain', 'no-auto-worker'].includes(key),
+  )
+  if (other.length)
+    throw new Error(
+      `resume does not accept ${other.map((key) => `--${key}`).join(', ')}`,
+    )
+  const durably = createAgentDurably()
+  await durably.migrate()
+  try {
+    await resumeUncertainRun(
+      durably,
+      runId,
+      a['acknowledge-uncertain'] === 'true',
+    )
+    console.log(
+      `resumed ${runId}; owner acknowledged resending the interrupted agent call`,
+    )
     await startWorkerIfNeeded(durably, a)
   } finally {
     await durably.db.destroy()

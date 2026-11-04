@@ -3116,8 +3116,13 @@ describe('verification and review side by side', { timeout: 300000 }, () => {
         await stepNames(ids['off'] ?? ''),
         await stepNames(ids['omitted'] ?? ''),
       )
+      // The parallel stage has one combined event instead of separate
+      // verify/review events; its underlying check and review steps match.
       const parts = async (id: string) =>
-        (await stepNames(id)).map((n) => n.replace(/^stage:\d+:/, '')).sort()
+        (await stepNames(id))
+          .filter((n) => !n.endsWith(':event'))
+          .map((n) => n.replace(/^stage:\d+:/, ''))
+          .sort()
       assert.deepEqual(
         await parts(ids['onQuick'] ?? ''),
         await parts(ids['omitted'] ?? ''),

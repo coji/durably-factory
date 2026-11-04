@@ -9,7 +9,15 @@
  * archives every stopped run of a task through the same `archiveRun`.
  */
 import { existsSync, readdirSync } from 'node:fs'
-import { lstat, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
+import {
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 import type { Run } from '@coji/durably'
@@ -19,9 +27,9 @@ import {
   signalSpecDecision,
   type ApprovalDecision,
 } from './approval.js'
-import type { AgentLoopDurably } from './durably.js'
+import { acquireWorkerLock, type AgentLoopDurably } from './durably.js'
 import { repairParentId } from './engine/build-report.js'
-import { classifyRun } from './engine/failure-reasons.js'
+import { classifyRun, uncertainCheckpoints } from './engine/failure-reasons.js'
 import {
   branchCommit,
   deleteBranch,
@@ -47,6 +55,88 @@ import { repairLabels } from './factory/repair.js'
 import { removeRunWorktree, squashedBranchFor } from './targets/repo.js'
 
 type Log = (line: string) => void
+
+/** Explicit permission to resend an unknown call; never used by automatic retries. */
+export async function resumeUncertainRun(
+  durably: AgentLoopDurably,
+  runId: string,
+  acknowledgeUncertain: boolean,
+) {
+  if (!acknowledgeUncertain)
+    throw new Error(
+      'inspect provider history, usage and the worktree first; --acknowledge-uncertain is required to resend a call with an unknown outcome',
+    )
+  const lock = acquireWorkerLock(durably.stateRoot)
+  if (!lock.acquired)
+    throw new Error('stop the live worker before resuming an uncertain call')
+  try {
+    const run = await stored(durably, runId)
+    if (run.status !== 'failed')
+      throw new Error(
+        `refusing to resume ${runId}: it is ${run.status}, not failed`,
+      )
+    if (existsSync(archiveMarkerOf(durably.stateRoot, runId)))
+      throw new Error(
+        `refusing to resume ${runId}: it is archived; its worktree may have been removed`,
+      )
+    const receipt = join(
+      runRootOf(durably.stateRoot, runId),
+      'uncertain-resume.json',
+    )
+    let acknowledged: {
+      paths: string[]
+      acknowledgedAt: string
+      error: string | null
+    }
+    try {
+      acknowledged = JSON.parse(await readFile(receipt, 'utf8'))
+      if (acknowledged.error !== run.error)
+        throw new Error(
+          'resume receipt belongs to a different stop; inspect it before continuing',
+        )
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      const failure = await classifyRun(durably, run)
+      if (failure?.kind !== 'uncertain-invocation')
+        throw new Error(
+          `refusing to resume ${runId}: it has no uncertain agent call`,
+        )
+      const setup = (await durably.storage.getCompletedStep(runId, 'setup'))
+        ?.output as { checkpointsDir?: string } | null
+      const paths = uncertainCheckpoints(
+        setup?.checkpointsDir ?? null,
+        await durably.getStepAttempts(runId),
+      )
+      if (!paths.length) throw new Error('no start checkpoint to acknowledge')
+      acknowledged = {
+        paths,
+        acknowledgedAt: new Date().toISOString(),
+        error: run.error,
+      }
+      const temporary = `${receipt}.tmp`
+      await writeFile(temporary, `${JSON.stringify(acknowledged)}\n`)
+      await rename(temporary, receipt)
+    }
+    // Keep the unknown invocation's start as evidence. The receipt makes a
+    // crash halfway through these renames safe to finish on the next request.
+    for (const path of acknowledged.paths) {
+      const backup = `${path}.acknowledged-${acknowledged.acknowledgedAt.replaceAll(':', '-')}`
+      if (existsSync(path)) await rename(path, backup)
+      else if (!existsSync(backup))
+        throw new Error(`missing acknowledged checkpoint ${path}`)
+    }
+    await durably.storage.updateRun(runId, {
+      status: 'pending',
+      error: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+    })
+    await rm(receipt)
+    return { runId }
+  } finally {
+    lock.release()
+  }
+}
 
 async function stored(durably: AgentLoopDurably, runId: string) {
   const run = await durably.getRun(runId)

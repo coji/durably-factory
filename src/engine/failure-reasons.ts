@@ -276,6 +276,7 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
     next: (runId) => [
       `${FACTORY_COMMAND} report --run ${runId}`,
       `${FACTORY_COMMAND} status --run ${runId}`,
+      `${FACTORY_COMMAND} resume --run ${runId} --acknowledge-uncertain  # inspect provider history, usage and worktree first; stop the worker; explicitly permit resending the unknown call`,
     ],
   },
   cancelled: {

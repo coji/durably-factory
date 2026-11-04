@@ -31,6 +31,7 @@ import {
   acquireWorkerLock,
   createAgentDurably,
   dbPath,
+  LEASE_MS,
   probeWorkerLock,
   type AgentLoopDurably,
 } from '../src/durably.js'
@@ -3094,10 +3095,22 @@ const wait = setInterval(() => existsSync(gate) || clearInterval(wait), 100)
       workers.push(first)
       await first.running()
 
-      // Same state root: refused, naming the running worker.
+      // A suspended live worker still owns its lock, even if it cannot renew.
+      await until(
+        async () => (await attempts('baseline')).length === 1,
+        'baseline starts before suspend',
+      )
+      first.kill('SIGSTOP')
+      const leaseBefore = (await db.getRun(runId))?.leaseExpiresAt
+      assert.ok(leaseBefore)
       const second = startWorker(box)
       workers.push(second)
-      assert.notEqual(await second.exited, 0)
+      try {
+        assert.notEqual(await second.exited, 0)
+        assert.equal((await db.getRun(runId))?.leaseExpiresAt, leaseBefore)
+      } finally {
+        first.kill('SIGCONT')
+      }
       assert.match(second.output(), new RegExp(`pid ${first.pid()}\\b`))
       assert.ok(second.output().includes(packageRoot), second.output())
       // Another state root: no conflict.
@@ -4730,7 +4743,7 @@ describe('wait and worker state', { timeout: 300000 }, () => {
       })
       assert.equal(
         (await statusJson(box, runId)).lastLeaseRenewedAt,
-        new Date(Date.parse(expires) - 10000).toISOString(),
+        new Date(Date.parse(expires) - LEASE_MS).toISOString(),
       )
       await setRun({
         lease_expires_at: new Date(Date.now() - 60000).toISOString(),

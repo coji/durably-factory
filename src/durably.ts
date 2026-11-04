@@ -52,7 +52,12 @@ export interface WorkerLockHolder {
 }
 
 export type WorkerLockResult =
-  | { acquired: true; release: () => void }
+  | {
+      acquired: true
+      stateRoot: string
+      isHeld: () => boolean
+      release: () => void
+    }
   /** Held by a live worker; `holder` is null when it has not said who it is. */
   | { acquired: false; holder: WorkerLockHolder | null }
 
@@ -107,6 +112,8 @@ export function acquireWorkerLock(
   let held = true
   return {
     acquired: true,
+    stateRoot,
+    isHeld: () => held,
     release: () => {
       if (!held) return
       held = false
@@ -214,7 +221,25 @@ function build(options: AgentDurablyOptions) {
 }
 
 /** How long a run's lease lasts; a worker renews it only while running it. */
-export const LEASE_MS = 10000
+export const LEASE_MS = 600000
+
+/** Only a worker holding the root's OS lock may release its predecessor's leases. */
+export async function reclaimWorkerLeases(
+  durably: AgentLoopDurably,
+  lock: Extract<WorkerLockResult, { acquired: true }>,
+): Promise<string[]> {
+  if (!lock.isHeld() || lock.stateRoot !== durably.stateRoot)
+    throw new Error('reclaim requires the held worker lock for this state root')
+  const runs = await durably.getRuns({
+    status: 'leased',
+    jobName: durably.jobs.agentLoop.name,
+  })
+  const now = new Date().toISOString()
+  for (const run of runs)
+    await durably.storage.updateRun(run.id, { leaseExpiresAt: now })
+  // Let Durably handle both ordinary leases and durable wait resumption.
+  return runs.map((run) => run.id)
+}
 
 function withDatabase(
   database: Database.Database,
@@ -235,6 +260,8 @@ function withDatabase(
   const durably = base.register({
     agentLoop: createAgentLoopJob({
       stateRoot,
+      getCompletedStep: (runId, name) =>
+        base.storage.getCompletedStep(runId, name),
       baselineStore: {
         getCompletedStep: (runId, name) =>
           base.storage.getCompletedStep(runId, name),
