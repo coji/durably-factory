@@ -10,6 +10,7 @@ import {
 import { runChild } from './child.js'
 import { claudeExecutable } from './providers/claude.js'
 import { codexExecutable } from './providers/codex.js'
+import { enabledSandbox, type SandboxSettings } from './sandbox.js'
 
 const require = createRequire(import.meta.url)
 const versionCache = new Map<string, Promise<Record<string, string | null>>>()
@@ -150,6 +151,8 @@ export interface ConfigVersionProfile {
 }
 
 export interface ConfigVersionInput {
+  /** Omitted from the hash when no roles have network access. */
+  sandbox?: SandboxSettings
   prompts?: PromptPolicies
   contextMode: string
   instructionsVersion: string
@@ -295,6 +298,9 @@ export function configVersionOf(input: ConfigVersionInput): string {
   const customPrompts = promptPolicyKey(input.prompts)
   const canonical = JSON.stringify({
     ...(customPrompts ? { prompts: customPrompts } : {}),
+    ...(enabledSandbox(input.sandbox)
+      ? { sandbox: enabledSandbox(input.sandbox) }
+      : {}),
     contextMode: input.contextMode,
     instructionsVersion: input.instructionsVersion,
     maxIterations: input.maxIterations,

@@ -54,6 +54,7 @@ describe('durable repair response correction', () => {
       }
       const setup: FactorySetup = {
         fake: true,
+        ...(tracked ? { sandbox: { network: ['repair' as const] } } : {}),
         ...(policyMode
           ? {
               prompts: {
@@ -223,6 +224,8 @@ describe('durable repair response correction', () => {
         }
       }
       assert.equal(calls.length, tracked ? 2 : 1)
+      for (const call of calls)
+        assert.equal(call.networkAccess, tracked ? true : undefined)
       assert.equal(
         calls[0].prompt.includes('This is an unattended factory run.'),
         promptVersion === 2,

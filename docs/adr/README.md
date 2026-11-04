@@ -71,3 +71,4 @@ What we considered and why we didn't do it.
 | [0046](0046-scoped-unattended-prompt-guidance.md)               | Scoped unattended coding and complete reviews    | accepted |
 | [0047](0047-custom-work-policies.md)                            | Role-specific custom work policies               | accepted |
 | [0048](0048-factory-naming.md)                                  | Factory CLI and runtime naming                   | accepted |
+| [0049](0049-role-network-access.md)                             | Opt-in network access for coding roles           | accepted |

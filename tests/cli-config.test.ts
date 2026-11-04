@@ -196,6 +196,7 @@ type RunInput = {
     baselineCheck?: boolean
     baselineReuse?: { maxAgeMs: number } | null
     parallelReview?: boolean
+    sandbox?: { network: ('code' | 'repair')[] }
     selfCheck?: string[][] | null
     testProbe?: { glob: string; command: string[] }[] | null
     reviewBlockerThreshold?: number | null
@@ -6190,5 +6191,134 @@ describe('custom prompt files at the CLI boundary', { timeout: 120000 }, () => {
         /prompts|cannot read/,
       )
     }
+  })
+})
+
+describe('sandbox.network', { timeout: 240000 }, () => {
+  it('stores chosen roles, reloads and removes the opt-in, and rejects invalid roles', async () => {
+    const box = await sandbox({
+      check: CHECK,
+      sandbox: { network: ['repair', 'code'] },
+    })
+    const input = await inputOf(
+      box,
+      await trigger(box, ['--repo', box.repo, '--task', 'x']),
+    )
+    assert.deepEqual(input.target.sandbox, { network: ['code', 'repair'] })
+    await writeFile(
+      join(box.repo, 'factory.json'),
+      JSON.stringify({ check: CHECK, sandbox: { network: ['repair'] } }),
+    )
+    const reloaded = await reloadTriggerInput(input as never)
+    assert.deepEqual((reloaded.input.target as { sandbox?: unknown }).sandbox, {
+      network: ['repair'],
+    })
+    await writeFile(
+      join(box.repo, 'factory.json'),
+      JSON.stringify({ check: CHECK }),
+    )
+    const dropped = await reloadTriggerInput(input as never)
+    assert.equal(
+      (dropped.input.target as { sandbox?: unknown }).sandbox,
+      undefined,
+    )
+    for (const network of [undefined, []]) {
+      const plain = await sandbox({
+        check: CHECK,
+        ...(network ? { sandbox: { network } } : {}),
+      })
+      assert.equal(
+        (
+          await inputOf(
+            plain,
+            await trigger(plain, ['--repo', plain.repo, '--task', 'x']),
+          )
+        ).target.sandbox,
+        undefined,
+      )
+    }
+    for (const value of [
+      { network: true },
+      { network: ['review'] },
+      { network: ['triage'] },
+      { network: ['implement'] },
+      { network: ['code'], extra: true },
+      { extra: true },
+    ]) {
+      const bad = await sandbox({ check: CHECK, sandbox: value })
+      await rejected(
+        bad,
+        ['--repo', bad.repo, '--task', 'x'],
+        /invalid factory config[\s\S]*sandbox/,
+      )
+    }
+  })
+
+  it('keeps the trigger snapshot in setup and a repair even after factory.json changes', async () => {
+    const setting = { network: ['code', 'repair'] }
+    const box = await sandbox({ check: CHECK, sandbox: setting })
+    const parentId = await trigger(box, [
+      '--repo',
+      box.repo,
+      '--task',
+      'x',
+      '--max-iterations',
+      '1',
+    ])
+    await writeFile(
+      join(box.repo, 'factory.json'),
+      JSON.stringify({ check: CHECK }),
+    )
+    process.env.FAKE_FAIL_FIRST = '0'
+    const durably = createAgentDurably({ stateRoot: box.stateRoot })
+    await durably.init()
+    let setup: FactorySetup
+    try {
+      await until(
+        async () => (await durably.getRun(parentId))?.status === 'completed',
+        'parent completes',
+      )
+      setup = (await durably.storage.getCompletedStep(parentId, 'setup'))
+        ?.output as FactorySetup
+    } finally {
+      await durably.stop()
+      await durably.db.destroy()
+      delete process.env.FAKE_FAIL_FIRST
+    }
+    assert.deepEqual(setup.sandbox, setting)
+    await writeFile(join(box.root, 'findings.md'), 'FINDING: boundary\n')
+    const res = await runCli(box, [
+      'repair',
+      '--run',
+      parentId,
+      '--findings-file',
+      'findings.md',
+    ])
+    assert.equal(res.code, 0, res.stderr)
+    const child = await inputOf(
+      box,
+      (JSON.parse(res.stdout) as { runId: string }).runId,
+    )
+    assert.deepEqual(child.target.sandbox, setting)
+    // A legacy parent with no setting passes none to its child.
+    const parent = {
+      id: parentId,
+      status: 'completed',
+      input: { provider: 'fake', target: { kind: 'repo' } },
+      output: {
+        approved: true,
+        conclusion: 'approved',
+        candidate: { commit: 'a'.repeat(40), branch: 'factory/p' },
+        delivery: { commit: 'a'.repeat(40) },
+      },
+    }
+    const { sandbox: _sandbox, ...legacySetup } = setup
+    assert.equal(
+      buildRepairInput(parent, legacySetup, {
+        findings: { content: 'FINDING', ref: { path: '/f.md' } },
+        dispositions: null,
+      }).input.target.sandbox,
+      undefined,
+    )
   })
 })

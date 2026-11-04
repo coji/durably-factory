@@ -65,6 +65,8 @@ export interface AgentCallSpec {
   effectiveModel: string | null
   effectiveEffort: string | null
   role: AgentRole
+  /** Network opt-in for this code or repair call. */
+  networkAccess?: boolean
   stage: string
   iteration: number
   /** A review call's round, from 1; see `AgentCallOptions.reviewRound`. */
@@ -785,6 +787,7 @@ export async function runAgentCall(
       requestedModel: spec.effectiveModel,
       requestedEffort: spec.effectiveEffort,
       role: spec.role,
+      ...(spec.networkAccess ? { networkAccess: true } : {}),
       reviewRound: spec.reviewRound,
       sessionId: spec.session?.nativeId ?? null,
       signal: linked,

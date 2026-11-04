@@ -569,6 +569,20 @@ export class CodexProvider implements AgentProvider {
         cwd: options.workdir,
         approvalPolicy: 'never',
         sandboxPolicy: readOnly ? 'read-only' : 'workspace-write',
+        // Thread creation reads config; every turn (including resume) needs
+        // the explicit network policy too.
+        ...(options.networkAccess &&
+        (options.role === 'implement' || options.role === 'repair')
+          ? {
+              configOverrides: {
+                sandbox_workspace_write: { network_access: true },
+              },
+              sandboxPolicy: {
+                type: 'workspaceWrite' as const,
+                networkAccess: true,
+              },
+            }
+          : {}),
         autoApprove: true,
         ...(effort ? { effort: effort as ReasoningEffort } : {}),
         // The thread is known before the turn starts, so a call stopped

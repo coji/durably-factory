@@ -742,6 +742,7 @@ Repository config: factory.json at the repository root, or --config <file>:
     "base": "main",
     "baselineCheck": false, "baselineReuse": { "maxAgeMs": 3600000 },
     "parallelReview": false, "codexPath": "<file>",
+    "sandbox": { "network": ["code", "repair"] },
     "selfCheck": [["pnpm", "lint"], ["pnpm", "typecheck"]],
     "review": { "blockerThreshold": 5 },
     "checkTimeoutMs": 900000, "agentTimeoutMs": 7200000, "agentIdleTimeoutMs": 900000,
@@ -773,6 +774,10 @@ Repository config: factory.json at the repository root, or --config <file>:
   when the repository, base commit, check, setup, checkTimeoutMs, Node.js
   version, platform, architecture and check executable all match. Setup and
   the clean-worktree checks still run.
+  "sandbox": { "network": ["code", "repair"] } opts those Codex roles into
+  workspace-write network access, including local listeners and outbound
+  connections. Omitted or [] keeps existing behavior (default off). Review,
+  triage and spec roles are unaffected; repair inherits the saved setting.
   "parallelReview": true starts verification and both reviews of each sealed
   candidate together (default false: review follows a passing check, as
   before). Reviewers then read the candidate's sealed tree and diff, never
