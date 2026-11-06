@@ -30,6 +30,9 @@ const documents = {
   ),
 }
 const empty: PriceCatalog = { version: 1, models: {} }
+// The updater validates a newly fetched catalog in CI. Its models can outgrow
+// these saved documents, so maintenance scenarios must use a matching catalog.
+const fixtureCatalog = updatePrices(empty, documents, '2026-11-02').catalog
 
 describe('model price maintenance', () => {
   it('reads Standard short-context prices, ignoring discounted and long-context rates', () => {
@@ -69,13 +72,23 @@ describe('model price maintenance', () => {
   })
 
   it('proposes new models and rate changes with sources, retaining historical entries and aliases', () => {
-    const current = structuredClone(MODEL_PRICES)
+    const current = structuredClone(fixtureCatalog)
+    current.models['gpt-5-codex'] = {
+      ...current.models['gpt-5'],
+      monitor: false,
+    }
+    current.models['claude-haiku-4-5'].aliases = ['claude-haiku-4-5-20251001']
+    delete current.models['gpt-6.1-terra']
     current.models['gpt-6.1-sol'].input = 99
     const before = structuredClone(current)
     const update = updatePrices(current, documents, '2026-11-03')
     assert.deepEqual(current, before)
     assert.equal(update.catalog.models['gpt-6.1-sol'].input, 2)
     assert.equal(update.catalog.models['gpt-6.1-sol'].checkedAt, '2026-11-03')
+    assert.deepEqual(update.catalog.models['gpt-6.1-terra'], {
+      ...fixtureCatalog.models['gpt-6.1-terra'],
+      checkedAt: '2026-11-03',
+    })
     assert.deepEqual(
       update.catalog.models['gpt-5-codex'],
       current.models['gpt-5-codex'],
@@ -104,7 +117,7 @@ describe('model price maintenance', () => {
   })
 
   it('fails closed on incomplete pages, changed columns, invalid prices or conflicting duplicates', () => {
-    const current = structuredClone(MODEL_PRICES)
+    const current = structuredClone(fixtureCatalog)
     const before = structuredClone(current)
     const bad = [
       '<html>upstream error</html>',
