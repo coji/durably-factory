@@ -12,12 +12,30 @@ import { estimateCostUsd } from '../src/engine/pricing.js'
 describe('model presets', () => {
   it('maps each preset model to its default effort', () => {
     assert.equal(presetForModel('gpt-6-astra')?.effort, 'low')
-    assert.equal(presetForModel('gpt-5.6-sol')?.effort, 'low')
-    assert.equal(presetForModel('gpt-5.6-luna')?.effort, 'max')
+    assert.equal(presetForModel('gpt-6.1-sol')?.effort, 'medium')
+    assert.equal(presetForModel('gpt-6.1-terra')?.effort, 'medium')
     assert.equal(presetForModel('claude-fable-5-1')?.effort, 'low')
-    assert.equal(presetForModel('claude-opus-5')?.effort, 'high')
-    assert.equal(presetForModel('claude-sonnet-5')?.effort, 'high')
+    assert.equal(presetForModel('claude-sonnet-5-5')?.effort, 'high')
     assert.equal(presetForModel('claude-haiku-5-5')?.effort, 'medium')
+  })
+
+  it('keeps explicit historical settings stable without advertising old models', () => {
+    for (const [model, effort] of Object.entries({
+      'gpt-6-sol': 'medium',
+      'gpt-5.6-sol': 'low',
+      'gpt-5.6-terra': 'medium',
+      'gpt-5.6-luna': 'max',
+      'claude-opus-5': 'high',
+      'claude-sonnet-5': 'high',
+    })) {
+      assert.equal(presetForModel(model), null)
+      assert.equal(resolveEffort(undefined, model), effort)
+      assert.equal(resolveEffort('medium', model), 'medium')
+      assert.notEqual(
+        estimateCostUsd(model, { inputTokens: 1, outputTokens: 1 }),
+        null,
+      )
+    }
   })
 
   it('resolves explicit > preset > null', () => {
@@ -50,6 +68,8 @@ describe('model presets', () => {
         `expected ~${expected}, got ${actual}`,
       )
     approx(estimateCostUsd('gpt-6-astra', usage), 0.06)
+    approx(estimateCostUsd('gpt-6.1-sol', usage), 0.012)
+    approx(estimateCostUsd('gpt-6.1-terra', usage), 0.006)
     approx(estimateCostUsd('gpt-6-sol', usage), 0.012)
     approx(estimateCostUsd('gpt-6-luna', usage), 0.0006)
     approx(estimateCostUsd('gpt-5.6-sol', usage), 0.024)
@@ -60,6 +80,7 @@ describe('model presets', () => {
     approx(estimateCostUsd('claude-opus-5-5', usage), 0.024)
     approx(estimateCostUsd('claude-opus-5', usage), 0.03)
     approx(estimateCostUsd('claude-sonnet-5', usage), 0.012)
+    approx(estimateCostUsd('claude-sonnet-5-5', usage), 0.012)
     approx(estimateCostUsd('claude-haiku-5-5', usage), 0.0006)
   })
 

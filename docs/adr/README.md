@@ -74,3 +74,4 @@ What we considered and why we didn't do it.
 | [0049](0049-role-network-access.md)                             | Opt-in network access for coding roles           | accepted |
 | [0050](0050-sleep-and-worker-recovery.md)                       | Recover runs after sleep and worker loss         | accepted |
 | [0051](0051-prompt-length-pricing.md)                           | Price Haiku 5.5 per request prompt length        | accepted |
+| [0052](0052-current-model-presets.md)                           | Advertise only current model presets             | accepted |
