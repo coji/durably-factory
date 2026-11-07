@@ -15,6 +15,7 @@ import {
   fetchPriceDocuments,
   parsePrices,
   priceUpdateMarkdown,
+  PRICING_SOURCES,
   updatePrices,
   validateCatalog,
 } from '../src/maintenance/pricing.js'
@@ -32,7 +33,26 @@ const documents = {
 const empty: PriceCatalog = { version: 1, models: {} }
 // The updater validates a newly fetched catalog in CI. Its models can outgrow
 // these saved documents, so maintenance scenarios must use a matching catalog.
-const fixtureCatalog = updatePrices(empty, documents, '2026-11-02').catalog
+const fixtureCatalog: PriceCatalog = {
+  version: 1,
+  models: Object.fromEntries(
+    (['openai', 'anthropic'] as const).flatMap((provider) =>
+      Object.entries(parsePrices(provider, documents[provider]).prices).map(
+        ([model, rates]) => [
+          model,
+          {
+            provider,
+            ...rates,
+            source: PRICING_SOURCES[provider],
+            checkedAt: '2026-11-02',
+            monitor: true,
+            aliases: [],
+          },
+        ],
+      ),
+    ),
+  ),
+}
 
 describe('model price maintenance', () => {
   it('reads Standard short-context prices, ignoring discounted and long-context rates', () => {
@@ -137,7 +157,7 @@ describe('model price maintenance', () => {
     }
   })
 
-  it('proposes new models and rate changes with sources, retaining historical entries and aliases', () => {
+  it('updates registered rates with sources and aliases, retaining historical entries without importing unregistered models', () => {
     const current = structuredClone(fixtureCatalog)
     current.models['gpt-5-codex'] = {
       ...current.models['gpt-5'],
@@ -151,10 +171,15 @@ describe('model price maintenance', () => {
     assert.deepEqual(current, before)
     assert.equal(update.catalog.models['gpt-6.1-sol'].input, 2)
     assert.equal(update.catalog.models['gpt-6.1-sol'].checkedAt, '2026-11-03')
-    assert.deepEqual(update.catalog.models['gpt-6.1-terra'], {
-      ...fixtureCatalog.models['gpt-6.1-terra'],
-      checkedAt: '2026-11-03',
-    })
+    assert.equal(Object.hasOwn(update.catalog.models, 'gpt-6.1-terra'), false)
+    assert.deepEqual(
+      Object.keys(update.catalog.models).sort(),
+      Object.keys(current.models).sort(),
+    )
+    assert.deepEqual(
+      update.changes.map((change) => change.model),
+      ['gpt-6.1-sol'],
+    )
     assert.deepEqual(
       update.catalog.models['gpt-5-codex'],
       current.models['gpt-5-codex'],
@@ -171,10 +196,17 @@ describe('model price maintenance', () => {
     assert.match(report, /\$2 \/ \$10 \/ \$0.1 \/ \$2.5/)
     assert.match(report, /https:\/\/developers.openai.com\/api\/docs\/pricing/)
     assert.match(report, /2026-11-03/)
+    assert.match(report, /Select and register new models manually/)
+  })
+
+  it('does not populate an empty catalog from the official documents', () => {
+    const update = updatePrices(empty, documents, '2026-11-07')
+    assert.deepEqual(update.catalog, empty)
+    assert.deepEqual(update.changes, [])
   })
 
   it('does not churn verification dates or PRs when rates are unchanged', () => {
-    const first = updatePrices(empty, documents, '2026-11-03')
+    const first = updatePrices(fixtureCatalog, documents, '2026-11-03')
     const next = updatePrices(first.catalog, documents, '2026-11-04')
     assert.equal(next.changes.length, 0)
     assert.deepEqual(next.catalog, first.catalog)

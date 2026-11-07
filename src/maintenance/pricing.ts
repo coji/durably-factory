@@ -264,7 +264,7 @@ export function catalogChanges(
     }))
 }
 
-/** Validate both complete documents before producing any writeable update. */
+/** Validate both documents and update registered models only; adoption is manual. */
 export function updatePrices(
   catalog: PriceCatalog,
   documents: Record<Provider, string>,
@@ -288,11 +288,11 @@ export function updatePrices(
         )
     }
     for (const [model, rates] of Object.entries(parsed.prices)) {
-      const before = catalog.models[model] ?? null
-      if (before && before.provider !== provider)
+      if (!Object.hasOwn(catalog.models, model)) continue
+      const before = catalog.models[model]
+      if (before.provider !== provider)
         throw new Error(`Provider collision: ${model}`)
       if (
-        before &&
         before.source === PRICING_SOURCES[provider] &&
         (
           ['input', 'output', 'cacheRead', 'cacheWrite', 'longContext'] as const
@@ -307,7 +307,7 @@ export function updatePrices(
         source: PRICING_SOURCES[provider],
         checkedAt,
         monitor: true,
-        aliases: before?.aliases ?? [],
+        aliases: before.aliases,
       }
       next.models[model] = after
       changes.push({ model, before, after })
@@ -348,7 +348,7 @@ export function priceUpdateMarkdown(
         `| ${model} | ${ratesText(before)} | ${ratesText(after)} | [official pricing](${after.source}) |`,
     ),
     '',
-    'Review new model IDs and pricing conditions before merging. Existing invocation estimates and their recorded sources are retained.',
+    'Only registered models are updated. Select and register new models manually. Review rate changes and pricing conditions before merging. Existing invocation estimates and their recorded sources are retained.',
     ...(skipped.length
       ? [
           '',
