@@ -91,13 +91,13 @@ describe('resolveExecution (resolved settings, saved before launch)', () => {
       requestedModel: null,
       requestedEffort: null,
     })
-    assert.equal(codex.model, 'gpt-5.6-sol')
-    assert.equal(codex.effort, 'low')
+    assert.equal(codex.model, 'gpt-6.1-sol')
+    assert.equal(codex.effort, 'medium')
     const claude = new ClaudeProvider().resolveExecution({
       requestedModel: null,
       requestedEffort: null,
     })
-    assert.equal(claude.model, 'claude-sonnet-5')
+    assert.equal(claude.model, 'claude-sonnet-5-5')
     assert.equal(claude.effort, 'high')
   })
 
@@ -107,12 +107,12 @@ describe('resolveExecution (resolved settings, saved before launch)', () => {
         requestedModel: null,
         requestedEffort: null,
       })
-      assert.deepEqual(codex, { model: 'gpt-5.6-sol', effort: 'low' })
+      assert.deepEqual(codex, { model: 'gpt-6.1-sol', effort: 'medium' })
       const claude = new ClaudeProvider().resolveExecution({
         requestedModel: null,
         requestedEffort: null,
       })
-      assert.deepEqual(claude, { model: 'claude-sonnet-5', effort: 'high' })
+      assert.deepEqual(claude, { model: 'claude-sonnet-5-5', effort: 'high' })
       // An explicit flag still wins; only the environment is ignored.
       assert.equal(
         new CodexProvider().resolveExecution({

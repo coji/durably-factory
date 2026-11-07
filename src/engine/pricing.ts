@@ -33,6 +33,14 @@ export interface ModelPrice {
   monitor: boolean
   /** Only individually verified IDs may share this entry's rates. */
   aliases: string[]
+  /** All meters switch when one request's total input exceeds this boundary. */
+  longContext?: {
+    inputTokensAbove: number
+    input: number
+    output: number
+    cacheRead: number | null
+    cacheWrite: number | null
+  }
 }
 
 export interface PriceCatalog {
@@ -75,6 +83,8 @@ export interface PriceableUsage {
   outputTokens: number | null
   cacheReadTokens?: number | null
   cacheWriteTokens?: number | null
+  /** Deduplicated API responses, not agent-call totals. */
+  requests?: Omit<PriceableUsage, 'requests'>[]
 }
 
 export interface CostBreakdown {
@@ -102,6 +112,65 @@ export function estimateCostBreakdown(
   const matched = resolveModelPrice(model, prices)
   if (!matched) return null
   const { price } = matched
+  if (price.longContext) {
+    const requests = usage.requests
+    if (requests) {
+      if (!requests.length) return null
+      // Final provider totals remain authoritative. A missing response or an
+      // unfinished output stream must never turn into a complete estimate.
+      for (const key of [
+        'inputTokens',
+        'outputTokens',
+        'cacheReadTokens',
+        'cacheWriteTokens',
+      ] as const) {
+        if (
+          requests.some(
+            (r) =>
+              r[key] == null || !Number.isFinite(r[key]) || (r[key] ?? -1) < 0,
+          )
+        )
+          return null
+        if (
+          usage[key] != null &&
+          requests.reduce((sum, r) => sum + (r[key] ?? 0), 0) !== usage[key]
+        )
+          return null
+      }
+      const meters: Partial<Record<PricingMeter, number>> = {}
+      for (const request of requests) {
+        if (
+          (request.cacheReadTokens ?? 0) + (request.cacheWriteTokens ?? 0) >
+          (request.inputTokens ?? 0)
+        )
+          return null
+        const { longContext, ...base } = price
+        const rates =
+          (request.inputTokens ?? 0) > longContext.inputTokensAbove
+            ? { ...base, ...longContext }
+            : base
+        const part = estimateCostBreakdown(matched.model, request, {
+          version: 1,
+          models: { [matched.model]: rates },
+        })
+        if (!part) return null
+        for (const [meter, usd] of Object.entries(part.meters) as [
+          PricingMeter,
+          number,
+        ][])
+          meters[meter] = (meters[meter] ?? 0) + usd
+      }
+      return {
+        totalUsd: Object.values(meters).reduce((sum, v) => sum + v, 0),
+        meters,
+        cacheAware: true,
+        prices: { [matched.model]: price },
+      }
+    }
+    // A small aggregate proves that every request was below the boundary.
+    // A larger aggregate alone cannot tell us which requests crossed it.
+    if (usage.inputTokens > price.longContext.inputTokensAbove) return null
+  }
   const cacheRead = usage.cacheReadTokens ?? null
   const cacheWrite = usage.cacheWriteTokens ?? null
   const cacheAware = cacheRead !== null || cacheWrite !== null
@@ -174,6 +243,8 @@ export function unpricedModels(
     .filter(
       ([model, usage]) =>
         !resolveModelPrice(model, catalog) ||
+        (resolveModelPrice(model, catalog)?.price.longContext !== undefined &&
+          estimateCostBreakdown(model, usage, catalog) === null) ||
         (usage.cacheReadTokens != null &&
           usage.cacheReadTokens > 0 &&
           resolveModelPrice(model, catalog)?.price.cacheRead === null) ||

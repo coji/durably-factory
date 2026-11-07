@@ -20,10 +20,10 @@
     "authorEmail": "factory-bot@example.com"
   },
   "profiles": {
-    "code": { "provider": "codex", "model": "gpt-5.6-sol", "effort": "medium" },
+    "code": { "provider": "codex", "model": "gpt-6.1-sol", "effort": "medium" },
     "review": {
       "correctness": { "provider": "codex", "model": "gpt-5.6-terra" },
-      "edge-cases": { "provider": "claude", "model": "claude-sonnet-5" }
+      "edge-cases": { "provider": "claude", "model": "claude-sonnet-5-5" }
     }
   }
 }
@@ -711,7 +711,7 @@ repair、recheck、通常の retrigger と自動再試行は保存した設定�
 ```json
 {
   "profiles": {
-    "code": { "provider": "codex", "model": "gpt-5.6-sol", "effort": "medium" },
+    "code": { "provider": "codex", "model": "gpt-6.1-sol", "effort": "medium" },
     "repair": {
       "provider": "codex",
       "model": "gpt-5.6-terra",
@@ -787,7 +787,7 @@ Claude Code 2.1.280 で測ったときも、新しいセッションのキャッ
   - 報告がないモデル（報告を記録するようになる前の事前確認を含む）は、分からないもの
     として、新しいセッションにします。
   - `claude-` で始まる完全なモデル ID は、Claude Code がそのまま使います。どちらか
-    片方でも対象外の完全な ID のとき（`opus` と `claude-sonnet-5` など）と、完全な
+    片方でも対象外の完全な ID のとき（`opus` と `claude-sonnet-5-5` など）と、完全な
     ID どうしが違うときは、準備の時点で続けないと決めます。
 - 判定は 2 段に分かれます。準備のときに、モデル以外の条件（`--context`、プロバイダー、
   推論量、CLI の版、環境変数、完全な ID の確認）を一度だけ判定し、実行の
@@ -813,7 +813,7 @@ Claude Code 2.1.280 で測ったときも、新しいセッションのキャッ
 - 事前確認で続けると決まった実行だけ、`configVersion` にこの方針が入ります。準備の
   ときは方針を含まない版を記録し、決まったときだけ、事前確認のあとの呼び出しと
   レポートが、方針を含む版になります。候補になったのに続けないと決まった実行
-  （たとえば `sonnet` どうしで、Claude Code が `claude-sonnet-5` を報告した場合）を
+  （たとえば `sonnet` どうしで、Claude Code が `claude-sonnet-5-5` を報告した場合）を
   含め、それ以外の実行の `configVersion` は変わりません。事前確認の最小の呼び出しの
   計測には、決まる前の版が残ります。
 - Codex、プロバイダーやモデルが違う修正、`--context fresh`、外部の指摘から始まる

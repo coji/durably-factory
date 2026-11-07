@@ -11,7 +11,7 @@ LLM にタスクを判定させます。書かなければ判定の呼び出し�
 ```json
 {
   "profiles": {
-    "triage": { "provider": "codex", "model": "gpt-5.6-sol", "effort": "low" }
+    "triage": { "provider": "codex", "model": "gpt-6.1-sol", "effort": "low" }
   }
 }
 ```

@@ -52,6 +52,7 @@ import {
 } from './engine/compare.js'
 import { FACTORY_COMMAND } from './engine/failure-reasons.js'
 import { formatCost, formatDuration } from './engine/format.js'
+import { defaultModelFor, MODEL_PRESETS } from './engine/models.js'
 import {
   reportToJson,
   reportToMarkdown,
@@ -905,11 +906,9 @@ Auto-started worker: after trigger, repair, retrigger, approve, reject and
 Model presets (--model selects one; effort defaults from the preset and is
 overridden only by --effort — no environment variable participates, so a run's
 configuration is readable off the command line that started it):
-  codex:  gpt-6-astra (low) | gpt-6-sol (medium) | gpt-6-luna (medium)
-          gpt-5.6-sol (low, default) | gpt-5.6-terra (medium) | gpt-5.6-luna (max)
-          (gpt-6-sol and gpt-6-luna need an API key; a ChatGPT login is refused)
-  claude: claude-fable-5-1 (low) | claude-opus-5-5 (medium) | claude-opus-5 (high)
-          claude-sonnet-5 (high, default)
+${MODEL_PRESETS.map((preset) => `  ${preset.provider.padEnd(6)} ${preset.model} (${preset.effort}${preset.model === defaultModelFor(preset.provider) ? ', default' : ''})`).join('\n')}
+  Explicit older IDs retain their previous effort defaults; account access
+  is checked at preflight.
 Note: effort is applied (Codex reasoningEffort / Claude effort setting), not
 just recorded; unsupported values fail fast. Reports keep the raw requested,
 resolved effective, and provider-reported settings separate.

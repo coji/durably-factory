@@ -6,7 +6,10 @@ export const PRICING_SOURCES = {
 } as const
 
 type Provider = keyof typeof PRICING_SOURCES
-type Rates = Pick<ModelPrice, 'input' | 'output' | 'cacheRead' | 'cacheWrite'>
+type Rates = Pick<
+  ModelPrice,
+  'input' | 'output' | 'cacheRead' | 'cacheWrite' | 'longContext'
+>
 
 interface Table {
   heading: string
@@ -62,6 +65,13 @@ function dollars(cell: string | undefined, required = false): number | null {
 export function parsePrices(provider: Provider, markdown: string) {
   const prices: Record<string, Rates> = {}
   const skipped = new Set<string>()
+  const tiers = new Map<
+    string,
+    {
+      short?: { boundary: number; rates: Rates }
+      long?: { boundary: number; rates: Rates }
+    }
+  >()
   let matchedTables = 0
   const add = (model: string, rates: Rates) => {
     if (
@@ -115,27 +125,53 @@ export function parsePrices(provider: Provider, markdown: string) {
           throw new Error('Anthropic pricing columns changed')
       matchedTables++
       for (const row of rows) {
-        // Conditional context tiers cannot be represented by a single price.
-        if (/for prompts|retired/i.test(row[0])) {
+        const tier =
+          /^(Claude [A-Za-z]+ \d+(?:\.\d+)*) \(for prompts (up to|over) ([\d,]+) tokens\)$/.exec(
+            row[0],
+          )
+        if (/retired/i.test(row[0]) || (/for prompts/i.test(row[0]) && !tier)) {
           skipped.add(row[0])
           continue
         }
         const match = /^Claude ([A-Za-z]+) (\d+(?:\.\d+)*)(?:\s+\(.*\))?$/.exec(
-          row[0],
+          tier?.[1] ?? row[0],
         )
         if (!match) {
           skipped.add(row[0])
           continue
         }
         const model = `claude-${match[1].toLowerCase()}-${match[2].replaceAll('.', '-')}`
-        add(model, {
+        const rates: Rates = {
           input: dollars(column(row, 'Base input tokens'), true),
           output: dollars(column(row, 'Output tokens'), true),
           cacheRead: dollars(column(row, 'Cache hits and refreshes')),
           cacheWrite: dollars(column(row, '5m cache writes')),
-        })
+        }
+        if (tier) {
+          const pair = tiers.get(model) ?? {}
+          const key = tier[2] === 'up to' ? 'short' : 'long'
+          const value = { boundary: Number(tier[3].replaceAll(',', '')), rates }
+          if (pair[key] && JSON.stringify(pair[key]) !== JSON.stringify(value))
+            throw new Error(`Conflicting context prices for ${model}`)
+          pair[key] = value
+          tiers.set(model, pair)
+        } else add(model, rates)
       }
     }
+  }
+  for (const [model, { short, long }] of tiers) {
+    if (
+      !short ||
+      !long ||
+      short.boundary !== long.boundary ||
+      !Number.isSafeInteger(short.boundary) ||
+      short.boundary <= 0
+    )
+      throw new Error(`Incomplete context pricing tiers for ${model}`)
+    add(model, {
+      ...short.rates,
+      longContext: { inputTokensAbove: short.boundary, ...long.rates },
+    })
   }
   if (matchedTables === 0 || Object.keys(prices).length === 0)
     throw new Error(`No supported ${provider} pricing tables found`)
@@ -172,6 +208,27 @@ export function validateCatalog(value: unknown): asserts value is PriceCatalog {
         continue
       if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0)
         throw new Error(`Invalid ${meter} price: ${model}`)
+    }
+    if (price.longContext !== undefined) {
+      const tier = price.longContext
+      if (
+        !tier ||
+        !Number.isSafeInteger(tier.inputTokensAbove) ||
+        tier.inputTokensAbove <= 0
+      )
+        throw new Error(`Invalid context boundary: ${model}`)
+      for (const meter of [
+        'input',
+        'output',
+        'cacheRead',
+        'cacheWrite',
+      ] as const) {
+        const rate = tier[meter]
+        if (rate === null && (meter === 'cacheRead' || meter === 'cacheWrite'))
+          continue
+        if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0)
+          throw new Error(`Invalid long-context ${meter} price: ${model}`)
+      }
     }
     for (const id of [model, ...price.aliases]) {
       if (
@@ -237,8 +294,10 @@ export function updatePrices(
       if (
         before &&
         before.source === PRICING_SOURCES[provider] &&
-        (['input', 'output', 'cacheRead', 'cacheWrite'] as const).every(
-          (key) => before[key] === rates[key],
+        (
+          ['input', 'output', 'cacheRead', 'cacheWrite', 'longContext'] as const
+        ).every(
+          (key) => JSON.stringify(before[key]) === JSON.stringify(rates[key]),
         )
       )
         continue
@@ -262,11 +321,14 @@ export function updatePrices(
 }
 
 function ratesText(price: ModelPrice | null) {
-  return price
-    ? [price.input, price.output, price.cacheRead, price.cacheWrite]
-        .map((v) => (v === null ? 'unpublished' : `$${v}`))
-        .join(' / ')
-    : 'unregistered'
+  if (!price) return 'unregistered'
+  const format = (rates: Rates) =>
+    [rates.input, rates.output, rates.cacheRead, rates.cacheWrite]
+      .map((v) => (v === null ? 'unpublished' : `$${v}`))
+      .join(' / ')
+  return price.longContext
+    ? `≤${price.longContext.inputTokensAbove} input tokens: ${format(price)}; above: ${format(price.longContext)}`
+    : format(price)
 }
 
 export function priceUpdateMarkdown(
@@ -277,7 +339,7 @@ export function priceUpdateMarkdown(
   return [
     `Official model pricing checked on ${checkedAt}.`,
     '',
-    'Standard processing, short context. Rates are USD per million tokens in input / output / cache read / cache write order. Writes use OpenAI 30-minute or Anthropic 5-minute retention.',
+    'Standard processing. Rates are USD per million tokens in input / output / cache read / cache write order. OpenAI uses short context. Conditional Anthropic rates show the per-request input boundary, including cache reads and writes. Writes use OpenAI 30-minute or Anthropic 5-minute retention.',
     '',
     '| Model | Before | Proposed | Source |',
     '| --- | --- | --- | --- |',

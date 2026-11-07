@@ -53,7 +53,7 @@ describe('model price maintenance', () => {
     assert.equal(prices.o3.input, 2)
   })
 
-  it('reads model-specific Claude cache rates and rejects conditional context tiers', () => {
+  it('reads model-specific Claude cache rates and paired conditional context tiers', () => {
     const { prices, skipped } = parsePrices('anthropic', documents.anthropic)
     assert.deepEqual(prices['claude-fable-5-1'], {
       input: 10,
@@ -63,12 +63,78 @@ describe('model price maintenance', () => {
     })
     assert.equal(prices['claude-opus-5-5'].cacheRead, 0.2)
     assert.equal(prices['claude-opus-5-5'].cacheWrite, 5)
-    assert.equal(prices['claude-haiku-5-5'], undefined)
+    assert.deepEqual(prices['claude-haiku-5-5'], {
+      input: 0.1,
+      output: 0.5,
+      cacheRead: 0.01,
+      cacheWrite: 0.125,
+      longContext: {
+        inputTokensAbove: 100000,
+        input: 0.5,
+        output: 2.5,
+        cacheRead: 0.05,
+        cacheWrite: 0.625,
+      },
+    })
     assert.equal(
       skipped.filter((name) => name.includes('for prompts')).length,
-      2,
+      0,
     )
     assert.equal(prices['claude-haiku-3-5'], undefined)
+  })
+
+  it('rejects incomplete, conflicting and mismatched context tiers', () => {
+    const longRow = documents.anthropic
+      .split('\n')
+      .find((line) => line.includes('for prompts over'))!
+    for (const anthropic of [
+      documents.anthropic.replace(
+        longRow,
+        `${longRow}\n${longRow.replace('$2.50', '$2.51')}`,
+      ),
+      documents.anthropic
+        .split('\n')
+        .filter((line) => !line.includes('for prompts over'))
+        .join('\n'),
+      documents.anthropic.replace('over 100,000', 'over 200,000'),
+      documents.anthropic
+        .replace('up to 100,000', 'up to 0')
+        .replace('over 100,000', 'over 0'),
+      documents.anthropic.replace('for prompts over', 'for requests over'),
+    ])
+      assert.throws(() =>
+        updatePrices(fixtureCatalog, { ...documents, anthropic }, '2026-11-07'),
+      )
+  })
+
+  it('updates long-context rates and reports both tiers without date churn', () => {
+    const current = structuredClone(fixtureCatalog)
+    current.models['claude-haiku-5-5'].longContext!.output = 99
+    const update = updatePrices(current, documents, '2026-11-07')
+    assert.equal(update.changes.length, 1)
+    assert.equal(
+      update.catalog.models['claude-haiku-5-5'].longContext!.output,
+      2.5,
+    )
+    assert.match(
+      priceUpdateMarkdown(update.changes, [], '2026-11-07'),
+      /≤100000 input tokens: \$0.1.*above: \$0.5 \/ \$2.5/,
+    )
+    assert.equal(
+      updatePrices(update.catalog, documents, '2026-11-08').changes.length,
+      0,
+    )
+    for (const field of [
+      'inputTokensAbove',
+      'input',
+      'output',
+      'cacheRead',
+      'cacheWrite',
+    ] as const) {
+      const bad = structuredClone(update.catalog)
+      bad.models['claude-haiku-5-5'].longContext![field] = -1
+      assert.throws(() => validateCatalog(bad))
+    }
   })
 
   it('proposes new models and rate changes with sources, retaining historical entries and aliases', () => {
