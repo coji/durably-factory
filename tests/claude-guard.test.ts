@@ -660,11 +660,11 @@ describe('the settings a Claude call hands the provider', () => {
     return { settings: given[0] as ClaudeCodeSettings, result }
   }
 
-  it('asks for the streamed events only when the call takes partial usage', async () => {
+  it('asks for streamed usage even without a progress callback, to retain request boundaries', async () => {
     const partial = await callWith(() => {})
     assert.equal(partial.settings.includePartialMessages, true)
     const plain = await callWith()
-    assert.equal('includePartialMessages' in plain.settings, false)
+    assert.equal(plain.settings.includePartialMessages, true)
     // The result is built from what the generation returned, as before.
     for (const { result } of [partial, plain]) {
       assert.equal(result.text, 'done')

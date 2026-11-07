@@ -19,6 +19,7 @@ export const MODEL_PRESETS: readonly ModelPreset[] = [
   { model: 'claude-opus-5-5', provider: 'claude', effort: 'medium' },
   { model: 'claude-opus-5', provider: 'claude', effort: 'high' },
   { model: 'claude-sonnet-5', provider: 'claude', effort: 'high' },
+  { model: 'claude-haiku-5-5', provider: 'claude', effort: 'medium' },
 ]
 
 const byModel: Record<string, ModelPreset> = Object.fromEntries(

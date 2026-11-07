@@ -21,6 +21,11 @@ export interface TokenUsage {
   outputTokens: number | null
   totalTokens: number | null
   usageSource: UsageSource
+  /** Per-response usage retained for models priced by request prompt length. */
+  requests?: Pick<
+    TokenUsage,
+    'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheWriteTokens'
+  >[]
 }
 
 export function emptyUsage(): TokenUsage {
@@ -62,6 +67,7 @@ export function mergeUsage(
       outputTokens: num(patch.outputTokens),
       totalTokens: num(patch.totalTokens),
       usageSource: patch.usageSource ?? 'unknown',
+      ...(patch.requests ? { requests: patch.requests } : {}),
     }
   }
   const rank: Record<UsageSource, number> = {
@@ -79,6 +85,9 @@ export function mergeUsage(
     totalTokens: num(patch.totalTokens) ?? base.totalTokens,
     usageSource:
       rank[nextSource] > rank[base.usageSource] ? nextSource : base.usageSource,
+    ...((patch.requests ?? base.requests)
+      ? { requests: patch.requests ?? base.requests }
+      : {}),
   }
 }
 

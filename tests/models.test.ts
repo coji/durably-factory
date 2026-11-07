@@ -17,6 +17,7 @@ describe('model presets', () => {
     assert.equal(presetForModel('claude-fable-5-1')?.effort, 'low')
     assert.equal(presetForModel('claude-opus-5')?.effort, 'high')
     assert.equal(presetForModel('claude-sonnet-5')?.effort, 'high')
+    assert.equal(presetForModel('claude-haiku-5-5')?.effort, 'medium')
   })
 
   it('resolves explicit > preset > null', () => {
@@ -59,6 +60,7 @@ describe('model presets', () => {
     approx(estimateCostUsd('claude-opus-5-5', usage), 0.024)
     approx(estimateCostUsd('claude-opus-5', usage), 0.03)
     approx(estimateCostUsd('claude-sonnet-5', usage), 0.012)
+    approx(estimateCostUsd('claude-haiku-5-5', usage), 0.0006)
   })
 
   it('prices every preset model', () => {

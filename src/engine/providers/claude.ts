@@ -48,6 +48,7 @@ import {
 } from 'ai-sdk-provider-claude-code'
 
 import { defaultModelFor, resolveEffort } from '../models.js'
+import { resolveModelPrice } from '../pricing.js'
 import { tokenCount, type TokenUsage } from '../usage.js'
 import {
   agentOutput,
@@ -873,12 +874,34 @@ export function claudePartialUsage(
     if (!sums) models.set(model, (sums = new RunningLegs()))
     return sums
   }
-  const snapshot = (): PartialUsageSnapshot => ({
-    usage: total.usage(),
-    usageByModel: Object.fromEntries(
-      [...models].map(([name, sums]) => [name, sums.usage()]),
-    ),
-  })
+  const requestsFor = (model: string): TokenUsage['requests'] =>
+    resolveModelPrice(model)?.price.longContext
+      ? [...byMessage.values()]
+          .filter((r) => r.model === model)
+          .map(({ legs }) => {
+            const usage = sumUsage([legs])
+            return {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              cacheReadTokens: usage.cacheReadTokens,
+              cacheWriteTokens: usage.cacheWriteTokens,
+            }
+          })
+      : undefined
+  const snapshot = (): PartialUsageSnapshot => {
+    const usageByModel = Object.fromEntries(
+      [...models].map(([name, sums]) => {
+        const requests = requestsFor(name)
+        return [name, { ...sums.usage(), ...(requests ? { requests } : {}) }]
+      }),
+    )
+    const requests =
+      models.size === 1 ? Object.values(usageByModel)[0].requests : undefined
+    return {
+      usage: { ...total.usage(), ...(requests ? { requests } : {}) },
+      usageByModel,
+    }
+  }
   const count = (
     id: string,
     model: string,
@@ -1352,6 +1375,9 @@ export class ClaudeProvider implements AgentProvider {
     const onActivity = options.onActivity
     const writeOutput = claudeOutput(options.onOutput)
     const partialUsage = claudePartialUsage(options.review)
+    const observedUsage: { latest: PartialUsageSnapshot | null } = {
+      latest: null,
+    }
     // The concrete model the CLI reports, first seen wins: an alias such as
     // `opus` is resolved by the CLI, never here.
     let observedModel: string | null = null
@@ -1371,16 +1397,18 @@ export class ClaudeProvider implements AgentProvider {
       ),
       // The streamed events carry each response's output as it grows; the
       // provider builds its result from the other messages alone.
-      ...(options.onPartialUsage ? { includePartialMessages: true } : {}),
+      includePartialMessages: true,
       onSdkMessage: (message: SDKMessage) => {
         observedModel ??= observedClaudeModel(message)
         if (onActivity && isAgentActivity(message)) onActivity()
         writeOutput(message)
         const session = claudeSessionId(message)
         if (session) options.onSession?.(session)
-        const snapshot = options.onPartialUsage ? partialUsage(message) : null
-        if (snapshot)
+        const snapshot = partialUsage(message)
+        if (snapshot) {
+          observedUsage.latest = snapshot
           options.onPartialUsage?.(snapshot.usage, snapshot.usageByModel)
+        }
       },
     })
     const reported = await this.sdk.generateText({
@@ -1422,6 +1450,16 @@ export class ClaudeProvider implements AgentProvider {
       },
       providerMetadata?.['modelUsage'],
     )
+    // Keep request boundaries alongside authoritative final totals. Pricing
+    // reconciles every meter before using them, including command subagents.
+    const requests = observedUsage.latest?.usage.requests
+    if (usage && requests) usage.requests = requests
+    if (usageByModel) {
+      for (const [model, value] of Object.entries(usageByModel)) {
+        const requests = observedUsage.latest?.usageByModel[model]?.requests
+        if (requests) value.requests = requests
+      }
+    }
     return {
       text: reported.text,
       session: sessionId ? { id: sessionId } : null,
