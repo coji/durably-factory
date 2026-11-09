@@ -29,7 +29,7 @@ LLM の呼び出しはすべて `src/engine/runner.ts` を通り、試行のメ�
 - **Claude**: Agent SDK の `result` メッセージの累計を、そのまま使います。
   Claude Code の記録（transcript）にある各応答の合計と一致することを確かめて
   あります。
-- **Codex**: `ai-sdk-provider-codex-cli@2.3.0` は、応答ごとの `thread/tokenUsage/updated`
+- **Codex**: `ai-sdk-provider-codex-cli@2.4.0` は、応答ごとの `thread/tokenUsage/updated`
   を、ターンの中で合計します（2.2.1 は上書きしていたため、最後の応答の分しか
   返しませんでした。
   [ben-vargas/ai-sdk-provider-codex-cli#49](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues/49)
@@ -295,9 +295,9 @@ Markdown の集計の行も、工程や役割の合計と同じ試行から数�
 | `claude-opus-5-5`, `claude-sonnet-5`                          | 使える                                                                   |
 
 `claude-opus-5-5` には Claude Code 2.1.280 以上が必要です。
-`ai-sdk-provider-claude-code` は Agent SDK を版を固定して同梱しており、最新の 4.3.2
-でも 2.1.278 までしか入りません。そのため、ルートの `pnpm-workspace.yaml` の
-override で、`@anthropic-ai/claude-agent-sdk` を 0.3.280 に上げています。
+`ai-sdk-provider-claude-code@4.4.1` は Agent SDK 0.3.283 を同梱し、
+Claude Code 2.1.283 を起動します。必要な版を満たすため、Agent SDK を
+個別に固定する override は使っていません。
 
 `codex debug models` の一覧には、サブスクで呼べないモデルも出ます。一覧ではなく、
 実際に呼べるかどうかで判断してください。
