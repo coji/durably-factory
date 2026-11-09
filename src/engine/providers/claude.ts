@@ -1240,6 +1240,7 @@ export const EFFORT_RESUME_MIN_CLAUDE_CLI = [2, 1, 260] as const
 const EFFORT_RESUME_MODELS = [
   { id: 'claude-opus-5-5', label: 'Opus 5.5' },
   { id: 'claude-fable-5-1', label: 'Fable 5.1' },
+  { id: 'claude-fable-5-2', label: 'Fable 5.2' },
 ] as const
 
 /**
