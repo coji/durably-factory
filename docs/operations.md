@@ -118,7 +118,7 @@ another worker already runs on ~/.local/state/durably-factory: pid 41234, starte
   まだワーカーがいると見て、新しく起動しません。そのため、アイドルで終わるワーカーは
   ロックを手放したあとにもう一度仕事を確かめます。仕事があれば、自動起動と同じ方法で
   次のワーカーを起動し、ログに `[idle] work arrived as the worker stopped; started
-a successor (pid N)` を書きます。次のワーカーも同じようにアイドルで終わるので、
+  a successor (pid N)` を書きます。次のワーカーも同じようにアイドルで終わるので、
   ワーカーがロックを握っているあいだに作られた実行は、そのワーカーがロックを手放す
   前か後のどちらかで必ず見つかります。次のワーカーが起動しない場合（起動の失敗、
   自動起動を止めている場合）は、実行が `pending` のまま残ります。`factory wait` は

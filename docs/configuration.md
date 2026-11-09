@@ -742,7 +742,7 @@ repair、recheck、通常の retrigger と自動再試行は保存した設定�
   行に入ります。
 - 修正の呼び出しをプロバイダーがはっきり拒否すると、`rejected-invocation` で止まります。
   `factory.json` の `repair` を直してから、`factory retrigger --run <id>
---reload-config` でやり直します。
+  --reload-config` でやり直します。
 
 ## 推論量だけが違う修正では、実装のセッションを続ける（Claude）
 
