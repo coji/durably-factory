@@ -757,10 +757,12 @@ Claude Code 2.1.280 で測ったときも、新しいセッションのキャッ
 - プロバイダーが両方とも Claude で、実際に使う推論量だけが違う
 - 事前確認（preflight）の最小の呼び出しで、Claude Code が報告したモデルが
   両方で同じ（下の「モデルの確かめ方」）
-- そのモデルが Opus 5.5（`claude-opus-5-5`）か Fable 5.1（`claude-fable-5-1`）
+- そのモデルが Opus 5.5（`claude-opus-5-5`）、Fable 5.1（`claude-fable-5-1`）、
+  Fable 5.2（`claude-fable-5-2`）のいずれか
 - Claude Code CLI が 2.1.260 以降（`claudeCli` の版から読みます。読めなければ続けません）。
   2.1.260 は公式ドキュメントが挙げる版で、測ったのは 2.1.280 です。
-  なお、`claude-opus-5-5` そのものを使うには 2.1.280 以上が要ります（[「モデルの選び方とサブスクでの制約」](measurement.md)の節）
+  モデル自体の利用には、Opus 5.5 は 2.1.280 以上、Fable 5.2 は 2.1.321 以上が要ります
+  （[「モデルの選び方とサブスクでの制約」](measurement.md)の節）
 - `CLAUDE_CODE_USE_BEDROCK`、`CLAUDE_CODE_USE_VERTEX`、
   `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` のどれも設定されていない
 

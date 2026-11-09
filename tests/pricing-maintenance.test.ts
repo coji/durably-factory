@@ -75,6 +75,12 @@ describe('model price maintenance', () => {
 
   it('reads model-specific Claude cache rates and paired conditional context tiers', () => {
     const { prices, skipped } = parsePrices('anthropic', documents.anthropic)
+    assert.deepEqual(prices['claude-fable-5-2'], {
+      input: 8,
+      output: 40,
+      cacheRead: 0.2,
+      cacheWrite: 10,
+    })
     assert.deepEqual(prices['claude-fable-5-1'], {
       input: 10,
       output: 50,
@@ -279,6 +285,28 @@ describe('strict price lookup', () => {
     ])
   })
 
+  it('prices every Fable 5.2 cache leg and keeps older invocation catalogs unpriced', () => {
+    const usage = {
+      inputTokens: 1_000_000,
+      outputTokens: 100_000,
+      cacheReadTokens: 800_000,
+      cacheWriteTokens: 100_000,
+    }
+    const result = estimateCostBreakdown('claude-fable-5-2', usage)
+    assert.ok(result)
+    assert.ok(Math.abs(result.totalUsd - 5.96) < 1e-9)
+    assert.equal(result.meters.input_tokens, 0.8)
+    assert.ok(
+      Math.abs((result.meters.input_cache_read_tokens ?? 0) - 0.16) < 1e-9,
+    )
+    assert.equal(result.meters.input_cache_write_tokens, 1)
+    assert.equal(result.meters.output_tokens, 4)
+    const old = structuredClone(MODEL_PRICES)
+    delete old.models['claude-fable-5-2']
+    assert.equal(estimateCostBreakdown('claude-fable-5-2', usage, old), null)
+    assert.ok(estimateCostBreakdown('claude-fable-5-1', usage, old))
+  })
+
   it('does not treat an unpublished cache-write rate as free when writes were spent', () => {
     const prices = structuredClone(MODEL_PRICES)
     prices.models['gpt-5'].cacheWrite = null
@@ -302,6 +330,8 @@ describe('strict price lookup', () => {
       'claude-opus-5-50',
       'claude-opus-5-5-foo',
       'claude-fable-5-1-20260901',
+      'claude-fable-5-2-20261109',
+      'claude-fable-5-20',
       'openai/gpt-6.1-sol',
       'claude-haiku-4-5-20261101',
       'constructor',

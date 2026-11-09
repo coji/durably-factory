@@ -13,7 +13,7 @@ export const MODEL_PRESETS: readonly ModelPreset[] = [
   { model: 'gpt-6.1-sol', provider: 'codex', effort: 'medium' },
   { model: 'gpt-6.1-terra', provider: 'codex', effort: 'medium' },
   { model: 'gpt-6-luna', provider: 'codex', effort: 'medium' },
-  { model: 'claude-fable-5-1', provider: 'claude', effort: 'low' },
+  { model: 'claude-fable-5-2', provider: 'claude', effort: 'medium' },
   { model: 'claude-opus-5-5', provider: 'claude', effort: 'medium' },
   { model: 'claude-sonnet-5-5', provider: 'claude', effort: 'high' },
   { model: 'claude-haiku-5-5', provider: 'claude', effort: 'medium' },
@@ -26,6 +26,7 @@ const HISTORICAL_EFFORTS: Record<string, string> = {
   'gpt-5.6-terra': 'medium',
   'gpt-5.6-sol': 'low',
   'gpt-5.6-luna': 'max',
+  'claude-fable-5-1': 'low',
   'claude-opus-5': 'high',
   'claude-sonnet-5': 'high',
 }

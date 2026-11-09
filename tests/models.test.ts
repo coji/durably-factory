@@ -14,7 +14,7 @@ describe('model presets', () => {
     assert.equal(presetForModel('gpt-6-astra')?.effort, 'low')
     assert.equal(presetForModel('gpt-6.1-sol')?.effort, 'medium')
     assert.equal(presetForModel('gpt-6.1-terra')?.effort, 'medium')
-    assert.equal(presetForModel('claude-fable-5-1')?.effort, 'low')
+    assert.equal(presetForModel('claude-fable-5-2')?.effort, 'medium')
     assert.equal(presetForModel('claude-sonnet-5-5')?.effort, 'high')
     assert.equal(presetForModel('claude-haiku-5-5')?.effort, 'medium')
   })
@@ -25,6 +25,7 @@ describe('model presets', () => {
       'gpt-5.6-sol': 'low',
       'gpt-5.6-terra': 'medium',
       'gpt-5.6-luna': 'max',
+      'claude-fable-5-1': 'low',
       'claude-opus-5': 'high',
       'claude-sonnet-5': 'high',
     })) {
@@ -76,6 +77,7 @@ describe('model presets', () => {
     approx(estimateCostUsd('gpt-5.6-terra', usage), 0.014)
     approx(estimateCostUsd('gpt-5.6-luna', usage), 0.0014)
     approx(estimateCostUsd('claude-fable-5-1', usage), 0.06)
+    approx(estimateCostUsd('claude-fable-5-2', usage), 0.048)
     // Longest match first: `claude-opus-5-5` must not be priced as Opus 5.
     approx(estimateCostUsd('claude-opus-5-5', usage), 0.024)
     approx(estimateCostUsd('claude-opus-5', usage), 0.03)
