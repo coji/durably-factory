@@ -29,7 +29,7 @@ LLM の呼び出しはすべて `src/engine/runner.ts` を通り、試行のメ�
 - **Claude**: Agent SDK の `result` メッセージの累計を、そのまま使います。
   Claude Code の記録（transcript）にある各応答の合計と一致することを確かめて
   あります。
-- **Codex**: `ai-sdk-provider-codex-cli@2.3.0` は、応答ごとの `thread/tokenUsage/updated`
+- **Codex**: `ai-sdk-provider-codex-cli@2.4.0` は、応答ごとの `thread/tokenUsage/updated`
   を、ターンの中で合計します（2.2.1 は上書きしていたため、最後の応答の分しか
   返しませんでした。
   [ben-vargas/ai-sdk-provider-codex-cli#49](https://github.com/ben-vargas/ai-sdk-provider-codex-cli/issues/49)
@@ -153,7 +153,7 @@ pnpm factory report --run <runId> --format md \
 `inputTokens` 全体のうち、キャッシュの読み込みと書き込みはそれぞれの料金の項目
 （meter）の単価で、残りは入力の単価で計算します。キャッシュの書き込みは、どちらも
 入力の 1.25 倍です。キャッシュの読み込みはモデルごとに違い、多くは 0.1 倍、
-GPT-6.1 Sol / Terra と Claude Opus 5.5 は 0.05 倍、Claude Fable 5.1 は
+GPT-6.1 Sol / Terra と Claude Opus 5.5 は 0.05 倍、Claude Fable 5.2 / 5.1 は
 0.025 倍です。価格表は
 `src/engine/model-prices.json` にあり、モデルごとに単価、出典、確認日を持ちます。
 モデル名は完全一致か、価格表に明記した別名だけで照合します。名前が似ている
@@ -273,15 +273,24 @@ Markdown の集計の行も、工程や役割の合計と同じ試行から数�
 | プロバイダー | モデル候補                                                                     |
 | ------------ | ------------------------------------------------------------------------------ |
 | Codex        | `gpt-6-astra`、`gpt-6.1-sol`、`gpt-6.1-terra`、`gpt-6-luna`                    |
-| Claude       | `claude-fable-5-1`、`claude-opus-5-5`、`claude-sonnet-5-5`、`claude-haiku-5-5` |
+| Claude       | `claude-fable-5-2`、`claude-opus-5-5`、`claude-sonnet-5-5`、`claude-haiku-5-5` |
 
 モデルを省略すると、Codex は `gpt-6.1-sol`（effort: `medium`）、Claude は
 `claude-sonnet-5-5`（effort: `high`）を使います。
+Fable 5.2 を指定して effort を省略すると、Claude Code の既定値に合わせて
+`medium` を使います。Fable 5.1 を明示した設定は、従来どおり `low` です。
 旧モデルを明示した設定は引き続き読めます。旧モデルの effort の既定値と価格データも残します。
 
 [OpenAI の現行モデル](https://developers.openai.com/api/docs/guides/latest-model)と
 [Claude の現行モデル](https://platform.claude.com/docs/en/models/overview)を基に選んでいます。
 モデルの利用可否は契約やアカウントによって異なり、factory は実行前の preflight で確認します。
+
+`claude-opus-5-5` には Claude Code 2.1.280 以上が必要です。
+Fable 5.2 には [Claude Code 2.1.321 以上が必要です](https://code.claude.com/docs/en/model-config#work-with-fable)。
+`ai-sdk-provider-claude-code@4.4.1` が指定する Agent SDK 0.3.283 では足りないため、
+`pnpm-workspace.yaml` の override で Agent SDK 0.3.321 に固定し、同梱の
+Claude Code 2.1.321 を使います。PATH 上の `claude` を更新しても、factory が
+起動する版は変わりません。
 
 ### 過去の動作確認（2026-09-23）
 
@@ -293,11 +302,6 @@ Markdown の集計の行も、工程や役割の合計と同じ試行から数�
 | `gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` | 使える                                                                   |
 | `gpt-6-sol`, `gpt-6-luna`                                     | 使えない。ChatGPT アカウントの Codex では 400 が返る。API キーでは使える |
 | `claude-opus-5-5`, `claude-sonnet-5`                          | 使える                                                                   |
-
-`claude-opus-5-5` には Claude Code 2.1.280 以上が必要です。
-`ai-sdk-provider-claude-code` は Agent SDK を版を固定して同梱しており、最新の 4.3.2
-でも 2.1.278 までしか入りません。そのため、ルートの `pnpm-workspace.yaml` の
-override で、`@anthropic-ai/claude-agent-sdk` を 0.3.280 に上げています。
 
 `codex debug models` の一覧には、サブスクで呼べないモデルも出ます。一覧ではなく、
 実際に呼べるかどうかで判断してください。

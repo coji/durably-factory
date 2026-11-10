@@ -1,6 +1,17 @@
 {
   "version": 1,
   "models": {
+    "claude-fable-5-2": {
+      "provider": "anthropic",
+      "input": 8,
+      "output": 40,
+      "cacheRead": 0.2,
+      "cacheWrite": 10,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "checkedAt": "2026-11-10",
+      "monitor": true,
+      "aliases": []
+    },
     "claude-fable-5-1": {
       "provider": "anthropic",
       "input": 10,

@@ -63,9 +63,9 @@ claude --version
 claude auth login
 ```
 
-Codex では `ai-sdk-provider-codex-cli@2.3.0` の app-server モードを使います。
+Codex では `ai-sdk-provider-codex-cli@2.4.0` の app-server モードを使います。
 最初の呼び出しで続けて使えるスレッド（persistent thread）を作り、修正のときは
-保存した `threadId` を指定します。Claude では `ai-sdk-provider-claude-code@4.3.1`
+保存した `threadId` を指定します。Claude では `ai-sdk-provider-claude-code@4.4.1`
 が返す `sessionId` を保存し、修正のときは `resume` で再開するセッションを指定
 します。「作業ディレクトリでいちばん新しい会話を選ぶ」動きは使いません。
 

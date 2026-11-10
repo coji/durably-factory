@@ -112,7 +112,7 @@ LLM にタスクを判定させます。書かなければ判定の呼び出し�
 - `output` は返答の読み方です。`verdict`（既定）は、これまでどおりの `DECISION`／`NOTES` です。
   `findings-json` は、返答の最後の ` ```json ` ブロックにある配列を読みます。
   指摘の形は `{"severity": "blocker" | "non-blocker", "title": "...", "body": "...",
-"file": "...", "line": 12, "likelihood": 2, "impact": 3}` で、`file`、`line`、
+  "file": "...", "line": 12, "likelihood": 2, "impact": 3}` で、`file`、`line`、
   `likelihood`、`impact` は省けます。書くときは、`file` は空でない文字列、`line` は
   1 以上の整数、`likelihood` と `impact` は 1 から 10 の整数でなければなりません
   （[「レビューの `blocker` を頻度と深刻さで決める」](configuration.md)を参照）。ファイル全体への

@@ -697,10 +697,13 @@ describe('whether a repair continues the session across an effort change', () =>
   const decide = (patch: Partial<RepairSessionInput>) =>
     repairSessionDecision({ ...base, ...patch })
 
-  it('allows it at setup on Opus 5.5 or Fable 5.1 with Claude Code 2.1.260 or later, pending the model preflight sees', () => {
+  it('allows it at setup on Opus 5.5, Fable 5.1 or Fable 5.2 with Claude Code 2.1.260 or later, pending the model preflight sees', () => {
     const allowed = decide({})
     assert.equal(allowed.eligible, true)
-    assert.equal(EFFORT_RESUME_MODELS_LABEL, 'Opus 5.5 or Fable 5.1')
+    assert.equal(
+      EFFORT_RESUME_MODELS_LABEL,
+      'Opus 5.5 or Fable 5.1 or Fable 5.2',
+    )
     // Setup never confirms a continuation: only preflight does, and the
     // setup step adds the version the run takes once it has.
     assert.equal('continues' in allowed, false)
@@ -711,6 +714,21 @@ describe('whether a repair continues the session across an effort change', () =>
         repair: claude('high', 'claude-fable-5-1'),
       }).eligible,
       true,
+    )
+    for (const model of ['claude-fable-5-2', 'claude-fable-5-2[1m]']) {
+      assert.equal(
+        decide({ code: claude('high', model), repair: claude('max', model) })
+          .eligible,
+        true,
+      )
+    }
+    // A model upgrade never reuses the old model's session.
+    assert.equal(
+      decide({
+        code: claude('low', 'claude-fable-5-1'),
+        repair: claude('high', 'claude-fable-5-2'),
+      }).eligible,
+      false,
     )
     assert.equal(decide({ claudeCliVersion: '2.1.260' }).eligible, true)
     assert.equal(decide({ claudeCliVersion: '2.2.0' }).eligible, true)
@@ -816,6 +834,8 @@ describe('whether a repair continues the session across an effort change', () =>
       'claude-opus-5-50',
       'claude-opus-5-5x',
       'claude-opus-5-5-foo',
+      'claude-fable-5-20',
+      'claude-fable-5-2-foo',
     ])
       assert.equal(
         decide({ code: claude('medium', model), repair: claude('high', model) })
@@ -955,6 +975,22 @@ describe('a Claude alias, resolved by the model Claude Code reports', () => {
       }).handling,
       'continued-effort-change',
     )
+  })
+
+  it('continues Fable 5.2 only when both preflight calls report that model', () => {
+    const code = fixed('fable', 'medium')
+    const repair = fixed('claude-fable-5-2', 'high')
+    const matched = decideAndConfirm(code, repair, {
+      code: init('claude-fable-5-2'),
+      repair: init('claude-fable-5-2'),
+    })
+    assert.equal(matched.confirmed.continues, true)
+    assert.equal(modelOf(matched.confirmed), 'claude-fable-5-2')
+    const mismatched = decideAndConfirm(code, repair, {
+      code: init('claude-fable-5-1'),
+      repair: init('claude-fable-5-2'),
+    })
+    assert.equal(mismatched.confirmed.continues, false)
   })
 
   it('continues `opus` and `claude-opus-5-5` once preflight saw one model', () => {
