@@ -8,6 +8,7 @@ import type { RepairFinding } from './code-response.js'
 import { asThresholdException, IMPLEMENTER_NOTES_MAX_BYTES } from './events.js'
 import type { PromptPolicy } from './prompt-policy.js'
 import type { PromptVersion } from './prompt-version.js'
+import { reviewerId } from './reviewers.js'
 import type {
   RepairParentConclusion,
   StageContext,
@@ -676,14 +677,21 @@ export function reviewPrompt(
   } = {},
 ): string {
   const output = options.output ?? 'verdict'
-  const role =
-    lens === 'correctness'
+  const wholeChange = (options.promptVersion ?? 3) >= 3
+  const role = wholeChange
+    ? `an independent reviewer (${reviewerId(lens)})`
+    : lens === 'correctness'
       ? 'an independent correctness reviewer'
       : 'an independent edge-case reviewer'
   return [
     `You are ${role}. READ ONLY — do not modify any file.`,
     '',
     'CHECK:',
+    ...(wholeChange
+      ? [
+          '- Review the entire change against the task and specification, including correctness, boundary conditions, safety, and tests. Your reviewer identifier does not limit your scope. Review independently; do not assume the other reviewer covers any part of the change.',
+        ]
+      : []),
     ...(options.policy?.mode === 'replace' ? [] : rules).map(
       (rule) => `- ${rule}`,
     ),

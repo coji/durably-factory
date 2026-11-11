@@ -125,8 +125,8 @@ fake の事前確認（preflight）は、要求したモデルの名前で決ま
 
 ジョブの入力の `fakeScenario` は、実行ごとに fake の振る舞いを変える、デモと
 テスト専用の欄です。上の環境変数と同じ項目を、実行ごとに上書きします。
-`reviewSequence` と `reviewNotes` は、レビューの回ごとに correctness、edge-cases
-の順で 2 つずつ並べます。回と観点で引くので、呼び出しの順番や、再起動のあとの
+`reviewSequence` と `reviewNotes` は、レビューの回ごとに review-a、review-b
+の順で 2 つずつ並べます。回とレビュー枠で引くので、呼び出しの順番や、再起動のあとの
 やり直しで、判定が入れ替わりません。`reviewOutputs` は、同じ並びで、レビューの
 返答そのものを指定します（`findings-json` の壊れた返答や、途中で切れた返答も
 書けます）。`reviewDenials` は、同じ並びで、その呼び出しが道具の使用を拒否された
@@ -138,7 +138,7 @@ fake の事前確認（preflight）は、要求したモデルの名前で決ま
 ワーカーは、何もためません。`output` は `{ chunks, intervalMs }` で、各呼び出しが、
 返答の前に `intervalMs` ごとに `chunks` を 1 つずつ、エージェントの出力として
 書きます。指定がなくても、fake の呼び出しは返答の本文を出力の最後に書きます。
-`FAKE_REVIEW_SLOW_MS` は、これらの呼び出しでも edge-cases のレビューを遅らせます。
+`FAKE_REVIEW_SLOW_MS` は、これらの呼び出しでも review-b のレビューを遅らせます。
 すべての役割が fake の実行でしか受け付けず、そうでなければ `trigger` のときに
 断ります。`configVersion` にも入りません。`factory seed` がこれを使います。
 

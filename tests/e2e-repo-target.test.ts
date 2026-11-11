@@ -836,8 +836,8 @@ describe('repo target end to end', { timeout: 180000 }, () => {
         ]),
         [
           ['code', 'fake', 'model-a', 'low'],
-          ['correctness', 'fake', 'model-a', 'low'],
-          ['edge-cases', 'fake', 'model-b', 'high'],
+          ['review-a', 'fake', 'model-a', 'low'],
+          ['review-b', 'fake', 'model-b', 'high'],
         ],
       )
       for (const role of report.roleUsage) {
@@ -871,8 +871,8 @@ describe('repo target end to end', { timeout: 180000 }, () => {
         assert.doesNotMatch(text, /issue-\d|issues\/\d|#\d/)
       }
       assert.ok(md.includes(`- squashed branch: ${squashed}`))
-      assert.match(md, /\| edge-cases \| fake \| model-b \| high \| \d+ \|/)
-      assert.match(md, /\| correctness \| fake \| model-a \| low \| \d+ \|/)
+      assert.match(md, /\| review-b \| fake \| model-b \| high \| \d+ \|/)
+      assert.match(md, /\| review-a \| fake \| model-a \| low \| \d+ \|/)
 
       // Every piece of run data is under the state root: nothing in the
       // repository and nothing in the checkout.
@@ -3180,8 +3180,8 @@ describe('configured reviewers', { timeout: 240000 }, () => {
       // Each call ran in a directory of its own, outside the worktree.
       assert.notEqual(correctness?.workdir, edge?.workdir)
       const own = {
-        'review-a': /independent correctness reviewer/,
-        'review-b': /independent edge-case reviewer/,
+        'review-a': /independent reviewer \(review-a\)/,
+        'review-b': /independent reviewer \(review-b\)/,
       } as const
       const other = {
         'review-a': /independent edge-case reviewer/,
@@ -3229,6 +3229,10 @@ describe('configured reviewers', { timeout: 240000 }, () => {
           assert.equal(seen?.present, true, role)
           const text = seen?.content ?? ''
           assert.match(text, own[role])
+          assert.match(
+            text,
+            /entire change.*correctness, boundary conditions, safety, and tests/,
+          )
           assert.doesNotMatch(text, other[role])
           // Trusted context, fenced data, materials and the contract.
           assert.match(text, /TRUSTED CONTEXT/)
@@ -3520,12 +3524,12 @@ describe('configured reviewers', { timeout: 240000 }, () => {
         ),
         [
           [
-            ['correctness', kept([blocker], [advice])],
-            ['edge-cases', kept([], [advice])],
+            ['review-a', kept([blocker], [advice])],
+            ['review-b', kept([], [advice])],
           ],
           [
-            ['correctness', kept([], [])],
-            ['edge-cases', kept([], [advice])],
+            ['review-a', kept([], [])],
+            ['review-b', kept([], [advice])],
           ],
         ],
       )
@@ -3712,22 +3716,22 @@ describe('configured reviewers', { timeout: 240000 }, () => {
         const otherMetadata = (other?.metadata ?? {}) as Record<string, unknown>
         assert.ok(!('permissionDenials' in otherMetadata))
         const report = await buildReport(durably, run.id)
-        const review = report.reviews.find((r) => r.lens === 'correctness')
+        const review = report.reviews.find((r) => r.lens === 'review-a')
         assert.deepEqual(review?.permissionDenials, kept)
         assert.deepEqual(
-          report.reviewRounds[0]?.reviews.find((r) => r.lens === 'correctness')
+          report.reviewRounds[0]?.reviews.find((r) => r.lens === 'review-a')
             ?.permissionDenials,
           kept,
         )
         assert.ok(
           !(
             'permissionDenials' in
-            (report.reviews.find((r) => r.lens === 'edge-cases') ?? {})
+            (report.reviews.find((r) => r.lens === 'review-b') ?? {})
           ),
         )
         assert.deepEqual(
           JSON.parse(reportToJson(report)).reviews.find(
-            (r: { lens: string }) => r.lens === 'correctness',
+            (r: { lens: string }) => r.lens === 'review-a',
           ).permissionDenials,
           kept,
         )
@@ -3788,7 +3792,7 @@ describe('configured reviewers', { timeout: 240000 }, () => {
       assert.notEqual(call.workdir, workdir)
       assert.match(
         call.localInstructionsAtStart?.content ?? '',
-        /independent correctness reviewer/,
+        /independent reviewer \(review-a\)/,
       )
       assert.ok(!(call.localInstructionsAtStart?.content ?? '').includes(own))
 
@@ -3901,7 +3905,7 @@ describe('configured reviewers', { timeout: 240000 }, () => {
         report.reviewRounds.map((round) =>
           round.reviews.map((r) => [r.lens, r.findings?.counts]),
         ),
-        recordedFirst ? [[['correctness', { blocker: 0, nonBlocker: 0 }]]] : [],
+        recordedFirst ? [[['review-a', { blocker: 0, nonBlocker: 0 }]]] : [],
       )
     } finally {
       try {
@@ -4006,8 +4010,8 @@ describe('configured reviewers', { timeout: 240000 }, () => {
       assert.deepEqual(
         report.reviews.map((r) => [r.lens, r.decision, r.findings]),
         [
-          ['correctness', 'pass', empty],
-          ['edge-cases', 'pass', empty],
+          ['review-a', 'pass', empty],
+          ['review-b', 'pass', empty],
         ],
       )
       assert.deepEqual(report.reviewRounds.at(-1)?.reviews, report.reviews)

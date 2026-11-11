@@ -39,7 +39,7 @@ export function stageName(stage: string): string {
   return STAGE_NAME[stage] ?? stage
 }
 
-/** A review lens, such as `correctness`, as a review's name. */
+/** A reviewer identifier, including historical slots, as a display name. */
 export function lensName(lens: string): string {
   return LENS_NAME[lens] ?? lens
 }

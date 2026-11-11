@@ -1319,6 +1319,35 @@ describe('pipeline and trace', () => {
     ...(n.children.length > 0 ? [n.children.map(shape)] : []),
   ]
 
+  it('labels v7 traces with neutral reviewers while finding verdicts on the stable steps', () => {
+    const t = traceOf(
+      repaired,
+      [approval],
+      { status: 'waiting' },
+      {
+        reviewScope: 'whole-change',
+        reviews: [
+          {
+            lens: 'review-a',
+            decision: 'pass',
+            notes: 'whole change',
+            findings: null,
+          },
+        ],
+      },
+    )
+    const reviewers = t.root.children
+      .flatMap((node) => node.children)
+      .filter((node) => node.stage === 'review')
+    assert.deepEqual(
+      reviewers.map((node) => node.label),
+      ['レビュー A', 'レビュー B'],
+    )
+    assert.equal(reviewers[0]?.review?.notes, 'whole change')
+    assert.equal(roleName('review-a'), 'レビュー A')
+    assert.equal(lensName('review-b'), 'レビュー B')
+  })
+
   it('trace (a) nests a repair as two iterations, with parallel reviews and the open wait running to now', () => {
     const t = traceOf(
       repaired,
@@ -3458,7 +3487,7 @@ describe('web UI over fake runs', { timeout: 300000 }, () => {
       assert.ok(waiting.report.reviews.every((r) => r.notes.length > 0))
       assert.ok(waiting.report.candidate?.id)
       const md = await runCli(home, ['report', '--run', ids['approval'] ?? ''])
-      assert.match(md.stdout, /## Reviews\n\n- (correctness|edge-cases): pass/)
+      assert.match(md.stdout, /## Reviews\n\n- (review-a|review-b): pass/)
       // A fake run records no usage: unknown, never zero.
       const approvedDetail = await api<RunDetailResponse>(
         port,

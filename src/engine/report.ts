@@ -126,7 +126,7 @@ export interface RoleProfileRow {
 }
 
 /**
- * Token and cost consumption of one role (code, correctness, edge-cases),
+ * Token and cost consumption of one role (code, review-a, review-b),
  * counted once per invocation. Unlike `StageUsage`, the two reviewers are
  * separate rows, because they may run on different providers or models.
  */
@@ -955,7 +955,15 @@ export interface BelowThresholdBlockers {
 }
 
 export interface LoopReport {
-  prompts?: import('../factory/prompt-policy.js').PromptPolicies
+  /** v7 reviewers cover the whole change; absent on historical reports. */
+  reviewScope?: 'whole-change'
+  prompts?: Partial<
+    Record<
+      | import('../factory/prompt-policy.js').PromptRole
+      | import('../factory/reviewers.js').ReviewerId,
+      import('../factory/prompt-policy.js').PromptPolicy
+    >
+  >
   runId: string
   jobName: string
   status: string
@@ -1006,8 +1014,8 @@ export interface LoopReport {
   preflight: ReportPreflight | null
   stageUsage: StageUsage[]
   /**
-   * Per-role requested settings and usage: code, repair, correctness,
-   * edge-cases, and triage when the run has a triage profile.
+   * Per-role requested settings and usage: code, repair, review-a, review-b,
+   * and triage when configured. Historical reports use the old slot names.
    */
   roleUsage: RoleUsage[]
   /** SHA-256 of each input file's content, as stored in the run. */

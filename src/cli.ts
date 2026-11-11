@@ -755,7 +755,7 @@ Repository config: factory.json at the repository root, or --config <file>:
     "commit": { "authorName": "...", "authorEmail": "...",
                 "messageTemplate": "...", "publishSquashed": false },
     "profiles": { "code": { "provider": "codex", "model": "...", "effort": "..." },
-                  "review": { "correctness": { ... }, "edge-cases": { ... } },
+                  "review": { "review-a": { ... }, "review-b": { ... } },
                   "repair": { ... }, "triage": { ... } },
     "spec": { "template": "<file>", "reviewTemplate": "<file>", "maxRounds": 3,
               "author": { ... }, "fix": { ... },

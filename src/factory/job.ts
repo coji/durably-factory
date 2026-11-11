@@ -121,7 +121,7 @@ import {
   idleLimitOf,
   initialState,
   REVIEW_CONTEXTS,
-  REVIEW_LENSES,
+  REVIEW_SLOTS,
   REVIEW_OUTPUTS,
   confirmRepairSession,
   REPAIR_SESSION_STEP,
@@ -135,7 +135,7 @@ import {
   type SpecSetup,
   type ReviewContext,
   type ReviewInvocation,
-  type ReviewLens,
+  type ReviewSlot,
   type ReviewOutput,
   type StageDecision,
 } from './types.js'
@@ -540,17 +540,17 @@ function inputProviderOf(
  */
 export function fixReviewInvocations(
   requested:
-    | Partial<Record<ReviewLens, RequestedReviewInvocation | undefined>>
+    | Partial<Record<ReviewSlot, RequestedReviewInvocation | undefined>>
     | null
     | undefined,
   profiles: Record<
-    ReviewLens,
+    ReviewSlot,
     { provider: ProviderName; effectiveEffort: string | null }
   >,
   where = 'profiles.review',
-): Partial<Record<ReviewLens, ReviewInvocation>> {
-  const fixed: Partial<Record<ReviewLens, ReviewInvocation>> = {}
-  for (const lens of REVIEW_LENSES) {
+): Partial<Record<ReviewSlot, ReviewInvocation>> {
+  const fixed: Partial<Record<ReviewSlot, ReviewInvocation>> = {}
+  for (const lens of REVIEW_SLOTS) {
     const invocation = fixReviewInvocation(
       requested?.[lens],
       profiles[lens],
@@ -868,7 +868,7 @@ const inputSchema = z
   // Refused at trigger, like `factory trigger` refuses it from `factory.json`, so
   // a direct trigger is never stored with a reviewer that cannot run it.
   .superRefine((input, ctx) => {
-    for (const lens of REVIEW_LENSES) {
+    for (const lens of REVIEW_SLOTS) {
       const r = input.review?.[lens]
       const unsupported = r
         ? unsupportedReviewSettings(r, inputProviderOf(input, lens))

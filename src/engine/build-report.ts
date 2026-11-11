@@ -15,11 +15,11 @@ import {
   REVIEW_DISCARD_REASON,
   REVIEW_PENDING_REASON,
   SPEC_CHECK_STEP,
-  REVIEW_LENSES,
+  REVIEW_SLOTS,
   SPEC_AUTHOR_STEP,
   SPEC_FINAL_STEP,
   type RepairSessionRecord,
-  type ReviewLens,
+  type ReviewSlot,
   type StoredImplementerNotes,
   type TestProbeRecord,
 } from '../factory/types.js'
@@ -77,6 +77,7 @@ import {
   type TriageCalibration,
   type UsageTotals,
 } from './report.js'
+import { wholeChangeReviewReport } from './reviewer-presentation.js'
 import {
   worktreeStateOf,
   type DiagnosisKind,
@@ -602,8 +603,8 @@ function reviewRoundsOf(
       const reviews = [...byLens.values()]
         .sort(
           (x, y) =>
-            REVIEW_LENSES.indexOf(x.lens as ReviewLens) -
-            REVIEW_LENSES.indexOf(y.lens as ReviewLens),
+            REVIEW_SLOTS.indexOf(x.lens as ReviewSlot) -
+            REVIEW_SLOTS.indexOf(y.lens as ReviewSlot),
         )
         .map((r): ReportReview =>
           held && r.status !== 'cancelled'
@@ -682,7 +683,7 @@ export function reviewBlockerRuleLensesOf(args: {
         : []
     }),
   ])
-  return REVIEW_LENSES.filter(
+  return REVIEW_SLOTS.filter(
     (lens) =>
       args.invocations?.[lens]?.output === 'findings-json' && reached.has(lens),
   )
@@ -1439,6 +1440,7 @@ export async function buildReport(
       baseCommit?: string
       featureBase?: string
     }
+    instructionsVersion?: string
     parallelReview?: unknown
     review?: Partial<Record<string, { output?: string }>>
     reviewBlockerThreshold?: number | null
@@ -1503,7 +1505,7 @@ export async function buildReport(
       requestedModel: null,
       requestedEffort: null,
     })
-  return {
+  const report: LoopReport = {
     runId,
     jobName: run.jobName,
     status: run.status,
@@ -1559,7 +1561,7 @@ export async function buildReport(
     reviewRounds,
     discardedReviews,
     stoppedCalls: stopped,
-    reviewHighlights: reviewHighlights(countedRounds, reviews, REVIEW_LENSES),
+    reviewHighlights: reviewHighlights(countedRounds, reviews, REVIEW_SLOTS),
     specRounds: specRoundsOf(steps),
     spec: specOf(
       steps,
@@ -1582,4 +1584,5 @@ export async function buildReport(
     priceBasis: PRICE_BASIS,
     notes,
   }
+  return wholeChangeReviewReport(report, setupOutput?.instructionsVersion)
 }

@@ -68,14 +68,15 @@ LLM にタスクを判定させます。書かなければ判定の呼び出し�
 
 ## レビュー役の呼び出しと出力（command、context、output）
 
-`profiles.review.correctness` と `profiles.review.edge-cases` には、プロバイダー、
+`profiles.review.review-a` と `profiles.review.review-b` は、仕様・正しさ・境界条件・安全性・テストを含む同じ変更全体を独立にレビューします。
+各人には、プロバイダー、
 モデル、推論量のほかに、呼び出し方と返答の読み方を役割ごとに書けます。
 
 ```json
 {
   "profiles": {
     "review": {
-      "correctness": {
+      "review-a": {
         "provider": "claude",
         "model": "claude-opus-5-5",
         "effort": "high",
@@ -83,7 +84,7 @@ LLM にタスクを判定させます。書かなければ判定の呼び出し�
         "context": "local-instructions",
         "output": "findings-json"
       },
-      "edge-cases": { "provider": "codex", "output": "findings-json" }
+      "review-b": { "provider": "codex", "output": "findings-json" }
     }
   }
 }
