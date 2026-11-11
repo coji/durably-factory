@@ -22,8 +22,8 @@
   "profiles": {
     "code": { "provider": "codex", "model": "gpt-6.1-sol", "effort": "medium" },
     "review": {
-      "correctness": { "provider": "codex", "model": "gpt-5.6-terra" },
-      "edge-cases": { "provider": "claude", "model": "claude-sonnet-5-5" }
+      "review-a": { "provider": "codex", "model": "gpt-5.6-terra" },
+      "review-b": { "provider": "claude", "model": "claude-sonnet-5-5" }
     }
   }
 }
@@ -89,8 +89,8 @@ pnpm factory trigger \
   場所の設定ファイルは、`--config <path>` で選べます。相対パスは、CLI のプロセスの
   カレントディレクトリから解決します。`pnpm --filter` はパッケージのディレクトリで
   CLI を動かすので、パスは絶対パスで渡してください。
-- `profiles` では、`code`（実装と、`repair` が無ければ修正も）、`review.correctness`、
-  `review.edge-cases` の 3 つの役割を、別々に指定できます。修正だけを別の設定にする
+- `profiles` では、`code`（実装と、`repair` が無ければ修正も）、`review.review-a`、
+  `review.review-b` の 3 つの役割を、別々に指定できます。修正だけを別の設定にする
   `repair` と、見立ての `triage` は任意です（下の節を参照）。設定ファイルが省いた
   役割と、役割の中で省いた項目だけを、`--provider`、`--model`、`--effort` と
   プリセットで補います（`repair` で省いた項目は、`code` から補います）。ただし、
@@ -875,7 +875,7 @@ Terminal 1 のワーカーは省略できます。ただしそのときは、`tr
   "prompts": {
     "implement": { "file": "prompts/implement.md", "mode": "append" },
     "repair": { "file": "prompts/repair.md", "mode": "replace" },
-    "correctness": { "file": "prompts/review.md" }
+    "review-a": { "file": "prompts/review.md" }
   }
 }
 ```
@@ -888,8 +888,8 @@ Terminal 1 のワーカーは省略できます。ただしそのときは、`tr
 | ----------- | --------------------------------------------- |
 | implement   | 最初の実装                                    |
 | repair      | run内の修正、外部findingsからの修正と応答訂正 |
-| correctness | コードの正しさのレビュー                      |
-| edge-cases  | コードの境界ケースのレビュー                  |
+| review-a    | 変更全体の独立レビュー A                      |
+| review-b    | 変更全体の独立レビュー B                      |
 | triage      | 作業の見立て                                  |
 | spec-author | 仕様作成                                      |
 | spec-fix    | 仕様修正                                      |
@@ -915,3 +915,19 @@ repairとrecheck、通常のretriggerと自動再試行は、保存した文面�
 通常runで文面を読み直す場合は`retrigger --run <id> --reload-config`を使います。
 JSONを変えずMarkdownだけを編集した場合も、新しい文面として区別します。
 内容またはモードが変わると`configVersion`も変わり、ファイルの場所だけの変更では変わりません。
+
+### レビュアー名の移行（v7）
+
+`profiles.review.review-a` と `profiles.review.review-b` は、それぞれ変更全体を独立に確認します。
+仕様・正しさ・境界条件・安全性・テストを両者に依頼し、観点を分担しません。
+provider/model/effort/command/outputは各人で選べます。
+
+旧名 `correctness` と `edge-cases` も、それぞれ `review-a` と `review-b` の別名として読み込めます。
+`prompts` のキーも同様です。同じ枠の新旧名を同時に指定するとエラーになります。
+設定を移行する場合は、キーだけを置き換えてください。
+内部の保存形式とチェックポイント名は旧キーを維持するため、DBの移行は不要です。
+
+新しいrunは `local-factory.v7` の指示を固定し、レポートと画面にも `review-a` / `review-b` を表示します。
+過去にsetupを完了したrunは、そのrunの指示の版・役割名で再開・表示します。
+保存済みの入力・出力・プロンプト本文・attempt・step名は書き換えません。
+旧runから新しく作るretry/repair/recheckは新しいrunとしてv7の指示を使います。

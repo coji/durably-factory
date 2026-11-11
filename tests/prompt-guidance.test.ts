@@ -237,8 +237,55 @@ describe('v6 factory prompt guidance', () => {
         expected[name],
         name,
       )
-    assert.equal(INSTRUCTIONS_VERSION, 'local-factory.v6')
+    assert.equal(INSTRUCTIONS_VERSION, 'local-factory.v7')
+    assert.equal(promptVersionOf('local-factory.v6'), 2)
     assert.equal(promptVersionOf('local-factory.v5'), 1)
-    assert.equal(promptVersionOf(INSTRUCTIONS_VERSION), 2)
+    assert.equal(promptVersionOf(INSTRUCTIONS_VERSION), 3)
+  })
+})
+
+describe('whole-change independent reviewers', () => {
+  it('gives both reviewers the entire scope, including with a replacement policy, and preserves old prompts', () => {
+    for (const [slot, id, legacy] of [
+      ['correctness', 'review-a', 'correctness'],
+      ['edge-cases', 'review-b', 'edge-case'],
+    ] as const) {
+      for (const version of [1, 2, 3] as const) {
+        const prompt = reviewPrompt(
+          slot,
+          'context',
+          ['DEFAULT'],
+          [],
+          null,
+          null,
+          {
+            promptVersion: version,
+            policy: {
+              mode: 'replace',
+              path: '/custom.md',
+              content: 'CUSTOM',
+              sha256: 'x',
+            },
+          },
+        )
+        assert.match(prompt, /CUSTOM/)
+        assert.doesNotMatch(prompt, /DEFAULT/)
+        if (version === 3) {
+          assert.ok(prompt.includes(`an independent reviewer (${id})`))
+          assert.match(
+            prompt,
+            /entire change.*task and specification.*correctness, boundary conditions, safety, and tests/,
+          )
+          assert.match(prompt, /do not assume the other reviewer covers/)
+          assert.doesNotMatch(
+            prompt,
+            /independent (correctness|edge-case) reviewer/,
+          )
+        } else {
+          assert.ok(prompt.includes(`an independent ${legacy} reviewer`))
+          assert.doesNotMatch(prompt, /Your reviewer identifier/)
+        }
+      }
+    }
   })
 })

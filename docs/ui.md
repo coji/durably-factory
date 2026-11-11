@@ -273,7 +273,7 @@ pnpm factory seed --home ~/tmp/factory-demo --latency 3000-15000
   日本語のタスクで、リポジトリが対象の実行を 13 本起動します。承認された 1 本には、外部の
   指摘からの修正の実行を 1 本足します。固定したテストは、本物の `node --test` です。
 - `factory.json` の各役割には、実際に使いそうなモデルを書いています。実装と
-  正しさのレビュー（correctness）は `gpt-6.1-sol`、境界条件のレビュー（edge-cases）は
+  レビュー A（review-a）は `gpt-6.1-sol`、レビュー B（review-b）は
   `claude-opus-5-5`、見立ては `gpt-6-luna` です。プロバイダーは fake なので、
   これらは指定したモデル（requested model）として記録され、トークン数と費用は
   そのモデルの価格で計算します。実行は fake と表示され、実際の LLM での検証には

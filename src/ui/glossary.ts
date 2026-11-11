@@ -55,6 +55,8 @@ export const STAGE_NAME: Record<string, string> = {
 }
 
 export const LENS_NAME: Record<string, string> = {
+  'review-a': 'レビュー A',
+  'review-b': 'レビュー B',
   correctness: '正しさのレビュー',
   'edge-cases': '境界条件のレビュー',
 }

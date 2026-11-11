@@ -131,7 +131,7 @@ pnpm factory report --run <runId> --format md \
   つまり手戻り）、呼び出しの数、in / cache-read / cache-write / out / total、
   費用（cost）。どれかの呼び出しの使用量が数えられていなければ PARTIAL、価格が
   分からなければ unknown
-- **Role usage**: `code`、`correctness`、`edge-cases`（修正を呼んだか、修正の
+- **Role usage**: `code`、`review-a`、`review-b`（修正を呼んだか、修正の
   プロファイルがあれば `repair`、見立てのプロファイルがあれば `triage` も）ごとの、
   要求したプロバイダー / モデル / 推論量、呼び出しの数、トークン、費用、使用量と
   費用のそれぞれがそろっているかどうか。2 つのレビューを別の行に分けるので、役割
@@ -381,7 +381,7 @@ pnpm factory report --run <runId> --format json \
   | jq '{runId, configVersion, inputs, delivery, roleUsage, summary}'
 ```
 
-`roleUsage` は `code`、`correctness`、`edge-cases` の 3 行で、それぞれ、指定した
+`roleUsage` は `code`、`review-a`、`review-b` の 3 行で、それぞれ、指定した
 プロバイダー、モデル、推論量、呼び出しの回数、トークンの内訳、合計のトークン、
 費用、`complete`、`costComplete` を持ちます。fake のプロバイダーのように使用量を
 返さない呼び出しは、0 にせず、トークンと費用を `null`、`complete` を `false` に

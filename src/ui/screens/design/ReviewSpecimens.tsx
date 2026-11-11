@@ -15,7 +15,7 @@ const group = (
 
 const EARLIER = group(
   [{ title: 'The cost column still prints six decimals' }],
-  [{ round: 1, lens: 'edge-cases', decision: 'needsChanges', line: '' }],
+  [{ round: 1, lens: 'review-b', decision: 'needsChanges', line: '' }],
 )
 // Advice with the scores its reviewer gave it (ADR-0040).
 const LEFT = group([
@@ -31,9 +31,7 @@ const HIGHLIGHTS: [keyof typeof DESIGN.state, ReviewHighlights][] = [
       last: 'passed',
       // A verdict-mode reviewer that passed: shown with how the round
       // ended, neither counted nor listed as left.
-      lastPasses: [
-        { round: 2, lens: 'edge-cases', decision: 'pass', line: '' },
-      ],
+      lastPasses: [{ round: 2, lens: 'review-b', decision: 'pass', line: '' }],
       earlier: EARLIER,
       left: LEFT,
       open: group([]),
@@ -79,7 +77,7 @@ const BESIDE_CHECK = {
       reason: 'superseded-by-verify',
       reviews: [
         {
-          lens: 'correctness',
+          lens: 'review-a',
           decision: '',
           notes: '',
           findings: null,
@@ -87,7 +85,7 @@ const BESIDE_CHECK = {
           reason: 'superseded-by-verify',
         },
         {
-          lens: 'edge-cases',
+          lens: 'review-b',
           decision: 'needsChanges',
           notes: 'Division by zero is still left undefined.',
           findings: null,
@@ -103,8 +101,8 @@ const BESIDE_CHECK = {
       status: 'completed',
       reason: null,
       reviews: [
-        { lens: 'correctness', decision: 'pass', notes: '', findings: null },
-        { lens: 'edge-cases', decision: 'pass', notes: '', findings: null },
+        { lens: 'review-a', decision: 'pass', notes: '', findings: null },
+        { lens: 'review-b', decision: 'pass', notes: '', findings: null },
       ],
     },
   ],
@@ -137,7 +135,7 @@ const AWAITING_CHECK = {
       reason: 'verify-pending',
       reviews: [
         {
-          lens: 'correctness',
+          lens: 'review-a',
           decision: 'pass',
           notes: 'The fix keeps decimals.',
           findings: null,
@@ -145,7 +143,7 @@ const AWAITING_CHECK = {
           reason: 'verify-pending',
         },
         {
-          lens: 'edge-cases',
+          lens: 'review-b',
           decision: 'needsChanges',
           notes: 'Division by zero is still left undefined.',
           findings: null,

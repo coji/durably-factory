@@ -5,6 +5,7 @@ import { resolve } from 'node:path'
 import { z } from 'zod'
 
 import { readInputFile } from './input-file.js'
+import { reviewerAliases } from './reviewers.js'
 import { contextTextProblem, MAX_CONTEXT_BYTES } from './target.js'
 
 export const PROMPT_ROLES = [
@@ -20,18 +21,20 @@ export const PROMPT_ROLES = [
 export type PromptRole = (typeof PROMPT_ROLES)[number]
 
 function roleMap<T extends z.ZodType>(entry: T) {
-  return z
-    .object({
-      implement: entry.optional(),
-      repair: entry.optional(),
-      correctness: entry.optional(),
-      'edge-cases': entry.optional(),
-      triage: entry.optional(),
-      'spec-author': entry.optional(),
-      'spec-fix': entry.optional(),
-      'spec-review': entry.optional(),
-    })
-    .strict()
+  return reviewerAliases(
+    z
+      .object({
+        implement: entry.optional(),
+        repair: entry.optional(),
+        correctness: entry.optional(),
+        'edge-cases': entry.optional(),
+        triage: entry.optional(),
+        'spec-author': entry.optional(),
+        'spec-fix': entry.optional(),
+        'spec-review': entry.optional(),
+      })
+      .strict(),
+  )
 }
 const mode = z.enum(['append', 'replace'])
 export const promptFilesSchema = roleMap(

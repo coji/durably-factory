@@ -1,6 +1,5 @@
-/** Policy types for this factory: its stages, state, and terminal outcome. */
-
 import type { StepContext } from '@coji/durably'
+/** Policy types for this factory: its stages, state, and terminal outcome. */
 
 import {
   claudeEffortResumeEnvironment,
@@ -26,6 +25,7 @@ import type {
 } from '../engine/types.js'
 import type { VerificationOutcome } from '../engine/verification.js'
 import type { FactoryEvent } from './events.js'
+import type { ReviewSlot } from './reviewers.js'
 import type {
   Delivery,
   RepairParentConclusion,
@@ -53,19 +53,17 @@ export type StageName =
   | 'stop'
 
 export type CodeRole = 'implement' | 'repair'
-export type ReviewLens = 'correctness' | 'edge-cases'
+// Historical slot keys are durable checkpoint identities, not review scopes.
+export type { ReviewSlot } from './reviewers.js'
 /** The three roles that each get their own provider and profile. */
-export type ProfileRole = 'code' | ReviewLens
+export type ProfileRole = 'code' | ReviewSlot
 export const PROFILE_ROLES: readonly ProfileRole[] = [
   'code',
   'correctness',
   'edge-cases',
 ]
 
-export const REVIEW_LENSES: readonly ReviewLens[] = [
-  'correctness',
-  'edge-cases',
-]
+export const REVIEW_SLOTS: readonly ReviewSlot[] = ['correctness', 'edge-cases']
 
 export const REVIEW_CONTEXTS = ['prompt', 'local-instructions'] as const
 /** Where a reviewer finds its review context. */
@@ -191,7 +189,7 @@ export interface FactorySetup {
    * left out is called and read as before these existed; absent on a run
    * that configured none.
    */
-  review?: Partial<Record<ReviewLens, ReviewInvocation>> | null
+  review?: Partial<Record<ReviewSlot, ReviewInvocation>> | null
   /**
    * The code reviews' blocker threshold, fixed at trigger (ADR-0040): a
    * findings-json reviewer is told that a product-behavior finding whose
@@ -308,7 +306,7 @@ export interface SpecCheckRecord {
 /** A lens's fixed invocation; null when it uses the defaults. */
 export function reviewInvocationOf(
   setup: Pick<FactorySetup, 'review'>,
-  lens: ReviewLens,
+  lens: ReviewSlot,
 ): ReviewInvocation | null {
   return setup.review?.[lens] ?? null
 }
@@ -401,7 +399,7 @@ export type ReviewFindings = ReportReviewFindings
  * metadata and the run output carry the verdicts only.
  */
 export interface ReviewVerdict {
-  lens: ReviewLens
+  lens: ReviewSlot
   decision: 'pass' | 'needsChanges'
   notes: string
 }
@@ -434,7 +432,7 @@ export const REVIEW_PENDING_REASON = 'verify-pending' as const
  * failed first: no verdict, and the call settled as cancelled.
  */
 export interface CancelledReviewStepResult {
-  lens: ReviewLens
+  lens: ReviewSlot
   status: 'cancelled'
   reason: typeof REVIEW_CANCEL_REASON
 }

@@ -50,6 +50,7 @@ import {
   readPromptPolicies,
 } from './factory/prompt-policy.js'
 import { repairLabels } from './factory/repair.js'
+import { reviewerAliases } from './factory/reviewers.js'
 import {
   DEFAULT_COMMIT_SETTINGS,
   type CommitSettings,
@@ -68,7 +69,7 @@ import {
   type FactorySetup,
   type ProfileRole,
   type ReviewInvocation,
-  type ReviewLens,
+  type ReviewSlot,
   type TestProbeRule,
 } from './factory/types.js'
 import { assertCandidateUnmoved } from './targets/repo.js'
@@ -212,13 +213,14 @@ const factoryConfigSchema = z
     profiles: z
       .object({
         code: roleConfigSchema.optional(),
-        review: z
-          .object({
-            correctness: reviewRoleConfigSchema.optional(),
-            'edge-cases': reviewRoleConfigSchema.optional(),
-          })
-          .strict()
-          .optional(),
+        review: reviewerAliases(
+          z
+            .object({
+              correctness: reviewRoleConfigSchema.optional(),
+              'edge-cases': reviewRoleConfigSchema.optional(),
+            })
+            .strict(),
+        ).optional(),
         /** Shadow triage before the code stage; no triage call when absent. */
         triage: roleConfigSchema.optional(),
         /** Repair's own settings; repair runs on `code` when absent. */
@@ -365,7 +367,7 @@ export function resolveProfiles(
   roles: Record<ProfileRole, FixedProfile>
   triage: FixedProfile | null
   repair: FixedProfile | null
-  review: Partial<Record<ReviewLens, ReviewInvocation>>
+  review: Partial<Record<ReviewSlot, ReviewInvocation>>
   spec: SpecProfiles | null
 } {
   const fallbackProvider = parseProviderName(a['provider'] ?? 'fake')

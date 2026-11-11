@@ -23,6 +23,7 @@ import {
   type ReportReviewRound,
   type RunSummary,
 } from '../src/engine/report.js'
+import { wholeChangeReviewReport } from '../src/engine/reviewer-presentation.js'
 
 /** A finished run with two code attempts, one of them unmeasured. */
 function baseReport(): LoopReport {
@@ -1001,5 +1002,59 @@ describe("the implementer's notes in the report", () => {
       baseReport(),
     ])
       assert.doesNotMatch(reportToMarkdown(report), /Implementer notes/)
+  })
+})
+
+describe('versioned reviewer presentation', () => {
+  it('renames only v7 report projections and preserves the historical evidence and incomplete gate', () => {
+    const stored = baseReport()
+    const review: ReportReview = {
+      lens: 'correctness',
+      decision: 'pass',
+      notes: 'old wording',
+      findings: null,
+    }
+    stored.reviews = [review]
+    stored.reviewRounds = [
+      {
+        round: 1,
+        sequence: 2,
+        candidate: null,
+        status: 'completed',
+        reviews: [review],
+      },
+    ]
+    stored.reviewHighlights = reviewHighlights(
+      stored.reviewRounds,
+      stored.reviews,
+      ['correctness', 'edge-cases'],
+    )
+    stored.input = {
+      task: 'correctness and edge-cases are task text',
+      profiles: { correctness: { provider: 'codex' } },
+    }
+    stored.output = { reviews: [review] }
+    stored.reviewBlockerRuleLenses = ['correctness', 'edge-cases']
+    stored.belowThresholdBlockers = [
+      { round: 1, lens: 'edge-cases', withException: 1, withoutException: 0 },
+    ]
+    stored.attempts = [row('stage:2:review:correctness', 'a', 10)]
+    const before = structuredClone(stored)
+    for (const version of [undefined, 'local-factory.v5', 'local-factory.v6']) {
+      assert.equal(wholeChangeReviewReport(stored, version), stored)
+    }
+    const current = wholeChangeReviewReport(stored, 'local-factory.v7')
+    assert.equal(current.reviewScope, 'whole-change')
+    assert.equal(current.reviews[0]?.lens, 'review-a')
+    assert.equal(current.reviewRounds[0]?.reviews[0]?.lens, 'review-a')
+    assert.deepEqual(current.reviewBlockerRuleLenses, ['review-a', 'review-b'])
+    assert.equal(current.belowThresholdBlockers?.[0]?.lens, 'review-b')
+    assert.equal(current.reviewHighlights.last, 'incomplete')
+    assert.equal(current.reviewHighlights.lastPasses[0]?.lens, 'review-a')
+    assert.equal(current.input, stored.input)
+    assert.equal(current.output, stored.output)
+    assert.equal(current.attempts, stored.attempts)
+    assert.deepEqual(stored, before)
+    assert.match(reportToMarkdown(current), /review-a/)
   })
 })

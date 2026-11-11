@@ -88,7 +88,7 @@ import { recoverInterruptedProbe, runTestProbe } from './test-probe.js'
 import {
   idleLimitOf,
   REVIEW_CANCEL_REASON,
-  REVIEW_LENSES,
+  REVIEW_SLOTS,
   reviewInvocationOf,
   separateRepairProfile,
   sessionHandlingOf,
@@ -105,7 +105,7 @@ import {
   type FactorySetup,
   type ReviewFinding,
   type ReviewInvocation,
-  type ReviewLens,
+  type ReviewSlot,
   type ReviewStepResult,
   type SealedCandidate,
   type SessionRef,
@@ -802,7 +802,7 @@ async function reviewRoundOf(args: {
   // Whether any reviewer of the round reads the base and head trees.
   const materials =
     snapshotOnly ||
-    REVIEW_LENSES.some((lens) =>
+    REVIEW_SLOTS.some((lens) =>
       usesReviewMaterials(reviewInvocationOf(setup, lens)),
     )
   // The base and head trees, extracted once for both reviewers of this
@@ -817,13 +817,13 @@ async function reviewRoundOf(args: {
     snapshots ??= prepareReviewSnapshots.call(target, candidate, signal)
     return {
       trees: await snapshots,
-      workdir: (lens: ReviewLens, localFile: string) =>
+      workdir: (lens: ReviewSlot, localFile: string) =>
         prepareReviewWorkdir.call(target, candidate, lens, localFile),
     }
   }
   const round = state.reviewRounds + 1
   const reviewOnce = async (
-    lens: ReviewLens,
+    lens: ReviewSlot,
     signal: AbortSignal,
     attempt: StepAttemptContext,
     superseded?: AbortSignal,
@@ -850,7 +850,9 @@ async function reviewRoundOf(args: {
     const context = reviewPrompt(
       lens,
       trustedContext,
-      target.reviewRules(lens),
+      promptVersionOf(setup.instructionsVersion) >= 3
+        ? [...new Set(REVIEW_SLOTS.flatMap((slot) => target.reviewRules(slot)))]
+        : target.reviewRules(lens),
       target.untrustedInputs(lens),
       changes,
       repairParentConclusion(setup),

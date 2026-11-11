@@ -406,6 +406,89 @@ describe('factory.json and input files', { timeout: 180000 }, () => {
     assert.equal(input.target.baseRef, 'HEAD')
   })
 
+  it('normalizes neutral reviewer settings and policies without changing legacy settings', async () => {
+    const reviews = {
+      'review-a': {
+        provider: 'claude',
+        model: 'claude-opus-5-5',
+        effort: 'high',
+        command: '/code-review {base}..{head}',
+        context: 'local-instructions',
+        output: 'findings-json',
+      },
+      'review-b': { provider: 'codex', model: 'gpt-6.1-sol', effort: 'low' },
+    }
+    const box = await sandbox({
+      check: CHECK,
+      profiles: { review: reviews },
+      prompts: { 'review-b': { file: 'policy.md' } },
+    })
+    await writeFile(join(box.repo, 'policy.md'), 'Check the whole change.')
+    const args = ['--repo', box.repo, '--task', 'do it', '--provider', 'codex']
+    const first = await inputOf(box, await trigger(box, args))
+    assert.deepEqual(first.profiles.correctness, {
+      provider: 'claude',
+      requestedModel: 'claude-opus-5-5',
+      requestedEffort: 'high',
+    })
+    assert.deepEqual(first.profiles['edge-cases'], {
+      provider: 'codex',
+      requestedModel: 'gpt-6.1-sol',
+      requestedEffort: 'low',
+    })
+    await writeFile(
+      join(box.repo, 'factory.json'),
+      JSON.stringify({
+        check: CHECK,
+        profiles: {
+          review: {
+            correctness: reviews['review-a'],
+            'edge-cases': reviews['review-b'],
+          },
+        },
+        prompts: { 'edge-cases': { file: 'policy.md' } },
+      }),
+    )
+    const second = await inputOf(box, await trigger(box, args))
+    for (const key of ['profiles', 'review', 'prompts'] as const) {
+      assert.deepEqual(
+        (first as unknown as Record<string, unknown>)[key],
+        (second as unknown as Record<string, unknown>)[key],
+        key,
+      )
+    }
+    const fixed = first as unknown as {
+      review: Record<string, unknown>
+      prompts: Record<string, { content: string }>
+    }
+    assert.deepEqual(fixed.review.correctness, {
+      command: '/code-review {base}..{head}',
+      context: 'local-instructions',
+      output: 'findings-json',
+    })
+    assert.equal(
+      fixed.prompts['edge-cases']?.content,
+      'Check the whole change.',
+    )
+    for (const duplicate of [
+      { profiles: { review: { 'review-a': {}, correctness: {} } } },
+      {
+        prompts: {
+          'review-b': { file: 'policy.md' },
+          'edge-cases': { file: 'policy.md' },
+        },
+      },
+    ]) {
+      await writeFile(
+        join(box.repo, 'factory.json'),
+        JSON.stringify({ check: CHECK, ...duplicate }),
+      )
+      const result = await runCli(box, ['trigger', ...args])
+      assert.notEqual(result.code, 0)
+      assert.match(result.stderr, /use only one of/)
+    }
+  })
+
   it('fills only what the config leaves out from --provider, --model and --effort', async () => {
     const box = await sandbox({
       check: CHECK,
