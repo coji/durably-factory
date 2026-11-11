@@ -38,7 +38,21 @@ const verificationLogSchema = z.object({
   writeError: z.string().optional(),
 })
 
+/** Native totals carried across calls; optional fields preserve old sessions. */
+const nativeUsageSchema = z.object({
+  inputTokens: z.number().nonnegative().nullable(),
+  outputTokens: z.number().nonnegative().nullable(),
+  cachedInputTokens: z.number().nonnegative().nullable(),
+  totalTokens: z.number().nonnegative().nullable(),
+  cacheReadTokens: z.number().nonnegative().nullable().optional(),
+  cacheWriteTokens: z.number().nonnegative().nullable().optional(),
+  cacheWrite5mTokens: z.number().nonnegative().nullable().optional(),
+  cacheWrite1hTokens: z.number().nonnegative().nullable().optional(),
+  usageSource: z.enum(['provider-partial', 'provider-final', 'unknown']),
+})
+
 const sessionSchema = z.object({
+  usage: z.record(z.string(), nativeUsageSchema).optional(),
   provider: z.enum(['codex', 'claude', 'fake']),
   nativeId: z.string(),
   profileId: z.string(),

@@ -14,6 +14,9 @@ import {
   claudePartialUsage,
 } from '../src/engine/providers/claude.js'
 import { mergeUsage, type TokenUsage } from '../src/engine/usage.js'
+import { FactoryEventSchema } from '../src/factory/events.js'
+import { reduce } from '../src/factory/reducer.js'
+import { initialState, type FactorySetup } from '../src/factory/types.js'
 import fixture from './fixtures/claude-session-usage.json' with { type: 'json' }
 
 const near = (actual: number | undefined, expected: number) =>
@@ -40,6 +43,44 @@ describe('native Claude invocation accounting', () => {
       previous = totals
     }
     near(sum, fixture.at(-1)!.result.total_cost_usd)
+  })
+
+  it('retains the native baseline through event serialization and state reduction', () => {
+    const baseline = claudeUsageByModel(fixture[0].result.modelUsage, true)!
+    const event = FactoryEventSchema.parse(
+      JSON.parse(
+        JSON.stringify({
+          type: 'code.completed',
+          role: 'implement',
+          candidate: {
+            id: 'sealed',
+            snapshotDir: '/sealed',
+            sourceHash: 's',
+            acceptanceHash: 'a',
+          },
+          session: {
+            provider: 'claude',
+            nativeId: 'session',
+            profileId: 'code',
+            cwd: '/work',
+            instructionsVersion: 'v7',
+            usage: baseline,
+          },
+        }),
+      ),
+    )
+    const state = reduce(initialState({} as FactorySetup), event)
+    assert.deepEqual(state.implementationSession?.usage, baseline)
+    const next = claudeInvocationUsage({
+      totals: claudeUsageByModel(fixture[1].result.modelUsage, true),
+      previous: state.implementationSession!.usage!,
+      observed: null,
+    })
+    const deltaCost = estimateCostBreakdownByModel(next.usageByModel!)!.totalUsd
+    near(
+      deltaCost,
+      fixture[1].result.total_cost_usd - fixture[0].result.total_cost_usd,
+    )
   })
 
   it('keeps an absent or reset session baseline partial rather than charging restored usage', () => {
