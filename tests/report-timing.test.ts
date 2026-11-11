@@ -12,6 +12,7 @@ import {
   reportToJson,
   reportToMarkdown,
   reviewHighlights,
+  reviewCallsOf,
   specWallMs,
   stageTimings,
   totalStageMs,
@@ -1057,4 +1058,51 @@ describe('versioned reviewer presentation', () => {
     assert.deepEqual(stored, before)
     assert.match(reportToMarkdown(current), /review-a/)
   })
+})
+
+it('reports reviewer invocations once with the recorded cost and candidate, without repricing', () => {
+  const attempt = row('stage:2:review:correctness', 'a1', 10)
+  assert.ok(attempt.measurement)
+  attempt.measurement.role = 'review-a'
+  attempt.measurement.invocationId = 'one-call'
+  attempt.measurement.result = 'review-a-done'
+  attempt.measurement.sessionHandling = 'fresh'
+  attempt.measurement.sessionReason = 'independent review'
+  attempt.measurement.costUsdEstimate = 123
+  const recovered = structuredClone(attempt)
+  recovered.attemptId = 'a2'
+  recovered.measurement!.recovered = true
+  recovered.measurement!.result = 'checkpoint-recovered'
+  const calls = reviewCallsOf(
+    [attempt, recovered],
+    [
+      {
+        round: 1,
+        sequence: 2,
+        candidate: { id: 'sealed', branch: null, commit: null },
+        reviews: [],
+      },
+    ],
+  )
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0]?.candidateId, 'sealed')
+  assert.equal(calls[0]?.round, 1)
+  assert.equal(calls[0]?.costUsdEstimate, 123)
+  assert.equal(calls[0]?.sessionHandling, 'fresh')
+  const historical = reviewCallsOf(
+    [
+      {
+        ...attempt,
+        measurement: {
+          ...attempt.measurement,
+          sessionHandling: null,
+          sessionReason: null,
+          costUsdEstimate: null,
+        },
+      },
+    ],
+    [],
+  )
+  assert.equal(historical[0]?.sessionHandling, null)
+  assert.equal(historical[0]?.costUsdEstimate, null)
 })

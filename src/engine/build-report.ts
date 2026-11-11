@@ -34,6 +34,7 @@ import {
 } from './providers/types.js'
 import {
   cacheReadRatio,
+  reviewCallsOf,
   reviewHighlights,
   roleUsage,
   specWallMs,
@@ -1557,6 +1558,7 @@ export async function buildReport(
     codeResponses: codeResponsesOf(steps),
     repairSession: repairSession?.report ?? null,
     repairCalls: repairCallsOf(rows),
+    reviewCalls: reviewCallsOf(rows, reviewRounds),
     reviews,
     reviewRounds,
     discardedReviews,
