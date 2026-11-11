@@ -134,6 +134,11 @@ const reviewStepSchema = reviewSchema.extend({
  */
 const stageContextSchema = z.object({ name: z.string(), content: z.string() })
 
+const reviewSessionsSchema = z.object({
+  correctness: sessionSchema.optional(),
+  'edge-cases': sessionSchema.optional(),
+})
+
 export const FactoryEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('code.completed'),
@@ -168,6 +173,8 @@ export const FactoryEventSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('review.completed'),
+    sessions: reviewSessionsSchema.optional(),
+    finalReview: z.boolean().optional(),
     targetId: z.string(),
     reviews: z.array(reviewSchema).length(2),
   }),
@@ -178,6 +185,7 @@ export const FactoryEventSchema = z.discriminatedUnion('type', [
   // findings, after the check failure.
   z.object({
     type: z.literal('verify-review.completed'),
+    sessions: reviewSessionsSchema.optional(),
     targetId: z.string(),
     passed: z.boolean(),
     failureKind: z

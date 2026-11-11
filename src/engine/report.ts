@@ -956,6 +956,7 @@ export interface BelowThresholdBlockers {
 
 /** Each reviewer invocation, retaining its measured values and session decision. */
 export interface ReportReviewCall {
+  reviewPass?: 'iterative' | 'final'
   reviewer: string
   round: number | null
   candidateId: string | null
@@ -971,6 +972,7 @@ export interface ReportReviewCall {
 }
 
 export interface LoopReport {
+  reviewSessionMode?: 'reuse-experiment'
   reviewCalls?: ReportReviewCall[]
   /** v7 reviewers cover the whole change; absent on historical reports. */
   reviewScope?: 'whole-change'
@@ -1303,6 +1305,7 @@ export function reviewCallsOf(
     return [
       {
         reviewer: m.role,
+        ...(m.reviewPass ? { reviewPass: m.reviewPass } : {}),
         round: round?.round ?? null,
         candidateId: round?.candidate?.id ?? null,
         invocationId: m.invocationId ?? null,
@@ -2214,14 +2217,19 @@ export function reportToMarkdown(r: LoopReport): string {
   lines.push('')
   if (r.reviewCalls?.length) {
     lines.push('## Reviewer invocations', '')
+    if (r.reviewSessionMode)
+      lines.push(
+        '- session mode: reuse-experiment; two fresh final confirmations required',
+        '',
+      )
     lines.push(
-      '| reviewer | candidate | round | session | reason | in | cache read | 5m write | 1h write | out | elapsed | cost (api-equiv) |',
+      '| reviewer | pass | candidate | round | session | reason | in | cache read | 5m write | 1h write | out | elapsed | cost (api-equiv) |',
     )
-    lines.push('|---|---|---|---|---|---|---|---|---|---|---|---|')
+    lines.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|')
     for (const call of r.reviewCalls) {
       const u = call.usage
       lines.push(
-        `| ${call.reviewer} | ${call.candidateId ?? 'unknown'} | ${call.round ?? 'unknown'} | ${call.sessionHandling ?? 'unknown'}${call.recovered ? ' (recovered)' : ''} | ${call.sessionReason ?? 'unknown'} | ${formatTokens(u?.inputTokens ?? null)} | ${formatTokens(u?.cacheReadTokens ?? null)} | ${formatTokens(u?.cacheWrite5mTokens ?? null)} | ${formatTokens(u?.cacheWrite1hTokens ?? null)} | ${formatTokens(u?.outputTokens ?? null)} | ${formatDuration(call.elapsedMs)} | ${formatCost(call.costUsdEstimate)} |`,
+        `| ${call.reviewer} | ${call.reviewPass ?? 'unknown'} | ${call.candidateId ?? 'unknown'} | ${call.round ?? 'unknown'} | ${call.sessionHandling ?? 'unknown'}${call.recovered ? ' (recovered)' : ''} | ${call.sessionReason ?? 'unknown'} | ${formatTokens(u?.inputTokens ?? null)} | ${formatTokens(u?.cacheReadTokens ?? null)} | ${formatTokens(u?.cacheWrite5mTokens ?? null)} | ${formatTokens(u?.cacheWrite1hTokens ?? null)} | ${formatTokens(u?.outputTokens ?? null)} | ${formatDuration(call.elapsedMs)} | ${formatCost(call.costUsdEstimate)} |`,
       )
     }
     lines.push('')

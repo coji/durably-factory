@@ -7796,3 +7796,195 @@ describe('the test probe', { timeout: 300000 }, () => {
     }
   })
 })
+
+describe('review-session reuse experiment', { timeout: 180000 }, () => {
+  for (const command of [false, true]) {
+    it(`keeps reviewer sessions separate, then confirms every candidate with fresh reviewers (${command ? 'command/local instructions and parallel check' : 'prompt and serial check'})`, async () => {
+      const root = await mkdtemp(join(tmpdir(), 'review-session-experiment-'))
+      const repo = await seedRepo(root)
+      const durably = createAgentDurably({ stateRoot: join(root, 'state') })
+      const recorded = recordFakeReviewCalls({ plainReviews: true })
+      await durably.init()
+      try {
+        const invocation: ReviewSettings = {
+          command: command ? '/code-review {base}..{head}' : null,
+          context: command ? 'local-instructions' : 'prompt',
+          output: 'findings-json',
+        }
+        const input = configuredRun(
+          repo,
+          { correctness: invocation, 'edge-cases': invocation },
+          {
+            maxIterations: 3,
+            autoApprove: true,
+            fakeScenario: {
+              failIterations: 0,
+              reviewSequence: [
+                'needsChanges',
+                'pass',
+                'pass',
+                'pass',
+                'needsChanges',
+                'pass',
+                'pass',
+                'pass',
+                'pass',
+                'pass',
+              ],
+            },
+          },
+        )
+        const run = await durably.jobs.agentLoop.trigger({
+          ...input,
+          target: {
+            ...input.target,
+            reviewSessionMode: 'reuse-experiment',
+            parallelReview: command,
+          },
+        })
+        await waitFor(
+          async () =>
+            ['completed', 'failed'].includes(
+              (await durably.getRun(run.id))?.status ?? '',
+            ),
+          90000,
+          'experiment finishes',
+        )
+        const done = await durably.getRun(run.id)
+        assert.equal(done?.status, 'completed', done?.error ?? '')
+        const output = done?.output as {
+          conclusion: string
+          iterations: number
+          reviewRounds: number
+        }
+        assert.equal(output.conclusion, 'approved')
+        assert.equal(output.iterations, 3)
+        assert.equal(output.reviewRounds, 5)
+        const report = await buildReport(durably, run.id)
+        const calls = report.reviewCalls ?? []
+        assert.equal(calls.length, 10)
+        for (const reviewer of ['review-a', 'review-b']) {
+          const own = calls.filter((call) => call.reviewer === reviewer)
+          assert.deepEqual(
+            own.map((call) => call.reviewPass),
+            ['iterative', 'iterative', 'final', 'iterative', 'final'],
+          )
+          assert.deepEqual(
+            own.map((call) => call.sessionHandling),
+            ['fresh', 'continued', 'fresh', 'continued', 'fresh'],
+          )
+          assert.equal(own[0]?.sessionId, own[1]?.sessionId)
+          assert.equal(own[0]?.sessionId, own[3]?.sessionId)
+          assert.notEqual(own[2]?.sessionId, own[1]?.sessionId)
+          assert.notEqual(own[4]?.sessionId, own[3]?.sessionId)
+        }
+        assert.notEqual(calls[0]?.sessionId, calls[1]?.sessionId)
+        const finals = calls.filter((call) => call.reviewPass === 'final')
+        assert.equal(finals.length, 4)
+        for (const round of [3, 5]) {
+          const pair = finals.filter((call) => call.round === round)
+          assert.equal(pair.length, 2)
+          assert.equal(pair[0]?.candidateId, pair[1]?.candidateId)
+          assert.notEqual(pair[0]?.sessionId, pair[1]?.sessionId)
+        }
+        assert.equal(new Set(calls.map((call) => call.invocationId)).size, 10)
+        for (const call of recorded.calls.filter(
+          (call) => call.role === 'review-a' || call.role === 'review-b',
+        )) {
+          const text = command
+            ? (call.localInstructionsAtStart?.content ?? '')
+            : call.prompt
+          assert.match(text, /Read the current candidate files again/)
+          assert.match(text, /Earlier conversation content.*stale evidence/)
+          assert.match(text, /entire change.*safety, and tests/)
+        }
+        assert.equal(
+          existsSync(join(root, 'state', 'runs', run.id, 'review-snapshots')),
+          false,
+        )
+      } finally {
+        recorded.stop()
+        await durably.stop()
+        await durably.db.destroy()
+      }
+    })
+  }
+
+  it('fails an incomplete final round and stops a blocked final at the repair cap without retrying it', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'review-session-final-gates-'))
+    const repo = await seedRepo(root)
+    const durably = createAgentDurably({ stateRoot: join(root, 'state') })
+    await durably.init()
+    try {
+      for (const incomplete of [false, true]) {
+        const input = configuredRun(
+          repo,
+          {
+            correctness: {
+              command: null,
+              context: 'prompt',
+              output: 'findings-json',
+            },
+            'edge-cases': {
+              command: null,
+              context: 'prompt',
+              output: 'findings-json',
+            },
+          },
+          {
+            maxIterations: 1,
+            autoApprove: true,
+            fakeScenario: {
+              failIterations: 0,
+              ...(incomplete
+                ? {
+                    reviewOutputs: [
+                      findings([]),
+                      findings([]),
+                      findings([]),
+                      'broken reply',
+                    ],
+                  }
+                : { reviewSequence: ['pass', 'pass', 'needsChanges', 'pass'] }),
+            },
+          },
+        )
+        const run = await durably.jobs.agentLoop.trigger({
+          ...input,
+          target: { ...input.target, reviewSessionMode: 'reuse-experiment' },
+        })
+        await waitFor(
+          async () =>
+            ['completed', 'failed'].includes(
+              (await durably.getRun(run.id))?.status ?? '',
+            ),
+          60000,
+          'final gate settles',
+        )
+        const done = await durably.getRun(run.id)
+        assert.ok(done)
+        if (incomplete) {
+          assert.equal(done?.status, 'failed')
+          assert.match(done?.error ?? '', /review-incomplete/)
+        } else {
+          assert.equal(
+            (done.output as { conclusion: string }).conclusion,
+            'review-cap-reached',
+          )
+        }
+        const report = await buildReport(durably, run.id)
+        assert.equal(report.reviewCalls?.length, 4)
+        assert.equal(
+          report.reviewCalls?.filter((call) => call.reviewPass === 'final')
+            .length,
+          2,
+        )
+        assert.equal((await durably.getWaits(run.id)).length, 0)
+        assert.equal(report.delivery, null)
+      }
+    } finally {
+      await durably.stop()
+      await durably.db.destroy()
+    }
+  })
+})

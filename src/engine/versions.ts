@@ -226,6 +226,7 @@ export interface ConfigVersionInput {
    * another. Left out when null or absent, so a run stored before it
    * existed keeps its version.
    */
+  reviewSessionMode?: 'fresh' | 'reuse-experiment'
   reviewBlockerThreshold?: number | null
   /**
    * The spec stages: the author's, fix's and each named reviewer's profile
@@ -329,6 +330,9 @@ export function configVersionOf(input: ConfigVersionInput): string {
       ? { selfCheck: input.selfCheck }
       : {}),
     ...(review.length > 0 ? { review: Object.fromEntries(review) } : {}),
+    ...(input.reviewSessionMode === 'reuse-experiment'
+      ? { reviewSessionMode: input.reviewSessionMode }
+      : {}),
     ...(input.reviewBlockerThreshold != null
       ? { reviewBlockerThreshold: input.reviewBlockerThreshold }
       : {}),

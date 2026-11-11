@@ -121,6 +121,7 @@ import {
   COMMON,
   PIPELINE_WORDS,
   REPO,
+  REVIEW,
   RUN_NAME,
   TRACE_WORDS,
 } from './glossary.js'
@@ -1394,7 +1395,10 @@ export function deriveTrace(input: TraceInput): Trace {
     return node({
       id: `entry:${e.key}`,
       kind: 'entry',
-      label: e.label,
+      label:
+        checked?.measurement?.reviewPass === 'final'
+          ? REVIEW.finalLabel(e.label)
+          : e.label,
       stage: e.stage,
       iteration: at,
       state,

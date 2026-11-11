@@ -98,7 +98,10 @@ export function usesReviewMaterials(
   )
 }
 
+export type ReviewSessionMode = 'fresh' | 'reuse-experiment'
+
 export interface FactorySetup {
+  reviewSessionMode?: ReviewSessionMode
   prompts?: import('./prompt-policy.js').PromptPolicies
   automaticRetryLimit?: number
   recheckOf?: { runId: string; candidateCommit: string }
@@ -409,6 +412,8 @@ export interface ReviewVerdict {
  * the guard refused during the review.
  */
 export interface ReviewStepResult extends ReviewVerdict {
+  session?: SessionRef
+  reviewPass?: 'iterative' | 'final'
   /** A `findings-json` review's findings; null for a verdict review. */
   findings: ReviewFindings | null
   /** Absent when no tool call was refused. */
@@ -521,6 +526,8 @@ export interface FactoryOutcome {
 }
 
 export interface FactoryState {
+  reviewSessions?: Partial<Record<ReviewSlot, SessionRef>>
+  finalReviewTarget?: string | null
   setup: FactorySetup
   iteration: number
   candidate: SealedCandidate | null

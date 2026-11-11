@@ -30,6 +30,7 @@ export function reduce(state: FactoryState, event: FactoryEvent): FactoryState {
         candidate: event.candidate,
         implementationSession: event.session,
         verification: null,
+        finalReviewTarget: null,
         reviews: [],
         approval: null,
         repairNotes: [],
@@ -64,6 +65,8 @@ export function reduce(state: FactoryState, event: FactoryEvent): FactoryState {
       return {
         ...state,
         reviews: event.reviews,
+        ...(event.sessions ? { reviewSessions: event.sessions } : {}),
+        ...(event.finalReview ? { finalReviewTarget: event.targetId } : {}),
         reviewRounds: state.reviewRounds + 1,
         repairNotes: notes,
       }
@@ -89,6 +92,8 @@ export function reduce(state: FactoryState, event: FactoryEvent): FactoryState {
           setup,
           verification,
           reviews: [],
+          reviewSessions: {},
+          finalReviewTarget: null,
           repairNotes: [`acceptance: ${event.stdout.slice(-1000)}`],
           failedCheckReviews: event.failedCheckReviews ?? [],
         }
@@ -101,6 +106,7 @@ export function reduce(state: FactoryState, event: FactoryEvent): FactoryState {
         setup,
         verification,
         reviews: event.reviews,
+        ...(event.sessions ? { reviewSessions: event.sessions } : {}),
         reviewRounds: state.reviewRounds + 1,
         repairNotes: event.reviews
           .filter((review) => review.decision === 'needsChanges')

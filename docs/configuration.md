@@ -931,3 +931,11 @@ provider/model/effort/command/outputは各人で選べます。
 過去にsetupを完了したrunは、そのrunの指示の版・役割名で再開・表示します。
 保存済みの入力・出力・プロンプト本文・attempt・step名は書き換えません。
 旧runから新しく作るretry/repair/recheckは新しいrunとしてv7の指示を使います。
+
+### 再レビューのセッション（実験）
+
+`review.sessionMode` は `fresh`（既定）か `reuse-experiment` を指定します。
+実験モードでは担当ごとにセッションを継続し、合格後に新規2人で同じ候補を最終確認します。
+最終確認も費用と時間の集計に含みます。
+設定はrunごとに固定し、省略された過去runの動作は変わりません。
+対応構成と制約は [セッション継続の説明](review-and-repair.md#再レビューのセッション継続実験) を参照してください。

@@ -201,6 +201,7 @@ type RunInput = {
     selfCheck?: string[][] | null
     testProbe?: { glob: string; command: string[] }[] | null
     reviewBlockerThreshold?: number | null
+    reviewSessionMode?: 'fresh' | 'reuse-experiment'
     name?: string
     commit?: {
       authorName: string | null
@@ -404,6 +405,29 @@ describe('factory.json and input files', { timeout: 180000 }, () => {
     ])
     assert.deepEqual(input.target.setupCommand, ['true'])
     assert.equal(input.target.baseRef, 'HEAD')
+  })
+
+  it('pins the explicit reviewer-session experiment and reloads the default without inheriting it', async () => {
+    const box = await sandbox({
+      check: CHECK,
+      review: { sessionMode: 'reuse-experiment' },
+    })
+    const args = ['--repo', box.repo, '--task', 'do it', '--provider', 'fake']
+    const first = await inputOf(box, await trigger(box, args))
+    assert.equal(first.target.reviewSessionMode, 'reuse-experiment')
+    await writeFile(
+      join(box.repo, 'factory.json'),
+      JSON.stringify({ check: CHECK }),
+    )
+    const next = await inputOf(box, await trigger(box, args))
+    assert.equal(next.target.reviewSessionMode, 'fresh')
+    await writeFile(
+      join(box.repo, 'factory.json'),
+      JSON.stringify({ check: CHECK, review: { sessionMode: 'reuse' } }),
+    )
+    const bad = await runCli(box, ['trigger', ...args])
+    assert.notEqual(bad.code, 0)
+    assert.match(bad.stderr, /sessionMode/)
   })
 
   it('normalizes neutral reviewer settings and policies without changing legacy settings', async () => {

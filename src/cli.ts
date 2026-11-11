@@ -750,7 +750,7 @@ Repository config: factory.json at the repository root, or --config <file>:
     "parallelReview": false, "codexPath": "<file>",
     "sandbox": { "network": ["code", "repair"] },
     "selfCheck": [["pnpm", "lint"], ["pnpm", "typecheck"]],
-    "review": { "blockerThreshold": 5 },
+    "review": { "blockerThreshold": 5, "sessionMode": "fresh" },
     "checkTimeoutMs": 900000, "agentTimeoutMs": 7200000, "agentIdleTimeoutMs": 900000,
     "commit": { "authorName": "...", "authorEmail": "...",
                 "messageTemplate": "...", "publishSquashed": false },
@@ -814,6 +814,11 @@ Repository config: factory.json at the repository root, or --config <file>:
   "selfCheck" lists 1 to 5 quick commands (argv, like "check") that the
   code and repair prompts tell the agent to run in its worktree before
   finishing. The factory never runs them; only "check" grades the run.
+  "review.sessionMode" defaults to "fresh". The opt-in "reuse-experiment"
+  continues each reviewer independently, then requires two fresh reviews of
+  the same candidate before approval or delivery. Final calls count in cost
+  and time. This repository-only experiment does not imply equal quality or
+  lower total cost.
   "review.blockerThreshold" (an integer from 0 to 100, default 5) is fixed
   at trigger. A findings-json code review, its command and local-instructions
   forms included, is told to score each finding about the product's behavior
