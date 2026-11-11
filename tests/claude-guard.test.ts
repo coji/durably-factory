@@ -676,6 +676,48 @@ describe('the settings a Claude call hands the provider', () => {
   })
 })
 
+describe('experimental command-review continuation', () => {
+  it('persists only an opted-in reviewer and resumes its explicit session, with the same guard', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'review-session-settings-'))
+    const invocation = {
+      command: true,
+      context: 'local-instructions' as const,
+      output: 'findings-json' as const,
+      readableDirs: [root],
+    }
+    const first = buildClaudeSettings(root, true, 'medium', null, [], {
+      ...invocation,
+      retainSession: true,
+    })
+    assert.equal(first.persistSession, true)
+    assert.equal(first.resume, undefined)
+    const continued = buildClaudeSettings(
+      root,
+      true,
+      'medium',
+      'reviewer-only',
+      [],
+      { ...invocation, retainSession: true },
+    )
+    assert.equal(continued.persistSession, true)
+    assert.equal(continued.resume, 'reviewer-only')
+    const final = buildClaudeSettings(
+      root,
+      true,
+      'medium',
+      null,
+      [],
+      invocation,
+    )
+    assert.equal(final.persistSession, false)
+    assert.equal(final.resume, undefined)
+    assert.deepEqual(continued.tools, first.tools)
+    assert.deepEqual(continued.allowedTools, final.allowedTools)
+    assert.equal(continued.permissionMode, 'dontAsk')
+    assert.ok(continued.hooks?.PreToolUse?.length)
+  })
+})
+
 describe('whether a repair continues the session across an effort change', () => {
   const claude = (
     effort: string,

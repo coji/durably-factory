@@ -865,6 +865,17 @@ describe('the review blocker threshold in the config version', () => {
   // The same run's version from before the threshold existed.
   const PRIOR = '4d32349a6f799c04'
 
+  it('keeps the default reviewer mode compatible and versions the explicit experiment', () => {
+    assert.equal(
+      configVersionOf(base),
+      configVersionOf({ ...base, reviewSessionMode: 'fresh' }),
+    )
+    assert.notEqual(
+      configVersionOf(base),
+      configVersionOf({ ...base, reviewSessionMode: 'reuse-experiment' }),
+    )
+  })
+
   it('keeps the prior version for a run that fixed none', () => {
     assert.equal(
       configVersionOf({ ...base, reviewBlockerThreshold: null }),

@@ -40,6 +40,7 @@ import { mergeUsage, type TokenUsage } from './usage.js'
 import { resolveVersions } from './versions.js'
 
 export interface AgentCallSpec {
+  reviewPass?: 'iterative' | 'final'
   provider: AgentProvider
   providerName: ProviderName
   prompt: string
@@ -364,6 +365,7 @@ export async function runAgentCall(
     fake: spec.provider.fake,
     stage: spec.stage,
     role: spec.role,
+    ...(spec.reviewPass ? { reviewPass: spec.reviewPass } : {}),
     iteration: spec.iteration,
     operationKey,
     invocationId,

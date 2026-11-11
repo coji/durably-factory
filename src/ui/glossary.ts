@@ -776,6 +776,7 @@ export const BASELINE = {
 } as const
 
 export const REVIEW = {
+  finalLabel: (name: string) => `${name}（最終確認）`,
   heading: 'レビュー',
   empty: 'まだ終わったレビューがありません。',
   round: (n: number) => `${n}回目のレビュー`,

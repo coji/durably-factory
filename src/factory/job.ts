@@ -312,6 +312,7 @@ const targetSchema = z
        * The code reviews' blocker threshold, fixed at trigger (ADR-0040).
        * Null or absent, as on a run stored before it existed: no such rule.
        */
+      reviewSessionMode: z.enum(['fresh', 'reuse-experiment']).optional(),
       reviewBlockerThreshold: reviewBlockerThresholdSchema
         .nullable()
         .optional(),
@@ -1701,6 +1702,10 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
             const sandbox = enabledSandbox(
               input.target.kind === 'repo' ? input.target.sandbox : undefined,
             )
+            const reviewSessionMode =
+              input.target.kind === 'repo'
+                ? (input.target.reviewSessionMode ?? 'fresh')
+                : 'fresh'
             const parallelReview =
               input.target.kind === 'repo' &&
               input.target.parallelReview === true
@@ -1708,7 +1713,8 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
             await rm(snapshotsDir, { recursive: true, force: true })
             const target: TargetConfig =
               prepared.kind === 'repo' &&
-              (parallelReview ||
+              (reviewSessionMode === 'reuse-experiment' ||
+                parallelReview ||
                 [
                   ...Object.values(review),
                   ...specReviewers.map((r) => r.invocation),
@@ -1792,11 +1798,15 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                   target.kind === 'repo' ? (target.selfCheck ?? null) : null,
                 review,
                 reviewBlockerThreshold,
+                reviewSessionMode,
                 spec,
                 prompts: input.prompts,
                 sandbox,
               })
             const value: FactorySetup = {
+              ...(reviewSessionMode === 'reuse-experiment'
+                ? { reviewSessionMode }
+                : {}),
               ...(input.prompts ? { prompts: input.prompts } : {}),
               automaticRetryLimit: input.automaticRetryLimit ?? 1,
               ...(input.recheckOf

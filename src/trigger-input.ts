@@ -205,7 +205,10 @@ const factoryConfigSchema = z
      * such rule (ADR-0040).
      */
     review: z
-      .object({ blockerThreshold: reviewBlockerThresholdSchema.optional() })
+      .object({
+        blockerThreshold: reviewBlockerThresholdSchema.optional(),
+        sessionMode: z.enum(['fresh', 'reuse-experiment']).optional(),
+      })
       .strict()
       .optional(),
     setup: z.array(z.string().min(1)).min(1).optional(),
@@ -572,6 +575,7 @@ async function repoSettings(
         setupCommand && setupCommand.length > 0 ? setupCommand : null,
       selfCheck: config?.selfCheck ?? null,
       testProbe: config?.testProbe ?? null,
+      reviewSessionMode: config?.review?.sessionMode ?? 'fresh',
       reviewBlockerThreshold:
         config?.review?.blockerThreshold ?? DEFAULT_REVIEW_BLOCKER_THRESHOLD,
       baselineCheck: config?.baselineCheck ?? false,
@@ -1011,6 +1015,7 @@ interface StoredRepairInput {
     commit?: CommitSettings
     selfCheck?: string[][] | null
     testProbe?: TestProbeRule[] | null
+    reviewSessionMode?: 'fresh' | 'reuse-experiment'
     reviewBlockerThreshold?: number | null
     baselineCheck?: boolean
     baselineReuse?: BaselineReuse | null
@@ -1379,6 +1384,12 @@ export function buildRepairInput(
         () => parentInput.target?.testProbe ?? null,
       ),
       // Never the default: a parent stored without one keeps no rule.
+      reviewSessionMode:
+        recorded(
+          stored,
+          'reviewSessionMode',
+          () => parentInput.target?.reviewSessionMode ?? 'fresh',
+        ) ?? 'fresh',
       reviewBlockerThreshold: recorded(
         stored,
         'reviewBlockerThreshold',

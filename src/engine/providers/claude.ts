@@ -591,6 +591,12 @@ export function buildClaudeSettings(
       ...pinned,
     }
   }
+  const extraReviewRoots =
+    readOnly &&
+    review?.retainSession !== undefined &&
+    review.readableDirs.length
+      ? [workdir, ...review.readableDirs]
+      : null
   if (isCommandModeReview(review)) {
     // `workdir` is the review's own directory: the base commit's CLAUDE.md
     // and .claude/, and the factory's CLAUDE.local.md, found through the
@@ -605,7 +611,8 @@ export function buildClaudeSettings(
     const roots = [workdir, ...review.readableDirs]
     return {
       cwd: workdir,
-      persistSession: false,
+      persistSession: review.retainSession === true,
+      ...(review.retainSession && sessionId ? { resume: sessionId } : {}),
       settingSources: ['project', 'local'],
       ...COMMAND_MODE_LOCKDOWN,
       permissionMode: 'dontAsk',
@@ -626,10 +633,20 @@ export function buildClaudeSettings(
     // one) is not shown any tool the guard would refuse.
     ...(review ? { tools: ['Read'] } : {}),
     allowedTools: readOnly ? ['Read'] : ['Read', 'Edit', 'Write', 'Bash'],
-    canUseTool: workdirGuard(workdir, readOnly, readableFiles),
+    canUseTool: extraReviewRoots
+      ? canUseToolWith((name, input) =>
+          decideReviewToolPermission(extraReviewRoots, name, input),
+        )
+      : workdirGuard(workdir, readOnly, readableFiles),
     hooks: {
       PreToolUse: [
-        { hooks: [preToolUseHook(workdir, readOnly, readableFiles)] },
+        {
+          hooks: [
+            extraReviewRoots
+              ? reviewPreToolUseHook(extraReviewRoots)
+              : preToolUseHook(workdir, readOnly, readableFiles),
+          ],
+        },
       ],
     },
     ...pinned,

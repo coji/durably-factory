@@ -1348,6 +1348,48 @@ describe('pipeline and trace', () => {
     assert.equal(lensName('review-b'), 'レビュー B')
   })
 
+  it('marks only the experimental fresh confirmation in the trace', () => {
+    const measurement: AttemptMeasurement = {
+      provider: 'fake',
+      fake: true,
+      stage: 'review',
+      iteration: 2,
+      requestedModel: null,
+      requestedEffort: null,
+      effectiveModel: null,
+      effectiveEffort: null,
+      reportedModel: null,
+      reportedEffort: null,
+      versions: {},
+      elapsedMs: 1000,
+      usage: null,
+      costUsdEstimate: null,
+      costBasis: null,
+      result: 'review-a-done',
+      error: null,
+      interruptionReason: null,
+      reviewPass: 'final',
+    }
+    const attempts: AttemptRow[] = repaired.map((attempt) =>
+      attempt.stepName.includes(':review:')
+        ? { ...attempt, measurement }
+        : attempt,
+    )
+    const trace = traceOf(
+      attempts,
+      [approval],
+      { status: 'waiting' },
+      { reviewScope: 'whole-change' },
+    )
+    const reviewers = trace.root.children
+      .flatMap((node) => node.children)
+      .filter((node) => node.stage === 'review')
+    assert.deepEqual(
+      reviewers.map((node) => node.label),
+      ['レビュー A（最終確認）', 'レビュー B（最終確認）'],
+    )
+  })
+
   it('trace (a) nests a repair as two iterations, with parallel reviews and the open wait running to now', () => {
     const t = traceOf(
       repaired,

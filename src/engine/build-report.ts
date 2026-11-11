@@ -1442,6 +1442,7 @@ export async function buildReport(
       featureBase?: string
     }
     instructionsVersion?: string
+    reviewSessionMode?: 'fresh' | 'reuse-experiment'
     parallelReview?: unknown
     review?: Partial<Record<string, { output?: string }>>
     reviewBlockerThreshold?: number | null
@@ -1507,6 +1508,9 @@ export async function buildReport(
       requestedEffort: null,
     })
   const report: LoopReport = {
+    ...(setupOutput?.reviewSessionMode === 'reuse-experiment'
+      ? { reviewSessionMode: 'reuse-experiment' }
+      : {}),
     runId,
     jobName: run.jobName,
     status: run.status,

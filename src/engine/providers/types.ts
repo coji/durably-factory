@@ -57,6 +57,8 @@ export interface SpecWriteAccess {
  * without one is the factory's own prompt read as a verdict.
  */
 export interface ReviewCallSettings {
+  /** Opt-in experiment: retain this reviewer's native session for another candidate. */
+  retainSession?: boolean
   /** True when the input is the role's own command, expanded. */
   command: boolean
   /**
@@ -461,6 +463,7 @@ export interface UsageUntilStop {
 
 /** Persisted per-attempt measurement. Missing values stay null (never 0-filled). */
 export interface AttemptMeasurement {
+  reviewPass?: 'iterative' | 'final'
   usageAccounting?: 'claude-session-delta.v1'
   provider: ProviderName
   fake: boolean
