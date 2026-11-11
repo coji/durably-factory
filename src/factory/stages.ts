@@ -366,6 +366,7 @@ export const codeStage: StageHandler = async ({
           ? {
               provider: profile.provider,
               nativeId: call.sessionId,
+              ...(call.sessionUsage ? { usage: call.sessionUsage } : {}),
               profileId: profile.id,
               model: call.observedModel ?? profile.effectiveModel,
               cwd: target.workdir,
@@ -434,13 +435,14 @@ export const codeStage: StageHandler = async ({
   // the code profile does.
   // A stopped call's outcome carries no session (its measurement may record
   // one it reported), so the one on record stays.
-  const session: SessionRef | null =
+  let session: SessionRef | null =
     (separateRepair && !acrossEffort) || timedOut
       ? state.implementationSession
       : reuse && call.sessionId
         ? {
             provider: profile.provider,
             nativeId: call.sessionId,
+            ...(call.sessionUsage ? { usage: call.sessionUsage } : {}),
             profileId: profile.id,
             // The model this call reported running, as Claude Code resolves
             // an alias, so a repair continues it only when it ran the model
@@ -451,6 +453,12 @@ export const codeStage: StageHandler = async ({
             instructionsVersion: state.setup.instructionsVersion,
           }
         : null
+  // A stopped call has spent an unknown amount after the last baseline.
+  // Keep the conversation, but never charge that spend again on its next resume.
+  if (timedOut && reuse && session) {
+    session = { ...session }
+    delete session.usage
+  }
   return {
     type: 'code.completed',
     role,
@@ -951,6 +959,8 @@ async function reviewRoundOf(args: {
       checkpointsDir: setup.checkpointsDir,
       agentLogsDir: agentLogsDirBeside(setup.checkpointsDir),
       session: null,
+      sessionHandling: 'fresh',
+      sessionReason: 'each review starts an independent session',
       configVersion: setup.configVersion,
       ...(superseded
         ? { supersede: { signal: superseded, reason: REVIEW_CANCEL_REASON } }

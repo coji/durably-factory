@@ -91,7 +91,18 @@ describe('runner measurement on the real launch path', () => {
       calls++
       return {
         text: 'saved result',
-        session: { id: 'native-session' },
+        session: {
+          id: 'native-session',
+          usage: {
+            'gpt-6.1-sol': {
+              inputTokens: 1000,
+              outputTokens: 1000,
+              cachedInputTokens: null,
+              totalTokens: 2000,
+              usageSource: 'provider-final',
+            },
+          },
+        },
         resolvedModel: 'resolved-model',
         resolvedEffort: 'low',
         reportedModel: 'gpt-6.1-sol',
@@ -153,6 +164,8 @@ describe('runner measurement on the real launch path', () => {
     assert.equal(second.recovered, true)
     assert.equal(second.invocationId, first.invocationId)
     assert.equal(second.sessionId, 'native-session')
+    assert.deepEqual(second.sessionUsage, first.sessionUsage)
+    assert.equal(second.sessionUsage?.['gpt-6.1-sol']?.inputTokens, 1000)
     assert.equal(second.measurement.elapsedMs, 5)
   })
 
@@ -575,6 +588,7 @@ describe('a repair call records its session handling before it is sent', () => {
       calls++
       seenBeforeCall = first.snapshots.at(-1)
       assert.equal(options.sessionId, 'native-1')
+      assert.equal(options.sessionUsage, null)
       return {
         text: 'fixed',
         session: { id: 'native-1' },

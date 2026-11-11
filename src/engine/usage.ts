@@ -18,13 +18,21 @@ export interface TokenUsage {
   cachedInputTokens: number | null
   cacheReadTokens?: number | null
   cacheWriteTokens?: number | null
+  /** Presence opts into TTL-aware pricing; null means unreported, never 5m by default. */
+  cacheWrite5mTokens?: number | null
+  cacheWrite1hTokens?: number | null
   outputTokens: number | null
   totalTokens: number | null
   usageSource: UsageSource
   /** Per-response usage retained for models priced by request prompt length. */
   requests?: Pick<
     TokenUsage,
-    'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheWriteTokens'
+    | 'inputTokens'
+    | 'outputTokens'
+    | 'cacheReadTokens'
+    | 'cacheWriteTokens'
+    | 'cacheWrite5mTokens'
+    | 'cacheWrite1hTokens'
   >[]
 }
 
@@ -67,6 +75,7 @@ export function mergeUsage(
       outputTokens: num(patch.outputTokens),
       totalTokens: num(patch.totalTokens),
       usageSource: patch.usageSource ?? 'unknown',
+      ...cacheRetention(patch),
       ...(patch.requests ? { requests: patch.requests } : {}),
     }
   }
@@ -85,10 +94,21 @@ export function mergeUsage(
     totalTokens: num(patch.totalTokens) ?? base.totalTokens,
     usageSource:
       rank[nextSource] > rank[base.usageSource] ? nextSource : base.usageSource,
+    ...cacheRetention(base, patch),
     ...((patch.requests ?? base.requests)
       ? { requests: patch.requests ?? base.requests }
       : {}),
   }
+}
+
+/** Preserve absence on old usage and unknown TTL on new usage. */
+function cacheRetention(...values: Partial<TokenUsage>[]): Partial<TokenUsage> {
+  const result: Partial<TokenUsage> = {}
+  for (const key of ['cacheWrite5mTokens', 'cacheWrite1hTokens'] as const) {
+    for (const value of values)
+      if (Object.hasOwn(value, key)) result[key] = num(value[key])
+  }
+  return result
 }
 
 /** True when both priced legs are known (partial usage must not be priced). */

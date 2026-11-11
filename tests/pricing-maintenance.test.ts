@@ -80,12 +80,14 @@ describe('model price maintenance', () => {
       output: 40,
       cacheRead: 0.2,
       cacheWrite: 10,
+      cacheWrite1h: 16,
     })
     assert.deepEqual(prices['claude-fable-5-1'], {
       input: 10,
       output: 50,
       cacheRead: 0.25,
       cacheWrite: 12.5,
+      cacheWrite1h: 20,
     })
     assert.equal(prices['claude-opus-5-5'].cacheRead, 0.2)
     assert.equal(prices['claude-opus-5-5'].cacheWrite, 5)
@@ -94,12 +96,14 @@ describe('model price maintenance', () => {
       output: 0.5,
       cacheRead: 0.01,
       cacheWrite: 0.125,
+      cacheWrite1h: 0.2,
       longContext: {
         inputTokensAbove: 100000,
         input: 0.5,
         output: 2.5,
         cacheRead: 0.05,
         cacheWrite: 0.625,
+        cacheWrite1h: 1,
       },
     })
     assert.equal(

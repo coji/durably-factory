@@ -87,10 +87,12 @@ export function isCommandModeReview(
 }
 
 export interface NativeSession {
+  usage?: Record<string, TokenUsage>
   id: string
 }
 
 export interface AgentResult {
+  usageAccounting?: 'claude-session-delta.v1'
   text: string
   /** Provider-native conversation/thread created or resumed by this call. */
   session?: NativeSession | null
@@ -135,6 +137,7 @@ export interface AgentResult {
 }
 
 export interface AgentCallOptions {
+  sessionUsage?: Record<string, TokenUsage> | null
   prompt: string
   workdir: string
   /**
@@ -458,6 +461,7 @@ export interface UsageUntilStop {
 
 /** Persisted per-attempt measurement. Missing values stay null (never 0-filled). */
 export interface AttemptMeasurement {
+  usageAccounting?: 'claude-session-delta.v1'
   provider: ProviderName
   fake: boolean
   /** Stage/iteration snapshot — merged, never wholesale-replaced. */
