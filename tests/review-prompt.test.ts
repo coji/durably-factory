@@ -778,6 +778,45 @@ describe('selfCheck in the implementation and repair prompts', () => {
     }
   })
 
+  it('prints runnable shell commands without changing their argv', () => {
+    const literalArgs = [
+      'two words',
+      "operator's",
+      '$(printf expanded)',
+      '`printf expanded`',
+      '*',
+      '',
+    ]
+    const commands = [
+      ['sh', '-c', 'printf "%s" self-check-ran'],
+      ['sh', '-c', 'printf "%s\\n" "$@"', 'check', ...literalArgs],
+    ]
+    const expected = ['self-check-ran', `${literalArgs.join('\n')}\n`]
+    const target = new RepoTarget({
+      ...repoConfig,
+      codeResponseVersion: 1,
+      selfCheck: commands,
+    })
+    for (const prompt of prompts(target)) {
+      for (const [index, output] of expected.entries()) {
+        const prefix = `Self-check C${index + 1}: `
+        const rendered = prompt
+          .split('\n')
+          .find((line) => line.startsWith(prefix))
+          ?.slice(prefix.length)
+        assert.ok(rendered, `missing ${prefix}`)
+        assert.ok(prompt.includes(`  \`${rendered}\``))
+        assert.equal(
+          execFileSync('sh', ['-c', rendered], {
+            encoding: 'utf8',
+            timeout: 5000,
+          }),
+          output,
+        )
+      }
+    }
+  })
+
   it('adds nothing when the run has none', () => {
     const plain = new RepoTarget(repoConfig)
     for (const config of [{}, { selfCheck: null }]) {
