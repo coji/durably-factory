@@ -19,6 +19,18 @@ export function availableActions(state: FactoryState): StageName[] {
   if (state.reviews.some((review) => review.decision === 'needsChanges')) {
     return state.iteration < state.setup.maxIterations ? ['code'] : ['stop']
   }
+  if (state.setup.reviewSessionMode === 'reuse-experiment') {
+    if (
+      state.reviews.length !== 2 ||
+      !['correctness', 'edge-cases'].every((slot) =>
+        state.reviews.some((review) => review.lens === slot),
+      )
+    )
+      throw new Error(
+        'review-incomplete: both independent reviewers are required',
+      )
+    if (state.finalReviewTarget !== state.candidate.id) return ['review']
+  }
   // With auto-approval the delivery is itself what a human reviews, so the
   // run does not hold a worker while waiting for a signal it will always get.
   if (state.setup.autoApprove) return ['finish']

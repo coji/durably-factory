@@ -121,10 +121,10 @@ const firstPass = node({
     // Beside the failing check: the review it ended (ADR-0029).
     entry('review', 1, 9, 10, {
       id: 'review#1-beside',
-      label: lensName('edge-cases'),
+      label: lensName('review-b'),
       usage: USAGE.known,
       review: {
-        lens: 'edge-cases',
+        lens: 'review-b',
         decision: '',
         notes: '',
         findings: null,
@@ -144,10 +144,10 @@ const firstPass = node({
       interruptionReason: 'cancelled',
     }),
     entry('review', 1, 12, 14, {
-      label: lensName('correctness'),
+      label: lensName('review-a'),
       usage: USAGE.partial,
       review: {
-        lens: 'correctness',
+        lens: 'review-a',
         decision: 'needsChanges',
         notes: 'formatCost が 0.004 を $0.00 と出している。',
         findings: {
@@ -215,7 +215,7 @@ const secondPassWaiting = node({
       candidate: STOPPED_CANDIDATE,
     }),
     entry('verify', 2, 18, 19),
-    entry('review', 2, 19, 21, { label: lensName('edge-cases') }),
+    entry('review', 2, 19, 21, { label: lensName('review-b') }),
     node({
       id: 'approve#2',
       kind: 'entry',

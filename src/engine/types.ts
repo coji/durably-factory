@@ -29,6 +29,8 @@ export interface ResolvedProfile {
 export interface SessionRef {
   provider: ProviderName
   nativeId: string
+  /** Last native session totals, for invocation deltas; absent on historical sessions. */
+  usage?: Record<string, import('./usage.js').TokenUsage>
   profileId: string
   /** The call's effective model; absent on older records. */
   model?: string | null

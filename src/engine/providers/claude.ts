@@ -18,8 +18,8 @@
  *   else, the project's and local settings are loaded from that directory,
  *   and the same guard checks every tool call, a subagent's included,
  *   against it and the candidate's readable directories.
- * - Usage comes from the final result's `modelUsage`, which covers the call
- *   and every subagent it started, counted once.
+ * - Usage is the delta of native session model totals. Cache TTL and request
+ *   boundaries come from this call's response messages; unknown stays unknown.
  * - Requested effort is applied via the `effort` setting; unsupported values
  *   throw instead of being silently dropped.
  * - Bash containment is best-effort input inspection (documented limits, not
@@ -591,6 +591,12 @@ export function buildClaudeSettings(
       ...pinned,
     }
   }
+  const extraReviewRoots =
+    readOnly &&
+    review?.retainSession !== undefined &&
+    review.readableDirs.length
+      ? [workdir, ...review.readableDirs]
+      : null
   if (isCommandModeReview(review)) {
     // `workdir` is the review's own directory: the base commit's CLAUDE.md
     // and .claude/, and the factory's CLAUDE.local.md, found through the
@@ -605,7 +611,8 @@ export function buildClaudeSettings(
     const roots = [workdir, ...review.readableDirs]
     return {
       cwd: workdir,
-      persistSession: false,
+      persistSession: review.retainSession === true,
+      ...(review.retainSession && sessionId ? { resume: sessionId } : {}),
       settingSources: ['project', 'local'],
       ...COMMAND_MODE_LOCKDOWN,
       permissionMode: 'dontAsk',
@@ -626,10 +633,20 @@ export function buildClaudeSettings(
     // one) is not shown any tool the guard would refuse.
     ...(review ? { tools: ['Read'] } : {}),
     allowedTools: readOnly ? ['Read'] : ['Read', 'Edit', 'Write', 'Bash'],
-    canUseTool: workdirGuard(workdir, readOnly, readableFiles),
+    canUseTool: extraReviewRoots
+      ? canUseToolWith((name, input) =>
+          decideReviewToolPermission(extraReviewRoots, name, input),
+        )
+      : workdirGuard(workdir, readOnly, readableFiles),
     hooks: {
       PreToolUse: [
-        { hooks: [preToolUseHook(workdir, readOnly, readableFiles)] },
+        {
+          hooks: [
+            extraReviewRoots
+              ? reviewPreToolUseHook(extraReviewRoots)
+              : preToolUseHook(workdir, readOnly, readableFiles),
+          ],
+        },
       ],
     },
     ...pinned,
@@ -667,6 +684,8 @@ interface UsageLegs {
   cacheRead: number | null
   cacheWrite: number | null
   output: number | null
+  five: number | null
+  hour: number | null
 }
 
 /** One model's `modelUsage` legs; a leg it does not report stays unknown. */
@@ -677,11 +696,13 @@ function legsOf(model: Record<string, unknown>): UsageLegs {
     cacheRead: leg('cacheReadInputTokens'),
     cacheWrite: leg('cacheCreationInputTokens'),
     output: leg('outputTokens'),
+    five: leg('cacheCreationEphemeral5mInputTokens'),
+    hour: leg('cacheCreationEphemeral1hInputTokens'),
   }
 }
 
 /** Legs summed across models; one unknown leg makes the sum unknown. */
-function sumUsage(legs: UsageLegs[]): TokenUsage {
+function sumUsage(legs: UsageLegs[], retention = false): TokenUsage {
   const sum = (key: keyof UsageLegs): number | null => {
     let total = 0
     for (const leg of legs) {
@@ -709,6 +730,9 @@ function sumUsage(legs: UsageLegs[]): TokenUsage {
     outputTokens: output,
     totalTokens: input !== null && output !== null ? input + output : null,
     usageSource: 'provider-final',
+    ...(retention
+      ? { cacheWrite5mTokens: sum('five'), cacheWrite1hTokens: sum('hour') }
+      : {}),
   }
 }
 
@@ -719,11 +743,12 @@ function sumUsage(legs: UsageLegs[]): TokenUsage {
  */
 export function claudeUsageByModel(
   modelUsage: unknown,
+  retention = false,
 ): Record<string, TokenUsage> | null {
   const models = modelUsageEntries(modelUsage)
   if (models.length === 0) return null
   return Object.fromEntries(
-    models.map(([name, model]) => [name, sumUsage([legsOf(model)])]),
+    models.map(([name, model]) => [name, sumUsage([legsOf(model)], retention)]),
   )
 }
 
@@ -789,6 +814,114 @@ export function claudeCallUsage(
   }
 }
 
+/** Delta of native session totals; an absent/reset baseline cannot prove invocation totals. */
+export function claudeInvocationUsage(args: {
+  totals: Record<string, TokenUsage> | null
+  previous: Record<string, TokenUsage> | null
+  observed: PartialUsageSnapshot | null
+}): {
+  usage: TokenUsage | null
+  usageByModel: Record<string, TokenUsage> | null
+} {
+  const { totals, previous, observed } = args
+  const partial = () => ({
+    usage: observed?.usage ?? null,
+    usageByModel: observed?.usageByModel ?? null,
+  })
+  if (
+    !totals ||
+    !previous ||
+    Object.keys(previous).some((model) => !totals[model])
+  )
+    return partial()
+  const byModel: Record<string, TokenUsage> = {}
+  for (const [model, cumulative] of Object.entries(totals)) {
+    const before = previous[model]
+    const delta = (
+      key:
+        | 'inputTokens'
+        | 'outputTokens'
+        | 'cacheReadTokens'
+        | 'cacheWriteTokens'
+        | 'cacheWrite5mTokens'
+        | 'cacheWrite1hTokens',
+    ) => {
+      const now = cumulative[key]
+      const was = before ? before[key] : 0
+      return now == null || was == null || now < was ? null : now - was
+    }
+    const input = delta('inputTokens'),
+      output = delta('outputTokens'),
+      read = delta('cacheReadTokens'),
+      write = delta('cacheWriteTokens')
+    if (input === null || output === null || read === null || write === null)
+      return partial()
+    const evidence = observed?.usageByModel[model]
+    const retentionMatches = evidence?.cacheWriteTokens === write
+    byModel[model] = {
+      inputTokens: input,
+      outputTokens: output,
+      cacheReadTokens: read,
+      cacheWriteTokens: write,
+      cachedInputTokens: read + write,
+      totalTokens: input + output,
+      usageSource: 'provider-final',
+      cacheWrite5mTokens:
+        write === 0
+          ? 0
+          : retentionMatches
+            ? (delta('cacheWrite5mTokens') ??
+              evidence?.cacheWrite5mTokens ??
+              null)
+            : delta('cacheWrite5mTokens'),
+      cacheWrite1hTokens:
+        write === 0
+          ? 0
+          : retentionMatches
+            ? (delta('cacheWrite1hTokens') ??
+              evidence?.cacheWrite1hTokens ??
+              null)
+            : delta('cacheWrite1hTokens'),
+      ...(evidence?.requests ? { requests: evidence.requests } : {}),
+    }
+  }
+  const sum = (
+    key:
+      | 'inputTokens'
+      | 'outputTokens'
+      | 'cacheReadTokens'
+      | 'cacheWriteTokens'
+      | 'cachedInputTokens'
+      | 'totalTokens'
+      | 'cacheWrite5mTokens'
+      | 'cacheWrite1hTokens',
+  ) => {
+    const values = Object.values(byModel).map((usage) => usage[key])
+    return values.some((value) => value == null)
+      ? null
+      : values.reduce<number>((total, value) => total + (value ?? 0), 0)
+  }
+  if (Object.keys(byModel).length === 0) return partial()
+  return {
+    usageByModel: byModel,
+    usage: {
+      inputTokens: sum('inputTokens'),
+      outputTokens: sum('outputTokens'),
+      cacheReadTokens: sum('cacheReadTokens'),
+      cacheWriteTokens: sum('cacheWriteTokens'),
+      cachedInputTokens: sum('cachedInputTokens'),
+      totalTokens: sum('totalTokens'),
+      cacheWrite5mTokens: sum('cacheWrite5mTokens'),
+      cacheWrite1hTokens: sum('cacheWrite1hTokens'),
+      usageSource: 'provider-final',
+      ...(Object.keys(byModel).length === 1 &&
+      Object.values(byModel)[0]?.requests
+        ? { requests: Object.values(byModel)[0].requests }
+        : {}),
+    },
+  }
+}
+
 /** A running total of a call's usage, by model too; see `claudePartialUsage`. */
 export interface PartialUsageSnapshot {
   usage: TokenUsage
@@ -811,12 +944,16 @@ class RunningLegs {
     cacheRead: 0,
     cacheWrite: 0,
     output: 0,
+    five: 0,
+    hour: 0,
   }
   private readonly unknown: Record<keyof UsageLegs, number> = {
     uncached: 0,
     cacheRead: 0,
     cacheWrite: 0,
     output: 0,
+    five: 0,
+    hour: 0,
   }
 
   add(legs: UsageLegs, sign: 1 | -1): void {
@@ -827,18 +964,23 @@ class RunningLegs {
     }
   }
 
-  usage(): TokenUsage {
+  usage(retention = false): TokenUsage {
     const leg = (key: keyof UsageLegs) =>
       this.unknown[key] > 0 ? null : this.sums[key]
     return asPartial(
-      sumUsage([
-        {
-          uncached: leg('uncached'),
-          cacheRead: leg('cacheRead'),
-          cacheWrite: leg('cacheWrite'),
-          output: leg('output'),
-        },
-      ]),
+      sumUsage(
+        [
+          {
+            uncached: leg('uncached'),
+            cacheRead: leg('cacheRead'),
+            cacheWrite: leg('cacheWrite'),
+            output: leg('output'),
+            five: leg('five'),
+            hour: leg('hour'),
+          },
+        ],
+        retention,
+      ),
     )
   }
 }
@@ -862,8 +1004,9 @@ class RunningLegs {
  */
 export function claudePartialUsage(
   review: ReviewCallSettings | null | undefined,
+  options: { allModels?: boolean; retention?: boolean } = {},
 ): (message: SDKMessage) => PartialUsageSnapshot | null {
-  const subagents = isCommandModeReview(review)
+  const subagents = options.allModels || isCommandModeReview(review)
   const byMessage = new Map<string, { model: string; legs: UsageLegs }>()
   // The response each stream is in, by `parent_tool_use_id`.
   const streaming = new Map<string, { id: string; model: string }>()
@@ -879,12 +1022,18 @@ export function claudePartialUsage(
       ? [...byMessage.values()]
           .filter((r) => r.model === model)
           .map(({ legs }) => {
-            const usage = sumUsage([legs])
+            const usage = sumUsage([legs], options.retention)
             return {
               inputTokens: usage.inputTokens,
               outputTokens: usage.outputTokens,
               cacheReadTokens: usage.cacheReadTokens,
               cacheWriteTokens: usage.cacheWriteTokens,
+              ...(options.retention
+                ? {
+                    cacheWrite5mTokens: usage.cacheWrite5mTokens,
+                    cacheWrite1hTokens: usage.cacheWrite1hTokens,
+                  }
+                : {}),
             }
           })
       : undefined
@@ -892,13 +1041,22 @@ export function claudePartialUsage(
     const usageByModel = Object.fromEntries(
       [...models].map(([name, sums]) => {
         const requests = requestsFor(name)
-        return [name, { ...sums.usage(), ...(requests ? { requests } : {}) }]
+        return [
+          name,
+          {
+            ...sums.usage(options.retention),
+            ...(requests ? { requests } : {}),
+          },
+        ]
       }),
     )
     const requests =
       models.size === 1 ? Object.values(usageByModel)[0].requests : undefined
     return {
-      usage: { ...total.usage(), ...(requests ? { requests } : {}) },
+      usage: {
+        ...total.usage(options.retention),
+        ...(requests ? { requests } : {}),
+      },
       usageByModel,
     }
   }
@@ -955,14 +1113,7 @@ export function claudePartialUsage(
         const current = streaming.get(stream)
         const usage = event.usage
         if (!current || !usage || typeof usage !== 'object') return null
-        const leg = (key: string) =>
-          tokenCount((usage as Record<string, unknown>)[key])
-        return count(current.id, current.model, {
-          uncached: leg('input_tokens'),
-          cacheRead: leg('cache_read_input_tokens'),
-          cacheWrite: leg('cache_creation_input_tokens'),
-          output: leg('output_tokens'),
-        })
+        return count(current.id, current.model, responseLegs(usage))
       }
       return null
     }
@@ -1000,6 +1151,22 @@ function responseLegs(usage: unknown): UsageLegs {
     cacheRead: cacheLeg('cache_read_input_tokens'),
     cacheWrite: cacheLeg('cache_creation_input_tokens'),
     output: tokenCount(read['output_tokens']),
+    five:
+      cacheLeg('cache_creation_input_tokens') === 0
+        ? 0
+        : tokenCount(
+            (read['cache_creation'] as Record<string, unknown> | undefined)?.[
+              'ephemeral_5m_input_tokens'
+            ],
+          ),
+    hour:
+      cacheLeg('cache_creation_input_tokens') === 0
+        ? 0
+        : tokenCount(
+            (read['cache_creation'] as Record<string, unknown> | undefined)?.[
+              'ephemeral_1h_input_tokens'
+            ],
+          ),
   }
 }
 
@@ -1375,13 +1542,17 @@ export class ClaudeProvider implements AgentProvider {
       throw new Error(`a ${options.role} call needs the spec file it may write`)
     const onActivity = options.onActivity
     const writeOutput = claudeOutput(options.onOutput)
-    const partialUsage = claudePartialUsage(options.review)
+    const partialUsage = claudePartialUsage(options.review, {
+      allModels: true,
+      retention: true,
+    })
     const observedUsage: { latest: PartialUsageSnapshot | null } = {
       latest: null,
     }
     // The concrete model the CLI reports, first seen wins: an alias such as
     // `opus` is resolved by the CLI, never here.
     let observedModel: string | null = null
+    let nativeTotals: unknown = undefined
     const guardReasons = new Map<string, string>()
     const model = this.sdk.claudeCode(modelIdResolved, {
       ...keepingGuardReasons(
@@ -1401,6 +1572,9 @@ export class ClaudeProvider implements AgentProvider {
       includePartialMessages: true,
       onSdkMessage: (message: SDKMessage) => {
         observedModel ??= observedClaudeModel(message)
+        if (message.type === 'result')
+          nativeTotals = (message as unknown as { modelUsage?: unknown })
+            .modelUsage
         if (onActivity && isAgentActivity(message)) onActivity()
         writeOutput(message)
         const session = claudeSessionId(message)
@@ -1438,32 +1612,43 @@ export class ClaudeProvider implements AgentProvider {
       providerMetadata?.['permissionDenials'],
       guardReasons,
     )
-    const { usage, usageByModel } = claudeCallUsage(
-      options.review,
-      {
-        inputTokens: reported.usage.inputTokens ?? null,
-        outputTokens: reported.usage.outputTokens ?? null,
-        cacheReadTokens:
-          reported.usage.inputTokenDetails?.cacheReadTokens ?? null,
-        cacheWriteTokens:
-          reported.usage.inputTokenDetails?.cacheWriteTokens ?? null,
-        totalTokens: reported.usage.totalTokens ?? null,
-      },
-      providerMetadata?.['modelUsage'],
+    const totals = claudeUsageByModel(
+      nativeTotals ?? providerMetadata?.['modelUsage'],
+      true,
     )
-    // Keep request boundaries alongside authoritative final totals. Pricing
-    // reconciles every meter before using them, including command subagents.
-    const requests = observedUsage.latest?.usage.requests
-    if (usage && requests) usage.requests = requests
-    if (usageByModel) {
-      for (const [model, value] of Object.entries(usageByModel)) {
-        const requests = observedUsage.latest?.usageByModel[model]?.requests
-        if (requests) value.requests = requests
-      }
+    const counted = claudeInvocationUsage({
+      totals,
+      previous: options.sessionId ? (options.sessionUsage ?? null) : {},
+      observed: observedUsage.latest,
+    })
+    const usage =
+      counted.usage ??
+      (totals
+        ? null
+        : claudeUsageOf(
+            {
+              inputTokens: reported.usage.inputTokens ?? null,
+              outputTokens: reported.usage.outputTokens ?? null,
+              cacheReadTokens:
+                reported.usage.inputTokenDetails?.cacheReadTokens ?? null,
+              cacheWriteTokens:
+                reported.usage.inputTokenDetails?.cacheWriteTokens ?? null,
+              totalTokens: reported.usage.totalTokens ?? null,
+            },
+            undefined,
+          ))
+    if (usage && !totals) {
+      usage.usageSource = 'provider-partial'
+      usage.cacheWrite5mTokens ??= null
+      usage.cacheWrite1hTokens ??= null
     }
+    const usageByModel = counted.usageByModel
     return {
       text: reported.text,
-      session: sessionId ? { id: sessionId } : null,
+      usageAccounting: 'claude-session-delta.v1',
+      session: sessionId
+        ? { id: sessionId, ...(totals ? { usage: totals } : {}) }
+        : null,
       resolvedModel: modelIdResolved,
       resolvedEffort: effort,
       reportedModel: nativeModel,

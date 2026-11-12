@@ -423,3 +423,103 @@ describe('repairsReviewFeedback', () => {
     }
   })
 })
+
+describe('review session experiment final confirmation gate', () => {
+  const pass = [
+    { lens: 'correctness' as const, decision: 'pass' as const, notes: 'ok' },
+    { lens: 'edge-cases' as const, decision: 'pass' as const, notes: 'ok' },
+  ]
+  const reviewed = () => {
+    let state = initialState({
+      ...setup,
+      reviewSessionMode: 'reuse-experiment',
+    })
+    state = reduce(state, {
+      type: 'code.completed',
+      role: 'implement',
+      candidate,
+      session: null,
+    })
+    state = reduce(state, {
+      type: 'verify.completed',
+      targetId: candidate.id,
+      passed: true,
+      stdout: '',
+      exitCode: 0,
+    })
+    return reduce(state, {
+      type: 'review.completed',
+      targetId: candidate.id,
+      reviews: pass,
+    })
+  }
+  it('requires a new round before approval or auto-completion, and invalidates it on repair', () => {
+    const state = reviewed()
+    assert.equal(decide(state).stage, 'review')
+    assert.equal(
+      decide({ ...state, setup: { ...state.setup, autoApprove: true } }).stage,
+      'review',
+    )
+    const final = reduce(state, {
+      type: 'review.completed',
+      targetId: candidate.id,
+      reviews: pass,
+      finalReview: true,
+    })
+    assert.equal(decide(final).stage, 'approve')
+    assert.equal(
+      decide({ ...final, setup: { ...final.setup, autoApprove: true } }).stage,
+      'finish',
+    )
+    const repaired = reduce(final, {
+      type: 'code.completed',
+      role: 'repair',
+      candidate: { ...candidate, id: 'candidate-2' },
+      session: null,
+    })
+    assert.equal(repaired.finalReviewTarget, null)
+    assert.deepEqual(repaired.reviews, [])
+    assert.equal(
+      decide({ ...state, finalReviewTarget: 'another-candidate' }).stage,
+      'review',
+    )
+  })
+  it('never treats one reviewer or a duplicate reviewer as two final passes', () => {
+    const state = reviewed()
+    assert.throws(
+      () =>
+        decide({
+          ...state,
+          reviews: [pass[0]!],
+          finalReviewTarget: candidate.id,
+        }),
+      /review-incomplete/,
+    )
+    assert.throws(
+      () =>
+        decide({
+          ...state,
+          reviews: [pass[0]!, pass[0]!],
+          finalReviewTarget: candidate.id,
+        }),
+      /review-incomplete/,
+    )
+  })
+  it('sends final blockers back to repair, bounded by the existing iteration budget', () => {
+    const state = reviewed()
+    const blocked = reduce(state, {
+      type: 'review.completed',
+      targetId: candidate.id,
+      reviews: [
+        { ...pass[0]!, decision: 'needsChanges', notes: 'regression' },
+        pass[1]!,
+      ],
+      finalReview: true,
+    })
+    assert.equal(decide(blocked).stage, 'code')
+    assert.equal(
+      decide({ ...blocked, iteration: setup.maxIterations }).stage,
+      'stop',
+    )
+  })
+})

@@ -27,6 +27,8 @@ export interface ModelPrice {
   cacheRead: number | null
   /** OpenAI 30-minute / Anthropic 5-minute writes; null if not published. */
   cacheWrite: number | null
+  /** Anthropic one-hour writes; absent on historical catalogs. */
+  cacheWrite1h?: number | null
   source: string
   checkedAt: string
   /** False for historical entries not present in the monitored tables. */
@@ -40,6 +42,7 @@ export interface ModelPrice {
     output: number
     cacheRead: number | null
     cacheWrite: number | null
+    cacheWrite1h?: number | null
   }
 }
 
@@ -83,6 +86,8 @@ export interface PriceableUsage {
   outputTokens: number | null
   cacheReadTokens?: number | null
   cacheWriteTokens?: number | null
+  cacheWrite5mTokens?: number | null
+  cacheWrite1hTokens?: number | null
   /** Deduplicated API responses, not agent-call totals. */
   requests?: Omit<PriceableUsage, 'requests'>[]
 }
@@ -178,6 +183,33 @@ export function estimateCostBreakdown(
     return null
   if (cacheWrite != null && cacheWrite > 0 && price.cacheWrite === null)
     return null
+  const ttlAware =
+    Object.hasOwn(usage, 'cacheWrite5mTokens') ||
+    Object.hasOwn(usage, 'cacheWrite1hTokens')
+  let writeUsd =
+    cacheWrite !== null
+      ? (cacheWrite / 1_000_000) * (price.cacheWrite ?? 0)
+      : null
+  if (ttlAware && cacheWrite !== 0) {
+    const five = usage.cacheWrite5mTokens
+    const hour = usage.cacheWrite1hTokens
+    if (
+      cacheWrite === null ||
+      five == null ||
+      hour == null ||
+      !Number.isFinite(five) ||
+      !Number.isFinite(hour) ||
+      five < 0 ||
+      hour < 0 ||
+      five + hour !== cacheWrite ||
+      (five > 0 && price.cacheWrite === null) ||
+      (hour > 0 && price.cacheWrite1h == null)
+    )
+      return null
+    writeUsd =
+      (five * (price.cacheWrite ?? 0) + hour * (price.cacheWrite1h ?? 0)) /
+      1_000_000
+  }
   const cached = (cacheRead ?? 0) + (cacheWrite ?? 0)
   // Providers that report cache legs count them inside inputTokens; never let
   // an inconsistent report produce a negative non-cached remainder.
@@ -189,9 +221,7 @@ export function estimateCostBreakdown(
   if (cacheRead !== null)
     meters.input_cache_read_tokens =
       (cacheRead / 1_000_000) * (price.cacheRead ?? 0)
-  if (cacheWrite !== null)
-    meters.input_cache_write_tokens =
-      (cacheWrite / 1_000_000) * (price.cacheWrite ?? 0)
+  if (writeUsd !== null) meters.input_cache_write_tokens = writeUsd
   const totalUsd = Object.values(meters).reduce((sum, v) => sum + v, 0)
   return { totalUsd, meters, cacheAware, prices: { [matched.model]: price } }
 }
@@ -241,16 +271,7 @@ export function unpricedModels(
 ): string[] {
   return Object.entries(byModel)
     .filter(
-      ([model, usage]) =>
-        !resolveModelPrice(model, catalog) ||
-        (resolveModelPrice(model, catalog)?.price.longContext !== undefined &&
-          estimateCostBreakdown(model, usage, catalog) === null) ||
-        (usage.cacheReadTokens != null &&
-          usage.cacheReadTokens > 0 &&
-          resolveModelPrice(model, catalog)?.price.cacheRead === null) ||
-        (usage.cacheWriteTokens != null &&
-          usage.cacheWriteTokens > 0 &&
-          resolveModelPrice(model, catalog)?.price.cacheWrite === null),
+      ([model, usage]) => estimateCostBreakdown(model, usage, catalog) === null,
     )
     .map(([model]) => model)
     .sort()

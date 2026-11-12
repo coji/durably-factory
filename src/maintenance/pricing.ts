@@ -8,7 +8,12 @@ export const PRICING_SOURCES = {
 type Provider = keyof typeof PRICING_SOURCES
 type Rates = Pick<
   ModelPrice,
-  'input' | 'output' | 'cacheRead' | 'cacheWrite' | 'longContext'
+  | 'input'
+  | 'output'
+  | 'cacheRead'
+  | 'cacheWrite'
+  | 'cacheWrite1h'
+  | 'longContext'
 >
 
 interface Table {
@@ -118,6 +123,7 @@ export function parsePrices(provider: Provider, markdown: string) {
       for (const name of [
         'Base input tokens',
         '5m cache writes',
+        '1h cache writes',
         'Cache hits and refreshes',
         'Output tokens',
       ])
@@ -146,6 +152,7 @@ export function parsePrices(provider: Provider, markdown: string) {
           output: dollars(column(row, 'Output tokens'), true),
           cacheRead: dollars(column(row, 'Cache hits and refreshes')),
           cacheWrite: dollars(column(row, '5m cache writes')),
+          cacheWrite1h: dollars(column(row, '1h cache writes')),
         }
         if (tier) {
           const pair = tiers.get(model) ?? {}
@@ -208,6 +215,14 @@ export function validateCatalog(value: unknown): asserts value is PriceCatalog {
         continue
       if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0)
         throw new Error(`Invalid ${meter} price: ${model}`)
+    }
+    for (const rates of [price, price.longContext]) {
+      const hour = rates?.cacheWrite1h
+      if (
+        hour != null &&
+        (typeof hour !== 'number' || !Number.isFinite(hour) || hour < 0)
+      )
+        throw new Error(`Invalid cacheWrite1h price: ${model}`)
     }
     if (price.longContext !== undefined) {
       const tier = price.longContext
@@ -295,7 +310,14 @@ export function updatePrices(
       if (
         before.source === PRICING_SOURCES[provider] &&
         (
-          ['input', 'output', 'cacheRead', 'cacheWrite', 'longContext'] as const
+          [
+            'input',
+            'output',
+            'cacheRead',
+            'cacheWrite',
+            'cacheWrite1h',
+            'longContext',
+          ] as const
         ).every(
           (key) => JSON.stringify(before[key]) === JSON.stringify(rates[key]),
         )
@@ -323,7 +345,13 @@ export function updatePrices(
 function ratesText(price: ModelPrice | null) {
   if (!price) return 'unregistered'
   const format = (rates: Rates) =>
-    [rates.input, rates.output, rates.cacheRead, rates.cacheWrite]
+    [
+      rates.input,
+      rates.output,
+      rates.cacheRead,
+      rates.cacheWrite,
+      rates.cacheWrite1h ?? null,
+    ]
       .map((v) => (v === null ? 'unpublished' : `$${v}`))
       .join(' / ')
   return price.longContext
@@ -339,7 +367,7 @@ export function priceUpdateMarkdown(
   return [
     `Official model pricing checked on ${checkedAt}.`,
     '',
-    'Standard processing. Rates are USD per million tokens in input / output / cache read / cache write order. OpenAI uses short context. Conditional Anthropic rates show the per-request input boundary, including cache reads and writes. Writes use OpenAI 30-minute or Anthropic 5-minute retention.',
+    'Standard processing. Rates are USD per million tokens in input / output / cache read / cache write / 1h cache write order. OpenAI uses short context. Conditional Anthropic rates show the per-request input boundary, including cache reads and writes. Writes use OpenAI 30-minute or Anthropic 5-minute retention; the final meter is Anthropic 1-hour retention.',
     '',
     '| Model | Before | Proposed | Source |',
     '| --- | --- | --- | --- |',

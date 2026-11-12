@@ -131,7 +131,7 @@ pnpm factory report --run <runId> --format md \
   つまり手戻り）、呼び出しの数、in / cache-read / cache-write / out / total、
   費用（cost）。どれかの呼び出しの使用量が数えられていなければ PARTIAL、価格が
   分からなければ unknown
-- **Role usage**: `code`、`correctness`、`edge-cases`（修正を呼んだか、修正の
+- **Role usage**: `code`、`review-a`、`review-b`（修正を呼んだか、修正の
   プロファイルがあれば `repair`、見立てのプロファイルがあれば `triage` も）ごとの、
   要求したプロバイダー / モデル / 推論量、呼び出しの数、トークン、費用、使用量と
   費用のそれぞれがそろっているかどうか。2 つのレビューを別の行に分けるので、役割
@@ -381,7 +381,7 @@ pnpm factory report --run <runId> --format json \
   | jq '{runId, configVersion, inputs, delivery, roleUsage, summary}'
 ```
 
-`roleUsage` は `code`、`correctness`、`edge-cases` の 3 行で、それぞれ、指定した
+`roleUsage` は `code`、`review-a`、`review-b` の 3 行で、それぞれ、指定した
 プロバイダー、モデル、推論量、呼び出しの回数、トークンの内訳、合計のトークン、
 費用、`complete`、`costComplete` を持ちます。fake のプロバイダーのように使用量を
 返さない呼び出しは、0 にせず、トークンと費用を `null`、`complete` を `false` に
@@ -410,3 +410,19 @@ pnpm factory trigger \
 しておくためです。とくに `CLAUDE_EFFORT` は Claude Code がシェルへ export する
 ので、これに従うと、「どのエージェントのセッションからコマンドを打ったか」で
 推論量が変わります。同じつもりの実行が、別の `configVersion` に分かれてしまいます。
+
+## 呼び出し単位の費用とキャッシュ保持時間
+
+Claudeの新しい計測方式は `claude-session-delta.v1` として記録します。
+セッション再開時のモデル別使用量は累計なので、前回の累計を保存し、今回との差分だけを計上します。
+補助モデルとサブエージェントも、それぞれのモデルの単価で計算します。
+前回の累計がない、またはカウンターがリセットされた場合は、今回のストリームで観測した分だけを部分的な計測として残します。
+タイムアウトした呼び出しの後は累計の基準を無効にし、次の再開で過去の消費を二重計上しません。
+
+新しいClaudeの使用量には `cacheWrite5mTokens` と `cacheWrite1hTokens` を含めます。
+SDKが報告した保持時間に対応する単価で計算し、保持時間・内訳・単価が分からないときは費用も不明にします。
+保持時間を記録していない過去の使用量や、その呼び出しが保存した単価は変更しません。
+
+JSONの `reviewCalls[]` とMarkdownの「Reviewer invocations」では、各レビューの候補・ラウンド・新規／継続の扱いと理由、入力・キャッシュ・出力・所要時間・費用を確認できます。
+過去に記録していないセッションの扱いや保持時間は不明として表示します。
+この費用はAPI相当の参考値で、サブスクリプションの利用枠や実際の請求額を示すものではありません。

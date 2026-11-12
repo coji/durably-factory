@@ -68,14 +68,15 @@ LLM にタスクを判定させます。書かなければ判定の呼び出し�
 
 ## レビュー役の呼び出しと出力（command、context、output）
 
-`profiles.review.correctness` と `profiles.review.edge-cases` には、プロバイダー、
+`profiles.review.review-a` と `profiles.review.review-b` は、仕様・正しさ・境界条件・安全性・テストを含む同じ変更全体を独立にレビューします。
+各人には、プロバイダー、
 モデル、推論量のほかに、呼び出し方と返答の読み方を役割ごとに書けます。
 
 ```json
 {
   "profiles": {
     "review": {
-      "correctness": {
+      "review-a": {
         "provider": "claude",
         "model": "claude-opus-5-5",
         "effort": "high",
@@ -83,7 +84,7 @@ LLM にタスクを判定させます。書かなければ判定の呼び出し�
         "context": "local-instructions",
         "output": "findings-json"
       },
-      "edge-cases": { "provider": "codex", "output": "findings-json" }
+      "review-b": { "provider": "codex", "output": "findings-json" }
     }
   }
 }
@@ -663,3 +664,33 @@ setupコマンドがある場合は、依存関係の操作もfactoryが担当�
 この文面は`local-factory.v6`の新しいsetupに適用します。
 すでにsetupを保存したrunを再開しても、新しい文面を混ぜません。
 実装担当のNOTESは引き続き自己申告であり、固定検査や独立レビューの代わりにはなりません。
+
+## 再レビューのセッション継続（実験）
+
+既定は2人とも毎回新規セッションです。リポジトリ対象で明示的に試す場合だけ、次を設定します。
+
+```json
+{
+  "review": { "sessionMode": "reuse-experiment" }
+}
+```
+
+2人はそれぞれ自分のセッションで、現在の固定候補を全体からレビューします。
+修正後は古い判定を無効にし、ファイルを読み直して修正済みの不具合と新しい回帰を確認します。
+実装セッションや、もう1人のレビュー内容は共有しません。
+
+継続レビューが両方とも合格すると、同じ候補を**新規セッションの2人で最終確認**します。
+この2人の合格がそろってから、承認待ちまたは自動完了へ進みます。
+最終確認で指摘が出れば修正へ戻り、`maxIterations`の上限に達していれば停止します。
+中断・未完了は合格にせず、未確定の呼び出しを自動で送り直しません。
+`parallelReview`と併用でき、検査が失敗した場合は継続セッションを破棄します。
+
+設定はtrigger/setup時に固定し、過去runの省略値は毎回新規のままです。
+`fresh`へ戻せば新しいrunは毎回新規になります。runをまたいでセッションを共有しません。
+Codexは通常prompt型、Claudeは通常prompt型とcommand / local-instructions型に対応します。
+Codexのcommand / local-instructions型、同梱のsubject題材、Bash・Web・MCPが必要なレビューコマンドには対応しません。
+
+レポートの `reviewCalls` は `iterative` と `final` を区別し、最終確認の追加費用も集計します。
+画面の工程には「最終確認」を表示します。
+[実CLIでの検証結果と再現手順](research/review-session-experiment.md)には、節約が確認できなかった小さな試行と未確認事項を残しています。
+実際のタスクで、最終確認込みの費用・時間と検出結果を比べてから利用を判断してください。

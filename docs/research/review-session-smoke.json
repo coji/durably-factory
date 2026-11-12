@@ -1,0 +1,429 @@
+{
+  "date": "2026-11-11",
+  "status": "completed",
+  "rows": [
+    {
+      "name": "bug-add",
+      "decision": "needsChanges",
+      "reviewPass": "iterative",
+      "sessionHandling": "fresh",
+      "subagentCalls": 0,
+      "elapsedMs": 18346,
+      "costUsdEstimate": 0.06465169999999999,
+      "usage": {
+        "inputTokens": 14930,
+        "cachedInputTokens": 13755,
+        "cacheReadTokens": 10783,
+        "cacheWriteTokens": 2972,
+        "outputTokens": 1941,
+        "totalTokens": 16871,
+        "usageSource": "provider-final",
+        "cacheWrite5mTokens": 0,
+        "cacheWrite1hTokens": 2972
+      },
+      "usageByModel": {
+        "claude-haiku-5-5": {
+          "inputTokens": 1171,
+          "outputTokens": 12,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0,
+          "cachedInputTokens": 0,
+          "totalTokens": 1183,
+          "usageSource": "provider-final",
+          "cacheWrite5mTokens": 0,
+          "cacheWrite1hTokens": 0
+        },
+        "claude-opus-5-5": {
+          "inputTokens": 13759,
+          "outputTokens": 1929,
+          "cacheReadTokens": 10783,
+          "cacheWriteTokens": 2972,
+          "cachedInputTokens": 13755,
+          "totalTokens": 15688,
+          "usageSource": "provider-final",
+          "cacheWrite5mTokens": 0,
+          "cacheWrite1hTokens": 2972
+        }
+      },
+      "costPrices": {
+        "claude-haiku-5-5": {
+          "provider": "anthropic",
+          "input": 0.1,
+          "output": 0.5,
+          "cacheRead": 0.01,
+          "cacheWrite": 0.125,
+          "longContext": {
+            "inputTokensAbove": 100000,
+            "input": 0.5,
+            "output": 2.5,
+            "cacheRead": 0.05,
+            "cacheWrite": 0.625,
+            "cacheWrite1h": 1
+          },
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "checkedAt": "2026-11-11",
+          "monitor": true,
+          "aliases": [],
+          "cacheWrite1h": 0.2
+        },
+        "claude-opus-5-5": {
+          "provider": "anthropic",
+          "input": 4,
+          "output": 20,
+          "cacheRead": 0.2,
+          "cacheWrite": 5,
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "checkedAt": "2026-11-11",
+          "monitor": true,
+          "aliases": [],
+          "cacheWrite1h": 8
+        }
+      },
+      "versions": {
+        "ai": "7.0.166",
+        "ai-sdk-provider-codex-cli": "2.4.0",
+        "ai-sdk-provider-claude-code": "4.4.1",
+        "claudeCli": "2.1.321 (Claude Code)"
+      }
+    },
+    {
+      "name": "fix-add-regress-mul",
+      "decision": "needsChanges",
+      "reviewPass": "iterative",
+      "sessionHandling": "continued",
+      "subagentCalls": 0,
+      "elapsedMs": 16064,
+      "costUsdEstimate": 0.0653914,
+      "usage": {
+        "inputTokens": 20166,
+        "cachedInputTokens": 20160,
+        "cacheReadTokens": 17017,
+        "cacheWriteTokens": 3143,
+        "outputTokens": 1841,
+        "totalTokens": 22007,
+        "usageSource": "provider-final",
+        "cacheWrite5mTokens": 0,
+        "cacheWrite1hTokens": 3143
+      },
+      "usageByModel": {
+        "claude-haiku-5-5": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0,
+          "cachedInputTokens": 0,
+          "totalTokens": 0,
+          "usageSource": "provider-final",
+          "cacheWrite5mTokens": 0,
+          "cacheWrite1hTokens": 0
+        },
+        "claude-opus-5-5": {
+          "inputTokens": 20166,
+          "outputTokens": 1841,
+          "cacheReadTokens": 17017,
+          "cacheWriteTokens": 3143,
+          "cachedInputTokens": 20160,
+          "totalTokens": 22007,
+          "usageSource": "provider-final",
+          "cacheWrite5mTokens": 0,
+          "cacheWrite1hTokens": 3143
+        }
+      },
+      "costPrices": {
+        "claude-haiku-5-5": {
+          "provider": "anthropic",
+          "input": 0.1,
+          "output": 0.5,
+          "cacheRead": 0.01,
+          "cacheWrite": 0.125,
+          "longContext": {
+            "inputTokensAbove": 100000,
+            "input": 0.5,
+            "output": 2.5,
+            "cacheRead": 0.05,
+            "cacheWrite": 0.625,
+            "cacheWrite1h": 1
+          },
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "checkedAt": "2026-11-11",
+          "monitor": true,
+          "aliases": [],
+          "cacheWrite1h": 0.2
+        },
+        "claude-opus-5-5": {
+          "provider": "anthropic",
+          "input": 4,
+          "output": 20,
+          "cacheRead": 0.2,
+          "cacheWrite": 5,
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "checkedAt": "2026-11-11",
+          "monitor": true,
+          "aliases": [],
+          "cacheWrite1h": 8
+        }
+      },
+      "versions": {
+        "ai": "7.0.166",
+        "ai-sdk-provider-codex-cli": "2.4.0",
+        "ai-sdk-provider-claude-code": "4.4.1",
+        "claudeCli": "2.1.321 (Claude Code)"
+      }
+    },
+    {
+      "name": "fix-both",
+      "decision": "pass",
+      "reviewPass": "iterative",
+      "sessionHandling": "continued",
+      "subagentCalls": 0,
+      "elapsedMs": 13048,
+      "costUsdEstimate": 0.061085600000000004,
+      "usage": {
+        "inputTokens": 40279,
+        "cachedInputTokens": 40271,
+        "cacheReadTokens": 36948,
+        "cacheWriteTokens": 3323,
+        "outputTokens": 1354,
+        "totalTokens": 41633,
+        "usageSource": "provider-final",
+        "cacheWrite5mTokens": 0,
+        "cacheWrite1hTokens": 3323
+      },
+      "usageByModel": {
+        "claude-haiku-5-5": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0,
+          "cachedInputTokens": 0,
+          "totalTokens": 0,
+          "usageSource": "provider-final",
+          "cacheWrite5mTokens": 0,
+          "cacheWrite1hTokens": 0
+        },
+        "claude-opus-5-5": {
+          "inputTokens": 40279,
+          "outputTokens": 1354,
+          "cacheReadTokens": 36948,
+          "cacheWriteTokens": 3323,
+          "cachedInputTokens": 40271,
+          "totalTokens": 41633,
+          "usageSource": "provider-final",
+          "cacheWrite5mTokens": 0,
+          "cacheWrite1hTokens": 3323
+        }
+      },
+      "costPrices": {
+        "claude-haiku-5-5": {
+          "provider": "anthropic",
+          "input": 0.1,
+          "output": 0.5,
+          "cacheRead": 0.01,
+          "cacheWrite": 0.125,
+          "longContext": {
+            "inputTokensAbove": 100000,
+            "input": 0.5,
+            "output": 2.5,
+            "cacheRead": 0.05,
+            "cacheWrite": 0.625,
+            "cacheWrite1h": 1
+          },
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "checkedAt": "2026-11-11",
+          "monitor": true,
+          "aliases": [],
+          "cacheWrite1h": 0.2
+        },
+        "claude-opus-5-5": {
+          "provider": "anthropic",
+          "input": 4,
+          "output": 20,
+          "cacheRead": 0.2,
+          "cacheWrite": 5,
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "checkedAt": "2026-11-11",
+          "monitor": true,
+          "aliases": [],
+          "cacheWrite1h": 8
+        }
+      },
+      "versions": {
+        "ai": "7.0.166",
+        "ai-sdk-provider-codex-cli": "2.4.0",
+        "ai-sdk-provider-claude-code": "4.4.1",
+        "claudeCli": "2.1.321 (Claude Code)"
+      }
+    },
+    {
+      "name": "fresh-final-a",
+      "decision": "pass",
+      "reviewPass": "final",
+      "sessionHandling": "fresh",
+      "subagentCalls": 0,
+      "elapsedMs": 16477,
+      "costUsdEstimate": 0.06087769999999999,
+      "usage": {
+        "inputTokens": 22280,
+        "cachedInputTokens": 21103,
+        "cacheReadTokens": 17953,
+        "cacheWriteTokens": 3150,
+        "outputTokens": 1609,
+        "totalTokens": 23889,
+        "usageSource": "provider-final",
+        "cacheWrite5mTokens": 0,
+        "cacheWrite1hTokens": 3150
+      },
+      "usageByModel": {
+        "claude-haiku-5-5": {
+          "inputTokens": 1171,
+          "outputTokens": 12,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0,
+          "cachedInputTokens": 0,
+          "totalTokens": 1183,
+          "usageSource": "provider-final",
+          "cacheWrite5mTokens": 0,
+          "cacheWrite1hTokens": 0
+        },
+        "claude-opus-5-5": {
+          "inputTokens": 21109,
+          "outputTokens": 1597,
+          "cacheReadTokens": 17953,
+          "cacheWriteTokens": 3150,
+          "cachedInputTokens": 21103,
+          "totalTokens": 22706,
+          "usageSource": "provider-final",
+          "cacheWrite5mTokens": 0,
+          "cacheWrite1hTokens": 3150
+        }
+      },
+      "costPrices": {
+        "claude-haiku-5-5": {
+          "provider": "anthropic",
+          "input": 0.1,
+          "output": 0.5,
+          "cacheRead": 0.01,
+          "cacheWrite": 0.125,
+          "longContext": {
+            "inputTokensAbove": 100000,
+            "input": 0.5,
+            "output": 2.5,
+            "cacheRead": 0.05,
+            "cacheWrite": 0.625,
+            "cacheWrite1h": 1
+          },
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "checkedAt": "2026-11-11",
+          "monitor": true,
+          "aliases": [],
+          "cacheWrite1h": 0.2
+        },
+        "claude-opus-5-5": {
+          "provider": "anthropic",
+          "input": 4,
+          "output": 20,
+          "cacheRead": 0.2,
+          "cacheWrite": 5,
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "checkedAt": "2026-11-11",
+          "monitor": true,
+          "aliases": [],
+          "cacheWrite1h": 8
+        }
+      },
+      "versions": {
+        "ai": "7.0.166",
+        "ai-sdk-provider-codex-cli": "2.4.0",
+        "ai-sdk-provider-claude-code": "4.4.1",
+        "claudeCli": "2.1.321 (Claude Code)"
+      }
+    },
+    {
+      "name": "fresh-final-b",
+      "decision": "pass",
+      "reviewPass": "final",
+      "sessionHandling": "fresh",
+      "subagentCalls": 0,
+      "elapsedMs": 16258,
+      "costUsdEstimate": 0.0571313,
+      "usage": {
+        "inputTokens": 22038,
+        "cachedInputTokens": 20861,
+        "cacheReadTokens": 17921,
+        "cacheWriteTokens": 2940,
+        "outputTokens": 1506,
+        "totalTokens": 23544,
+        "usageSource": "provider-final",
+        "cacheWrite5mTokens": 0,
+        "cacheWrite1hTokens": 2940
+      },
+      "usageByModel": {
+        "claude-haiku-5-5": {
+          "inputTokens": 1171,
+          "outputTokens": 12,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0,
+          "cachedInputTokens": 0,
+          "totalTokens": 1183,
+          "usageSource": "provider-final",
+          "cacheWrite5mTokens": 0,
+          "cacheWrite1hTokens": 0
+        },
+        "claude-opus-5-5": {
+          "inputTokens": 20867,
+          "outputTokens": 1494,
+          "cacheReadTokens": 17921,
+          "cacheWriteTokens": 2940,
+          "cachedInputTokens": 20861,
+          "totalTokens": 22361,
+          "usageSource": "provider-final",
+          "cacheWrite5mTokens": 0,
+          "cacheWrite1hTokens": 2940
+        }
+      },
+      "costPrices": {
+        "claude-haiku-5-5": {
+          "provider": "anthropic",
+          "input": 0.1,
+          "output": 0.5,
+          "cacheRead": 0.01,
+          "cacheWrite": 0.125,
+          "longContext": {
+            "inputTokensAbove": 100000,
+            "input": 0.5,
+            "output": 2.5,
+            "cacheRead": 0.05,
+            "cacheWrite": 0.625,
+            "cacheWrite1h": 1
+          },
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "checkedAt": "2026-11-11",
+          "monitor": true,
+          "aliases": [],
+          "cacheWrite1h": 0.2
+        },
+        "claude-opus-5-5": {
+          "provider": "anthropic",
+          "input": 4,
+          "output": 20,
+          "cacheRead": 0.2,
+          "cacheWrite": 5,
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "checkedAt": "2026-11-11",
+          "monitor": true,
+          "aliases": [],
+          "cacheWrite1h": 8
+        }
+      },
+      "versions": {
+        "ai": "7.0.166",
+        "ai-sdk-provider-codex-cli": "2.4.0",
+        "ai-sdk-provider-claude-code": "4.4.1",
+        "claudeCli": "2.1.321 (Claude Code)"
+      }
+    }
+  ],
+  "totalMeasuredCostUsd": 0.30913769999999996,
+  "totalMeasuredElapsedMs": 80193,
+  "limitation": "Small arithmetic fixture with a project-local /code-review command; this is a wiring/retention smoke, not evidence of equal review quality or the performance of another plugin implementation."
+}

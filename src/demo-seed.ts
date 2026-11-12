@@ -75,12 +75,12 @@ describe('calc', () => {
       profiles: {
         code: { provider: 'fake', model: 'gpt-6.1-sol', effort: 'medium' },
         review: {
-          correctness: {
+          'review-a': {
             provider: 'fake',
             model: 'gpt-6.1-sol',
             effort: 'medium',
           },
-          'edge-cases': {
+          'review-b': {
             provider: 'fake',
             model: 'claude-opus-5-5',
             effort: 'high',

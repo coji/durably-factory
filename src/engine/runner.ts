@@ -40,6 +40,7 @@ import { mergeUsage, type TokenUsage } from './usage.js'
 import { resolveVersions } from './versions.js'
 
 export interface AgentCallSpec {
+  reviewPass?: 'iterative' | 'final'
   provider: AgentProvider
   providerName: ProviderName
   prompt: string
@@ -118,6 +119,7 @@ export interface AgentCallSpec {
 export type SupersedeReason = 'superseded-by-verify'
 
 export interface AgentCallOutcome {
+  sessionUsage?: Record<string, TokenUsage>
   text: string
   sessionId: string | null
   invocationId: string
@@ -363,6 +365,7 @@ export async function runAgentCall(
     fake: spec.provider.fake,
     stage: spec.stage,
     role: spec.role,
+    ...(spec.reviewPass ? { reviewPass: spec.reviewPass } : {}),
     iteration: spec.iteration,
     operationKey,
     invocationId,
@@ -485,6 +488,9 @@ export async function runAgentCall(
     }
     const usageByModel = result.usage ? result.usageByModel : early.usageByModel
     measurement = await recordMeasurement(base, {
+      ...(result.usageAccounting
+        ? { usageAccounting: result.usageAccounting }
+        : {}),
       reportedModel: result.reportedModel,
       reportedEffort: result.reportedEffort,
       invocationId,
@@ -503,6 +509,7 @@ export async function runAgentCall(
     })
     return {
       text: result.text,
+      ...(result.session?.usage ? { sessionUsage: result.session.usage } : {}),
       sessionId,
       invocationId,
       recovered,
@@ -790,6 +797,7 @@ export async function runAgentCall(
       ...(spec.networkAccess ? { networkAccess: true } : {}),
       reviewRound: spec.reviewRound,
       sessionId: spec.session?.nativeId ?? null,
+      sessionUsage: spec.session?.usage ?? null,
       signal: linked,
       onActivity: () => {
         active = true

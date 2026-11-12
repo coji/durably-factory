@@ -115,11 +115,13 @@ import {
 } from '../engine/status.js'
 import { TERMINAL_STATUSES } from '../engine/terminal.js'
 import { runRootOf } from '../factory/layout.js'
+import { reviewerId, reviewSlot } from '../factory/reviewers.js'
 import { BASELINE_STEP } from '../factory/types.js'
 import {
   COMMON,
   PIPELINE_WORDS,
   REPO,
+  REVIEW,
   RUN_NAME,
   TRACE_WORDS,
 } from './glossary.js'
@@ -909,6 +911,7 @@ export interface Trace {
 }
 
 export interface TraceInput {
+  reviewScope?: 'whole-change'
   run: {
     status: string
     createdAt: string
@@ -951,7 +954,10 @@ export interface TraceInput {
 }
 
 /** The stage entry a stored step or wait name belongs to. */
-function entryOf(name: string): {
+function entryOf(
+  name: string,
+  wholeChange = false,
+): {
   key: string
   stage: string
   label: string
@@ -980,7 +986,7 @@ function entryOf(name: string): {
     return {
       key: `review:${sub}#${seq}`,
       stage,
-      label: lensName(sub),
+      label: lensName(wholeChange ? reviewerId(sub) : sub),
       lens: sub,
       seq,
     }
@@ -1198,7 +1204,7 @@ export function deriveTrace(input: TraceInput): Trace {
   }
   const entries = new Map<string, Entry>()
   const add = (name: string, at: number, fill: (e: Entry) => void) => {
-    const where = entryOf(name)
+    const where = entryOf(name, input.reviewScope === 'whole-change')
     if (!where || !Number.isFinite(at)) return
     const entry = entries.get(where.key) ?? {
       ...where,
@@ -1364,10 +1370,10 @@ export function deriveTrace(input: TraceInput): Trace {
           ? null
           : (input.reviewRounds
               ?.find((r) => r.sequence === e.seq)
-              ?.reviews.find((r) => r.lens === lens) ??
+              ?.reviews.find((r) => reviewSlot(r.lens) === lens) ??
             asReportReview(reviewStep ? input.stepOutputs[reviewStep] : null) ??
             (lastDone && e.seq === lastReviewSeq
-              ? (input.reviews.find((r) => r.lens === lens) ?? null)
+              ? (input.reviews.find((r) => reviewSlot(r.lens) === lens) ?? null)
               : null))
     // Only the candidate this entry's own candidate step sealed: between its
     // agent step and that step, the entry has sealed nothing yet.
@@ -1389,7 +1395,10 @@ export function deriveTrace(input: TraceInput): Trace {
     return node({
       id: `entry:${e.key}`,
       kind: 'entry',
-      label: e.label,
+      label:
+        checked?.measurement?.reviewPass === 'final'
+          ? REVIEW.finalLabel(e.label)
+          : e.label,
       stage: e.stage,
       iteration: at,
       state,
@@ -1456,7 +1465,10 @@ export function deriveTrace(input: TraceInput): Trace {
       attempts: rows.reduce((s, r) => s + r.attempts, 0),
       usage: usageOf(
         input.attempts.filter((a) => {
-          const where = entryOf(a.stepName)
+          const where = entryOf(
+            a.stepName,
+            input.reviewScope === 'whole-change',
+          )
           return (
             where !== null && rows.some((r) => r.id === `entry:${where.key}`)
           )
@@ -1955,6 +1967,7 @@ function createUiApi() {
         conclusion: report.summary.conclusion,
         attempts: report.attempts,
         waits: report.waits,
+        reviewScope: report.reviewScope,
         reviews: report.reviews,
         candidate: report.candidate,
         reviewRounds: report.reviewRounds,

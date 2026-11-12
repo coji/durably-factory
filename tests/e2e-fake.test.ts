@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url'
 
 import { signalApproval } from '../src/approval.js'
 import { createAgentDurably } from '../src/durably.js'
-import { buildReport } from '../src/engine/build-report.js'
+import { buildReport, type ReportSource } from '../src/engine/build-report.js'
 import { runChild } from '../src/engine/child.js'
 import { compareReports, comparisonToMarkdown } from '../src/engine/compare.js'
 import {
@@ -167,6 +167,45 @@ describe('fake e2e fix loop', { timeout: 180000 }, () => {
       // The report keeps every round in order, each with both verdicts and
       // notes and the candidate it reviewed; `reviews` stays the last one.
       const report = await buildReport(durably, run.id)
+      assert.equal(report.reviewScope, 'whole-change')
+      assert.deepEqual(
+        report.roleUsage.map((row) => row.role),
+        ['code', 'repair', 'review-a', 'review-b'],
+      )
+      // Read a v6 setup through the report boundary, without rewriting any DB row.
+      const stepsBefore = await durably.storage.getSteps(run.id)
+      const historicalSource: ReportSource = {
+        getRun: durably.getRun.bind(durably),
+        getRuns: durably.getRuns.bind(durably),
+        getStepAttempts: durably.getStepAttempts.bind(durably),
+        getWaits: durably.getWaits.bind(durably),
+        storage: {
+          getCompletedStep: durably.storage.getCompletedStep.bind(
+            durably.storage,
+          ),
+          getSteps: async () =>
+            stepsBefore.map((step) =>
+              step.name === 'setup'
+                ? {
+                    ...step,
+                    output: {
+                      ...(step.output as FactorySetup),
+                      instructionsVersion: 'local-factory.v6',
+                    },
+                  }
+                : step,
+            ),
+        },
+      }
+      const historical = await buildReport(historicalSource, run.id)
+      assert.equal(historical.reviewScope, undefined)
+      assert.deepEqual(
+        historical.reviews.map((row) => row.lens),
+        ['correctness', 'edge-cases'],
+      )
+      assert.deepEqual(await durably.storage.getSteps(run.id), stepsBefore)
+      assert.deepEqual(report.input, historical.input)
+      assert.deepEqual(report.output, historical.output)
       assert.equal(report.reviewRounds.length, 2)
       const [round1, round2] = report.reviewRounds
       assert.deepEqual(
@@ -176,7 +215,7 @@ describe('fake e2e fix loop', { timeout: 180000 }, () => {
       for (const round of report.reviewRounds) {
         assert.deepEqual(
           round.reviews.map((r) => r.lens),
-          ['correctness', 'edge-cases'],
+          ['review-a', 'review-b'],
         )
         assert.ok(round.reviews.every((r) => r.notes.length > 0))
       }
@@ -837,7 +876,7 @@ describe('preflight before the first agent call', { timeout: 300000 }, () => {
       const refusedCheck = unlisted.preflight?.checks.find(
         (c) => c.verdict === 'unavailable',
       )
-      assert.deepEqual(refusedCheck?.roles, ['edge-cases'])
+      assert.deepEqual(refusedCheck?.roles, ['review-b'])
       assert.equal(refusedCheck?.method, 'fake list')
       assert.equal(refusedCheck?.called, false)
       assert.equal(unlisted.preflight?.usage, null)
@@ -849,7 +888,7 @@ describe('preflight before the first agent call', { timeout: 300000 }, () => {
       assert.match(md, /## Preflight/)
       assert.match(
         md,
-        /- edge-cases: fake fake-model effort low — unavailable by fake list \(free\)/,
+        /- review-b: fake fake-model effort low — unavailable by fake list \(free\)/,
       )
       assert.match(md, /- kind: preflight-failed/)
 
@@ -899,7 +938,7 @@ describe('preflight before the first agent call', { timeout: 300000 }, () => {
       assert.ok(!free.roleUsage.some((u) => u.role === 'preflight'))
       assert.deepEqual(
         free.preflight?.checks.map((c) => c.roles),
-        [['code', 'correctness', 'edge-cases']],
+        [['code', 'review-a', 'review-b']],
       )
       assert.match(reportToMarkdown(free), /- minimal calls: 0/)
 
@@ -2132,12 +2171,12 @@ describe('refused calls and the repair profile', { timeout: 300000 }, () => {
       const separate = await buildReport(durably, ids['separate'] ?? '')
       assert.deepEqual(
         separate.preflight?.checks.map((c) => c.roles),
-        [['code', 'correctness', 'edge-cases'], ['repair']],
+        [['code', 'review-a', 'review-b'], ['repair']],
       )
       const same = await buildReport(durably, ids['same'] ?? '')
       assert.deepEqual(
         same.preflight?.checks.map((c) => c.roles),
-        [['code', 'correctness', 'edge-cases', 'repair']],
+        [['code', 'review-a', 'review-b', 'repair']],
       )
       // Repair calls and usage are their own role, never code's.
       for (const report of [separate, same]) {
@@ -3224,10 +3263,10 @@ describe('verification and review side by side', { timeout: 300000 }, () => {
         assert.equal(saved.cancelled, 'superseded-by-verify')
       }
       assert.equal(cancelledReport.reviewRounds[0]?.status, 'cancelled')
-      assert.deepEqual(cancelledReport.reviewBlockerRuleLenses, ['edge-cases'])
+      assert.deepEqual(cancelledReport.reviewBlockerRuleLenses, ['review-b'])
       assert.match(
         reportToMarkdown(cancelledReport),
-        /review blocker threshold: \d+ \(the edge-cases review was told that /,
+        /review blocker threshold: \d+ \(the review-b review was told that /,
       )
       assert.equal(
         cancelledReport.reviewRounds[0]?.reason,
@@ -3436,8 +3475,8 @@ describe('verification and review side by side', { timeout: 300000 }, () => {
       assert.deepEqual(
         report.reviewRounds[0]?.reviews.map((r) => [r.lens, r.status]),
         [
-          ['correctness', 'discarded'],
-          ['edge-cases', 'cancelled'],
+          ['review-a', 'discarded'],
+          ['review-b', 'cancelled'],
         ],
       )
       const setup = (await durably.storage.getCompletedStep(id, 'setup'))
@@ -4457,8 +4496,8 @@ describe('the review blocker threshold', { timeout: 300000 }, () => {
       const byLens = Object.fromEntries(
         low.reviews.map((r) => [r.lens, r.findings]),
       )
-      assert.deepEqual(byLens['correctness']?.nonBlocker, [productAdvice])
-      assert.deepEqual(byLens['edge-cases']?.nonBlocker, [
+      assert.deepEqual(byLens['review-a']?.nonBlocker, [productAdvice])
+      assert.deepEqual(byLens['review-b']?.nonBlocker, [
         { severity: 'non-blocker', title: 'UNSCORED', body: 'b' },
       ])
       const json = JSON.parse(reportToJson(low)) as {
@@ -4474,13 +4513,10 @@ describe('the review blocker threshold', { timeout: 300000 }, () => {
         ],
       )
       const markdown = reportToMarkdown(low)
-      assert.deepEqual(low.reviewBlockerRuleLenses, [
-        'correctness',
-        'edge-cases',
-      ])
+      assert.deepEqual(low.reviewBlockerRuleLenses, ['review-a', 'review-b'])
       assert.match(
         markdown,
-        /- review blocker threshold: 5 \(the correctness and edge-cases reviews were told that .* unless the task, the spec or the confirmed context explicitly asks for what it finds missing\)$/m,
+        /- review blocker threshold: 5 \(the review-a and review-b reviews were told that .* unless the task, the spec or the confirmed context explicitly asks for what it finds missing\)$/m,
       )
       // A threshold no review was told reads as such: every review a
       // verdict review, or findings-json reviews the run never reached.
@@ -4506,7 +4542,7 @@ describe('the review blocker threshold', { timeout: 300000 }, () => {
       // A low-scored blocker without an exception is counted as such,
       // whatever the finding is about: the reviewer named no reason.
       assert.deepEqual(tests.belowThresholdBlockers, [
-        { round: 1, lens: 'edge-cases', withException: 0, withoutException: 1 },
+        { round: 1, lens: 'review-b', withException: 0, withoutException: 1 },
       ])
 
       // The low-scored blockers stayed blockers and blocked the round; the
@@ -4517,8 +4553,8 @@ describe('the review blocker threshold', { timeout: 300000 }, () => {
       assert.deepEqual(
         first.map((r) => [r.lens, r.decision]),
         [
-          ['correctness', 'needsChanges'],
-          ['edge-cases', 'needsChanges'],
+          ['review-a', 'needsChanges'],
+          ['review-b', 'needsChanges'],
         ],
       )
       assert.deepEqual(first[0]?.findings?.blocker, [
@@ -4529,7 +4565,7 @@ describe('the review blocker threshold', { timeout: 300000 }, () => {
       assert.deepEqual(below.belowThresholdBlockers, [
         {
           round: 1,
-          lens: 'correctness',
+          lens: 'review-a',
           withException: 1,
           withoutException: 2,
         },
@@ -4549,7 +4585,7 @@ describe('the review blocker threshold', { timeout: 300000 }, () => {
       const belowMarkdown = reportToMarkdown(below)
       assert.match(
         belowMarkdown,
-        /^- blockers below threshold: 3 \(correctness, round 1; 1 with an exception, 2 without\)$/m,
+        /^- blockers below threshold: 3 \(review-a, round 1; 1 with an exception, 2 without\)$/m,
       )
       assert.equal(
         belowMarkdown.match(/^- blockers below threshold:/gm)?.length,

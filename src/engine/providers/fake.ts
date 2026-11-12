@@ -258,6 +258,8 @@ export interface LocalInstructionsSnapshot {
 
 /** One configured review call, as the fake provider received it. */
 export interface FakeReviewCall {
+  /** Exact prompt, retained only while a test explicitly records calls. */
+  prompt: string
   role: AgentRole
   round: number
   workdir: string
@@ -674,6 +676,7 @@ export class FakeProvider implements AgentProvider {
     const record: FakeReviewCall | null =
       (review || promptOnly) && recording
         ? {
+            prompt: options.prompt,
             role: options.role,
             round: options.reviewRound ?? 1,
             workdir: options.workdir,
@@ -724,7 +727,7 @@ export class FakeProvider implements AgentProvider {
     const codeCall = options.role === 'implement' || options.role === 'repair'
     const result = (text: string, sessionId?: string): AgentResult => ({
       text,
-      session: { id: sessionId ?? `fake-${randomUUID()}` },
+      session: { id: sessionId ?? options.sessionId ?? `fake-${randomUUID()}` },
       resolvedModel,
       resolvedEffort: effort,
       reportedModel,

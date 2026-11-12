@@ -121,7 +121,7 @@ import {
   idleLimitOf,
   initialState,
   REVIEW_CONTEXTS,
-  REVIEW_LENSES,
+  REVIEW_SLOTS,
   REVIEW_OUTPUTS,
   confirmRepairSession,
   REPAIR_SESSION_STEP,
@@ -135,7 +135,7 @@ import {
   type SpecSetup,
   type ReviewContext,
   type ReviewInvocation,
-  type ReviewLens,
+  type ReviewSlot,
   type ReviewOutput,
   type StageDecision,
 } from './types.js'
@@ -312,6 +312,7 @@ const targetSchema = z
        * The code reviews' blocker threshold, fixed at trigger (ADR-0040).
        * Null or absent, as on a run stored before it existed: no such rule.
        */
+      reviewSessionMode: z.enum(['fresh', 'reuse-experiment']).optional(),
       reviewBlockerThreshold: reviewBlockerThresholdSchema
         .nullable()
         .optional(),
@@ -540,17 +541,17 @@ function inputProviderOf(
  */
 export function fixReviewInvocations(
   requested:
-    | Partial<Record<ReviewLens, RequestedReviewInvocation | undefined>>
+    | Partial<Record<ReviewSlot, RequestedReviewInvocation | undefined>>
     | null
     | undefined,
   profiles: Record<
-    ReviewLens,
+    ReviewSlot,
     { provider: ProviderName; effectiveEffort: string | null }
   >,
   where = 'profiles.review',
-): Partial<Record<ReviewLens, ReviewInvocation>> {
-  const fixed: Partial<Record<ReviewLens, ReviewInvocation>> = {}
-  for (const lens of REVIEW_LENSES) {
+): Partial<Record<ReviewSlot, ReviewInvocation>> {
+  const fixed: Partial<Record<ReviewSlot, ReviewInvocation>> = {}
+  for (const lens of REVIEW_SLOTS) {
     const invocation = fixReviewInvocation(
       requested?.[lens],
       profiles[lens],
@@ -868,7 +869,7 @@ const inputSchema = z
   // Refused at trigger, like `factory trigger` refuses it from `factory.json`, so
   // a direct trigger is never stored with a reviewer that cannot run it.
   .superRefine((input, ctx) => {
-    for (const lens of REVIEW_LENSES) {
+    for (const lens of REVIEW_SLOTS) {
       const r = input.review?.[lens]
       const unsupported = r
         ? unsupportedReviewSettings(r, inputProviderOf(input, lens))
@@ -1701,6 +1702,10 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
             const sandbox = enabledSandbox(
               input.target.kind === 'repo' ? input.target.sandbox : undefined,
             )
+            const reviewSessionMode =
+              input.target.kind === 'repo'
+                ? (input.target.reviewSessionMode ?? 'fresh')
+                : 'fresh'
             const parallelReview =
               input.target.kind === 'repo' &&
               input.target.parallelReview === true
@@ -1708,7 +1713,8 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
             await rm(snapshotsDir, { recursive: true, force: true })
             const target: TargetConfig =
               prepared.kind === 'repo' &&
-              (parallelReview ||
+              (reviewSessionMode === 'reuse-experiment' ||
+                parallelReview ||
                 [
                   ...Object.values(review),
                   ...specReviewers.map((r) => r.invocation),
@@ -1792,11 +1798,15 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                   target.kind === 'repo' ? (target.selfCheck ?? null) : null,
                 review,
                 reviewBlockerThreshold,
+                reviewSessionMode,
                 spec,
                 prompts: input.prompts,
                 sandbox,
               })
             const value: FactorySetup = {
+              ...(reviewSessionMode === 'reuse-experiment'
+                ? { reviewSessionMode }
+                : {}),
               ...(input.prompts ? { prompts: input.prompts } : {}),
               automaticRetryLimit: input.automaticRetryLimit ?? 1,
               ...(input.recheckOf

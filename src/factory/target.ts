@@ -440,6 +440,7 @@ export interface Target {
     candidate: CandidateRef,
     lens: 'correctness' | 'edge-cases',
     localFile: string,
+    sessionWorkdir?: boolean,
   ): Promise<string>
   /**
    * Extract the base commit's tree for spec review, reusing what is already

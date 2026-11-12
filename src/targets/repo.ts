@@ -482,13 +482,18 @@ export class RepoTarget implements Target {
     candidate: CandidateRef,
     lens: 'correctness' | 'edge-cases',
     localFile: string,
+    sessionWorkdir = false,
   ): Promise<string> {
     const dir = this.config.reviewSnapshotsDir
     if (!dir)
       throw new Error(
         `review snapshots were not set up for ${candidate.id}; no configured reviewer reads them`,
       )
-    const cwd = reviewWorkdirOf(dir, candidate.id, lens)
+    const cwd = reviewWorkdirOf(
+      dir,
+      sessionWorkdir ? 'sessions' : candidate.id,
+      lens,
+    )
     // Whatever an interrupted attempt left is discarded, not trusted.
     await rm(cwd, { recursive: true, force: true })
     await mkdir(cwd, { recursive: true })

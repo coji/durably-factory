@@ -88,7 +88,7 @@ import { recoverInterruptedProbe, runTestProbe } from './test-probe.js'
 import {
   idleLimitOf,
   REVIEW_CANCEL_REASON,
-  REVIEW_LENSES,
+  REVIEW_SLOTS,
   reviewInvocationOf,
   separateRepairProfile,
   sessionHandlingOf,
@@ -103,9 +103,10 @@ import {
   type ParallelReviewStepResult,
   type FactoryOutcome,
   type FactorySetup,
+  type FactoryState,
   type ReviewFinding,
   type ReviewInvocation,
-  type ReviewLens,
+  type ReviewSlot,
   type ReviewStepResult,
   type SealedCandidate,
   type SessionRef,
@@ -366,6 +367,7 @@ export const codeStage: StageHandler = async ({
           ? {
               provider: profile.provider,
               nativeId: call.sessionId,
+              ...(call.sessionUsage ? { usage: call.sessionUsage } : {}),
               profileId: profile.id,
               model: call.observedModel ?? profile.effectiveModel,
               cwd: target.workdir,
@@ -434,13 +436,14 @@ export const codeStage: StageHandler = async ({
   // the code profile does.
   // A stopped call's outcome carries no session (its measurement may record
   // one it reported), so the one on record stays.
-  const session: SessionRef | null =
+  let session: SessionRef | null =
     (separateRepair && !acrossEffort) || timedOut
       ? state.implementationSession
       : reuse && call.sessionId
         ? {
             provider: profile.provider,
             nativeId: call.sessionId,
+            ...(call.sessionUsage ? { usage: call.sessionUsage } : {}),
             profileId: profile.id,
             // The model this call reported running, as Claude Code resolves
             // an alias, so a repair continues it only when it ran the model
@@ -451,6 +454,12 @@ export const codeStage: StageHandler = async ({
             instructionsVersion: state.setup.instructionsVersion,
           }
         : null
+  // A stopped call has spent an unknown amount after the last baseline.
+  // Keep the conversation, but never charge that spend again on its next resume.
+  if (timedOut && reuse && session) {
+    session = { ...session }
+    delete session.usage
+  }
   return {
     type: 'code.completed',
     role,
@@ -536,14 +545,25 @@ export const reviewStage: StageHandler = async ({
     await round.release()
   }
   await target.assertIntact(candidate)
+  const verdicts = [results[correctness], results[edgeCases]].map((r) => {
+    if ('status' in r) throw new Error(`review ${r.lens} was ${r.status}`)
+    return r
+  })
   return {
     type: 'review.completed',
     targetId: candidate.id,
-    reviews: [results[correctness], results[edgeCases]].map((r) => {
-      // Only a review beside verification is ever cancelled.
-      if ('status' in r) throw new Error(`review ${r.lens} was ${r.status}`)
-      return r
-    }),
+    reviews: verdicts,
+    ...(round.finalReview ? { finalReview: true } : {}),
+    ...(state.setup.reviewSessionMode === 'reuse-experiment' &&
+    !round.finalReview
+      ? {
+          sessions: Object.fromEntries(
+            verdicts.flatMap((review) =>
+              review.session ? [[review.lens, review.session]] : [],
+            ),
+          ),
+        }
+      : {}),
   }
 }
 
@@ -638,6 +658,18 @@ const verifyReviewStage: StageHandler = async (args) => {
   return {
     type: 'verify-review.completed',
     targetId: candidate.id,
+    ...(state.setup.reviewSessionMode === 'reuse-experiment' &&
+    verification.passed
+      ? {
+          sessions: Object.fromEntries(
+            reviews.flatMap((review) =>
+              !('status' in review) && review.session
+                ? [[review.lens, review.session]]
+                : [],
+            ),
+          ),
+        }
+      : {}),
     passed: verification.passed,
     stdout: verification.stdout,
     failureKind: verification.failureKind,
@@ -793,16 +825,22 @@ async function reviewRoundOf(args: {
     ...(implementerNotes?.path ? [implementerNotes.path] : []),
   ]
   const setup = state.setup
+  const experimental = setup.reviewSessionMode === 'reuse-experiment'
+  const finalReview =
+    experimental &&
+    state.reviews.length === 2 &&
+    state.reviews.every((review) => review.decision === 'pass')
   const baseCommit =
     setup.target.kind === 'repo' ? setup.target.baseCommit : null
   // Only a target with review snapshots has a worktree to keep reviewers
   // out of; the sample's candidate is already a sealed copy.
   const snapshotOnly =
-    args.snapshotOnly && target.prepareReviewSnapshots !== undefined
+    (args.snapshotOnly || experimental) &&
+    target.prepareReviewSnapshots !== undefined
   // Whether any reviewer of the round reads the base and head trees.
   const materials =
     snapshotOnly ||
-    REVIEW_LENSES.some((lens) =>
+    REVIEW_SLOTS.some((lens) =>
       usesReviewMaterials(reviewInvocationOf(setup, lens)),
     )
   // The base and head trees, extracted once for both reviewers of this
@@ -817,13 +855,19 @@ async function reviewRoundOf(args: {
     snapshots ??= prepareReviewSnapshots.call(target, candidate, signal)
     return {
       trees: await snapshots,
-      workdir: (lens: ReviewLens, localFile: string) =>
-        prepareReviewWorkdir.call(target, candidate, lens, localFile),
+      workdir: (lens: ReviewSlot, localFile: string) =>
+        prepareReviewWorkdir.call(
+          target,
+          candidate,
+          lens,
+          localFile,
+          experimental && !finalReview,
+        ),
     }
   }
   const round = state.reviewRounds + 1
   const reviewOnce = async (
-    lens: ReviewLens,
+    lens: ReviewSlot,
     signal: AbortSignal,
     attempt: StepAttemptContext,
     superseded?: AbortSignal,
@@ -849,8 +893,16 @@ async function reviewRoundOf(args: {
     const trees = own?.trees ?? null
     const context = reviewPrompt(
       lens,
-      trustedContext,
-      target.reviewRules(lens),
+      experimental
+        ? [
+            trustedContext,
+            `Review pass: ${finalReview ? 'FINAL FRESH CONFIRMATION' : 'ITERATIVE SESSION EXPERIMENT'}. Current candidate: ${candidate.id}.`,
+            'Read the current candidate files again. Earlier conversation content and previous file paths are stale evidence; do not reuse an earlier verdict. Check that repaired defects are gone and look for regressions in the whole current change.',
+          ].join('\n')
+        : trustedContext,
+      promptVersionOf(setup.instructionsVersion) >= 3
+        ? [...new Set(REVIEW_SLOTS.flatMap((slot) => target.reviewRules(slot)))]
+        : target.reviewRules(lens),
       target.untrustedInputs(lens),
       changes,
       repairParentConclusion(setup),
@@ -891,7 +943,7 @@ async function reviewRoundOf(args: {
     // candidate is only read, as data. A prompt review beside the check
     // works in the candidate's sealed tree.
     const workdir =
-      own && commandMode
+      own && (commandMode || experimental)
         ? await own.workdir(
             lens,
             local
@@ -909,25 +961,46 @@ async function reviewRoundOf(args: {
           : snapshotOnly
             ? setup.checkpointsDir
             : reviewCwd
-    const settings: ReviewCallSettings | null = invocation
-      ? {
-          command: command !== null,
-          context: invocation.context,
-          output,
-          readableDirs:
-            trees && changes
-              ? [
-                  ...(snapshotOnly ? [] : [reviewCwd]),
-                  dirname(changes.diffPath),
-                  trees.baseDir,
-                  trees.headDir,
-                  // A command-mode reviewer reads by directory; the copies
-                  // share one the factory keeps for nothing else.
-                  ...(stageCopies ? [stageCopies.dir] : []),
-                ]
-              : [],
-        }
-      : null
+    const settings: ReviewCallSettings | null =
+      invocation || experimental
+        ? {
+            command: command !== null,
+            context: invocation?.context ?? 'prompt',
+            ...(experimental ? { retainSession: !finalReview } : {}),
+            output,
+            readableDirs:
+              trees && changes
+                ? [
+                    ...(snapshotOnly ? [] : [reviewCwd]),
+                    dirname(changes.diffPath),
+                    trees.baseDir,
+                    trees.headDir,
+                    // A command-mode reviewer reads by directory; the copies
+                    // share one the factory keeps for nothing else.
+                    ...(stageCopies ? [stageCopies.dir] : []),
+                  ]
+                : [],
+          }
+        : null
+    const recorded =
+      experimental && !finalReview
+        ? (state.reviewSessions?.[lens] ?? null)
+        : null
+    if (
+      recorded &&
+      (recorded.provider !== profile.provider ||
+        recorded.profileId !== profile.id ||
+        recorded.cwd !== workdir ||
+        recorded.instructionsVersion !== setup.instructionsVersion)
+    )
+      throw new Error(`review session provenance mismatch: ${role}`)
+    const reason = finalReview
+      ? 'final confirmation always starts a fresh independent session'
+      : recorded
+        ? 'continue this reviewer only, against the current sealed candidate'
+        : experimental
+          ? 'first review in this reviewer session'
+          : 'each review starts an independent session'
     const result = await runAgentCall(signal, attempt, {
       provider: args.providers[lens],
       providerName: profile.provider,
@@ -948,7 +1021,17 @@ async function reviewRoundOf(args: {
       operationKey: `${step.runId}/${key}/${lens}`,
       checkpointsDir: setup.checkpointsDir,
       agentLogsDir: agentLogsDirBeside(setup.checkpointsDir),
-      session: null,
+      session: recorded,
+      requireSession: experimental && !finalReview,
+      sessionHandling: recorded ? 'continued' : 'fresh',
+      sessionReason: reason,
+      ...(experimental
+        ? {
+            reviewPass: finalReview
+              ? ('final' as const)
+              : ('iterative' as const),
+          }
+        : {}),
       configVersion: setup.configVersion,
       ...(superseded
         ? { supersede: { signal: superseded, reason: REVIEW_CANCEL_REASON } }
@@ -959,14 +1042,55 @@ async function reviewRoundOf(args: {
     // The findings are kept with the verdict in this completed step, so a
     // report reads them back without calling the reviewer or reading the
     // checkpoint again. The review event drops them before the state.
-    return { lens, ...readReviewReply(output, result, lens) }
+    const session: SessionRef | null =
+      experimental && !finalReview && result.sessionId
+        ? {
+            provider: profile.provider,
+            nativeId: result.sessionId,
+            profileId: profile.id,
+            model: result.observedModel ?? profile.effectiveModel,
+            cwd: workdir,
+            instructionsVersion: setup.instructionsVersion,
+            ...(result.sessionUsage ? { usage: result.sessionUsage } : {}),
+          }
+        : null
+    return {
+      lens,
+      ...readReviewReply(output, result, lens),
+      ...(session ? { session } : {}),
+      ...(experimental
+        ? {
+            reviewPass: finalReview
+              ? ('final' as const)
+              : ('iterative' as const),
+          }
+        : {}),
+    }
   }
   return {
+    finalReview,
     reviewOnce,
     release: async () => {
       if (materials) await target.releaseReviewSnapshots?.({ base: false })
     },
   }
+}
+
+/** A second guard at both outward gates, independent of policy routing. */
+function assertFinalReview(state: FactoryState): void {
+  if (state.setup.reviewSessionMode !== 'reuse-experiment') return
+  if (
+    state.finalReviewTarget !== state.candidate?.id ||
+    state.reviews.length !== 2 ||
+    !REVIEW_SLOTS.every((slot) =>
+      state.reviews.some(
+        (review) => review.lens === slot && review.decision === 'pass',
+      ),
+    )
+  )
+    throw new Error(
+      'review-incomplete: fresh final confirmation is required for the current candidate',
+    )
 }
 
 export const approvalStage: StageHandler = async ({
@@ -975,6 +1099,7 @@ export const approvalStage: StageHandler = async ({
   key,
   services,
 }) => {
+  assertFinalReview(state)
   const target = services.target
   const candidate = requireCandidate(state)
   await target.assertIntact(candidate)
@@ -1021,6 +1146,7 @@ export const finishStage: StageHandler = async ({
   const target = services.target
   const candidate = requireCandidate(state)
   await target.assertIntact(candidate)
+  assertFinalReview(state)
   const rejected = state.approval === 'rejected'
   // Delivery is outward-facing (it may push a branch and open a pull request),
   // so it is its own step: a replay reads the recorded result instead of

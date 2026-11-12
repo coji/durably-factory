@@ -37,7 +37,7 @@ decision:N
   └─ stages[decision.stage](...)
        ├─ code: agent call → fixed Candidate
        ├─ verify: fixed acceptance command against Candidate
-       ├─ review: correctness + edge-cases (step.all, new sessions)
+       ├─ review: review-a + review-b (step.all, new sessions)
        ├─ approve: prepareWait → waitFor(Candidate ID)
        └─ finish/stop: approved Candidate or terminal failure
 ```

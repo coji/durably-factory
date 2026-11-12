@@ -126,7 +126,7 @@ export interface RoleProfileRow {
 }
 
 /**
- * Token and cost consumption of one role (code, correctness, edge-cases),
+ * Token and cost consumption of one role (code, review-a, review-b),
  * counted once per invocation. Unlike `StageUsage`, the two reviewers are
  * separate rows, because they may run on different providers or models.
  */
@@ -954,8 +954,35 @@ export interface BelowThresholdBlockers {
   withoutException: number
 }
 
+/** Each reviewer invocation, retaining its measured values and session decision. */
+export interface ReportReviewCall {
+  reviewPass?: 'iterative' | 'final'
+  reviewer: string
+  round: number | null
+  candidateId: string | null
+  invocationId: string | null
+  sessionId: string | null
+  sessionHandling: SessionHandling | null
+  sessionReason: string | null
+  usage: import('./usage.js').TokenUsage | null
+  usageByModel: Record<string, import('./usage.js').TokenUsage> | null
+  elapsedMs: number | null
+  costUsdEstimate: number | null
+  recovered: boolean
+}
+
 export interface LoopReport {
-  prompts?: import('../factory/prompt-policy.js').PromptPolicies
+  reviewSessionMode?: 'reuse-experiment'
+  reviewCalls?: ReportReviewCall[]
+  /** v7 reviewers cover the whole change; absent on historical reports. */
+  reviewScope?: 'whole-change'
+  prompts?: Partial<
+    Record<
+      | import('../factory/prompt-policy.js').PromptRole
+      | import('../factory/reviewers.js').ReviewerId,
+      import('../factory/prompt-policy.js').PromptPolicy
+    >
+  >
   runId: string
   jobName: string
   status: string
@@ -1006,8 +1033,8 @@ export interface LoopReport {
   preflight: ReportPreflight | null
   stageUsage: StageUsage[]
   /**
-   * Per-role requested settings and usage: code, repair, correctness,
-   * edge-cases, and triage when the run has a triage profile.
+   * Per-role requested settings and usage: code, repair, review-a, review-b,
+   * and triage when configured. Historical reports use the old slot names.
    */
   roleUsage: RoleUsage[]
   /** SHA-256 of each input file's content, as stored in the run. */
@@ -1263,6 +1290,36 @@ function countedInvocations(attempts: AttemptRow[]): AttemptRow[] {
   return dedupeByInvocation(attempts).filter((a) =>
     attemptExpectsUsage(a.stepName),
   )
+}
+
+/** Read measurements, never reprice them against today's catalog. */
+export function reviewCallsOf(
+  attempts: AttemptRow[],
+  rounds: ReportReviewRound[],
+): ReportReviewCall[] {
+  return dedupeByInvocation(attempts).flatMap((attempt) => {
+    const m = attempt.measurement
+    if (m?.role !== 'review-a' && m?.role !== 'review-b') return []
+    const sequence = /^stage:(\d+):review:/.exec(attempt.stepName)?.[1]
+    const round = rounds.find((value) => value.sequence === Number(sequence))
+    return [
+      {
+        reviewer: m.role,
+        ...(m.reviewPass ? { reviewPass: m.reviewPass } : {}),
+        round: round?.round ?? null,
+        candidateId: round?.candidate?.id ?? null,
+        invocationId: m.invocationId ?? null,
+        sessionId: m.sessionId ?? null,
+        sessionHandling: m.sessionHandling ?? null,
+        sessionReason: m.sessionReason ?? null,
+        usage: m.usage,
+        usageByModel: m.usageByModel ?? null,
+        elapsedMs: m.elapsedMs,
+        costUsdEstimate: m.costUsdEstimate,
+        recovered: m.recovered === true,
+      },
+    ]
+  })
 }
 
 /** Token sums over already-deduped LLM invocations. */
@@ -2158,6 +2215,25 @@ export function reportToMarkdown(r: LoopReport): string {
       `- reviews of candidates that failed verification: ${r.discardedReviews.invocations} call(s), cost ${formatCost(r.discardedReviews.costUsd)} (part of the cost above)`,
     )
   lines.push('')
+  if (r.reviewCalls?.length) {
+    lines.push('## Reviewer invocations', '')
+    if (r.reviewSessionMode)
+      lines.push(
+        '- session mode: reuse-experiment; two fresh final confirmations required',
+        '',
+      )
+    lines.push(
+      '| reviewer | pass | candidate | round | session | reason | in | cache read | 5m write | 1h write | out | elapsed | cost (api-equiv) |',
+    )
+    lines.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|')
+    for (const call of r.reviewCalls) {
+      const u = call.usage
+      lines.push(
+        `| ${call.reviewer} | ${call.reviewPass ?? 'unknown'} | ${call.candidateId ?? 'unknown'} | ${call.round ?? 'unknown'} | ${call.sessionHandling ?? 'unknown'}${call.recovered ? ' (recovered)' : ''} | ${call.sessionReason ?? 'unknown'} | ${formatTokens(u?.inputTokens ?? null)} | ${formatTokens(u?.cacheReadTokens ?? null)} | ${formatTokens(u?.cacheWrite5mTokens ?? null)} | ${formatTokens(u?.cacheWrite1hTokens ?? null)} | ${formatTokens(u?.outputTokens ?? null)} | ${formatDuration(call.elapsedMs)} | ${formatCost(call.costUsdEstimate)} |`,
+      )
+    }
+    lines.push('')
+  }
   lines.push('## Stage usage (deduped by invocation)')
   lines.push('')
   lines.push(

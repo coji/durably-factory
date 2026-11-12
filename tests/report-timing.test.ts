@@ -12,6 +12,7 @@ import {
   reportToJson,
   reportToMarkdown,
   reviewHighlights,
+  reviewCallsOf,
   specWallMs,
   stageTimings,
   totalStageMs,
@@ -23,6 +24,7 @@ import {
   type ReportReviewRound,
   type RunSummary,
 } from '../src/engine/report.js'
+import { wholeChangeReviewReport } from '../src/engine/reviewer-presentation.js'
 
 /** A finished run with two code attempts, one of them unmeasured. */
 function baseReport(): LoopReport {
@@ -1002,4 +1004,105 @@ describe("the implementer's notes in the report", () => {
     ])
       assert.doesNotMatch(reportToMarkdown(report), /Implementer notes/)
   })
+})
+
+describe('versioned reviewer presentation', () => {
+  it('renames only v7 report projections and preserves the historical evidence and incomplete gate', () => {
+    const stored = baseReport()
+    const review: ReportReview = {
+      lens: 'correctness',
+      decision: 'pass',
+      notes: 'old wording',
+      findings: null,
+    }
+    stored.reviews = [review]
+    stored.reviewRounds = [
+      {
+        round: 1,
+        sequence: 2,
+        candidate: null,
+        status: 'completed',
+        reviews: [review],
+      },
+    ]
+    stored.reviewHighlights = reviewHighlights(
+      stored.reviewRounds,
+      stored.reviews,
+      ['correctness', 'edge-cases'],
+    )
+    stored.input = {
+      task: 'correctness and edge-cases are task text',
+      profiles: { correctness: { provider: 'codex' } },
+    }
+    stored.output = { reviews: [review] }
+    stored.reviewBlockerRuleLenses = ['correctness', 'edge-cases']
+    stored.belowThresholdBlockers = [
+      { round: 1, lens: 'edge-cases', withException: 1, withoutException: 0 },
+    ]
+    stored.attempts = [row('stage:2:review:correctness', 'a', 10)]
+    const before = structuredClone(stored)
+    for (const version of [undefined, 'local-factory.v5', 'local-factory.v6']) {
+      assert.equal(wholeChangeReviewReport(stored, version), stored)
+    }
+    const current = wholeChangeReviewReport(stored, 'local-factory.v7')
+    assert.equal(current.reviewScope, 'whole-change')
+    assert.equal(current.reviews[0]?.lens, 'review-a')
+    assert.equal(current.reviewRounds[0]?.reviews[0]?.lens, 'review-a')
+    assert.deepEqual(current.reviewBlockerRuleLenses, ['review-a', 'review-b'])
+    assert.equal(current.belowThresholdBlockers?.[0]?.lens, 'review-b')
+    assert.equal(current.reviewHighlights.last, 'incomplete')
+    assert.equal(current.reviewHighlights.lastPasses[0]?.lens, 'review-a')
+    assert.equal(current.input, stored.input)
+    assert.equal(current.output, stored.output)
+    assert.equal(current.attempts, stored.attempts)
+    assert.deepEqual(stored, before)
+    assert.match(reportToMarkdown(current), /review-a/)
+  })
+})
+
+it('reports reviewer invocations once with the recorded cost and candidate, without repricing', () => {
+  const attempt = row('stage:2:review:correctness', 'a1', 10)
+  assert.ok(attempt.measurement)
+  attempt.measurement.role = 'review-a'
+  attempt.measurement.invocationId = 'one-call'
+  attempt.measurement.result = 'review-a-done'
+  attempt.measurement.sessionHandling = 'fresh'
+  attempt.measurement.sessionReason = 'independent review'
+  attempt.measurement.costUsdEstimate = 123
+  const recovered = structuredClone(attempt)
+  recovered.attemptId = 'a2'
+  recovered.measurement!.recovered = true
+  recovered.measurement!.result = 'checkpoint-recovered'
+  const calls = reviewCallsOf(
+    [attempt, recovered],
+    [
+      {
+        round: 1,
+        sequence: 2,
+        candidate: { id: 'sealed', branch: null, commit: null },
+        reviews: [],
+      },
+    ],
+  )
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0]?.candidateId, 'sealed')
+  assert.equal(calls[0]?.round, 1)
+  assert.equal(calls[0]?.costUsdEstimate, 123)
+  assert.equal(calls[0]?.sessionHandling, 'fresh')
+  const historical = reviewCallsOf(
+    [
+      {
+        ...attempt,
+        measurement: {
+          ...attempt.measurement,
+          sessionHandling: null,
+          sessionReason: null,
+          costUsdEstimate: null,
+        },
+      },
+    ],
+    [],
+  )
+  assert.equal(historical[0]?.sessionHandling, null)
+  assert.equal(historical[0]?.costUsdEstimate, null)
 })
