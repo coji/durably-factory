@@ -194,6 +194,17 @@ export function checkFingerprint(command: string[]): string {
   return command.join(' ')
 }
 
+/** Render argv for the POSIX shell commands an implementer is asked to run. */
+function selfCheckCommand(command: string[]): string {
+  return command
+    .map((argument) =>
+      /^[a-zA-Z0-9_@%+=:,./-]+$/.test(argument)
+        ? argument
+        : `'${argument.replace(/'/g, `'\\''`)}'`,
+    )
+    .join(' ')
+}
+
 export class RepoTarget implements Target {
   readonly kind = 'repo' as const
 
@@ -335,13 +346,13 @@ export class RepoTarget implements Target {
     return [
       [
         'Before you finish, run each of these commands in this worktree and fix what they report:',
-        ...commands.map((command) => `  \`${checkFingerprint(command)}\``),
+        ...commands.map((command) => `  \`${selfCheckCommand(command)}\``),
         ...(this.config.codeResponseVersion === 1
           ? [
               'Do not return with a failing sandbox-runnable check. End your reply with NOTES: and report each result as CHECK C<n>: pass | fail | not-run — <result or reason>, using the following IDs. These are self-reported claims, not factory verification. If a command cannot run in this sandbox, say not-run and explain why; do not claim a pass.',
               ...commands.map(
                 (command, index) =>
-                  `Self-check C${index + 1}: ${checkFingerprint(command)}`,
+                  `Self-check C${index + 1}: ${selfCheckCommand(command)}`,
               ),
             ]
           : []),
