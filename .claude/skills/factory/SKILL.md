@@ -97,8 +97,28 @@ and steer it.
      for a dry run of the wiring.
 
 4. Report the run id, and the auto-started worker's pid and log file when the
-   trigger JSON names one, and stop. Do not poll. The run takes as long as the work
-   takes, and this session does not need to stay open.
+   trigger JSON names one.
+
+   If the user only asked to hand the issue off, stop there. The run takes as
+   long as the work takes, and this session does not need to stay open.
+
+   If this session owns what happens after the run (it imports the result,
+   starts a repair, or carries the work on to a pull request), wait for the run
+   instead of ending the turn. Do not write "I'll report back when it finishes"
+   and stop: nothing wakes the session again, and the run sits finished until a
+   person comes back. Wait with one blocking command, not by reading `status`
+   or `report` in a loop:
+
+   ```bash
+   pnpm -C "$FACTORY" factory wait --run <runId> --format json
+   ```
+
+   Run it so that its exit resumes this session. In Claude Code, start it as a
+   background command; the session is notified when it exits. Exit codes: 0
+   approved and delivered, 2 waiting on a person, 3 failed or rejected, 4
+   cancelled, 5 timed out, 6 no worker. Only 2, and a decision the user has
+   not delegated, needs the user. Retries, flaky checks, review triage and
+   "should I continue" do not.
 
 ## Reading a run
 
