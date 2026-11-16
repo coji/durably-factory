@@ -212,6 +212,18 @@ export interface ReportSealedCandidate extends ReportCandidate {
   iteration: number
   /** The stage sequence of the code entry that sealed it. */
   sequence: number
+  /**
+   * The check's own outputs copied beside its diff (`checkArtifacts`), by
+   * absolute path; absent when there are none.
+   */
+  artifacts?: string[]
+}
+
+/** One `--reference` file, as trigger recorded it. */
+export interface ReportReferenceFile {
+  name: string
+  size: number
+  sha256: string
 }
 
 /**
@@ -1051,6 +1063,8 @@ export interface LoopReport {
   roleUsage: RoleUsage[]
   /** SHA-256 of each input file's content, as stored in the run. */
   inputs: ReportInputs
+  /** The `--reference` files the run was given; absent without any. */
+  references?: ReportReferenceFile[]
   lineage: ReportLineage
   /** Last sealed candidate, whatever the conclusion; null before one exists. */
   candidate: ReportCandidate | null
@@ -1948,6 +1962,13 @@ export function reportToMarkdown(r: LoopReport): string {
     )
   }
   lines.push('')
+  if (r.references && r.references.length > 0) {
+    lines.push('## Reference files (trusted, SHA-256 recorded at trigger)')
+    lines.push('')
+    for (const file of r.references)
+      lines.push(`- ${file.name}: ${file.sha256} (${file.size} bytes)`)
+    lines.push('')
+  }
   // Its path and hash are among the inputs above; here, what the prompts
   // were given.
   if (r.inputs.context) {
@@ -1992,6 +2013,8 @@ export function reportToMarkdown(r: LoopReport): string {
         lines.push(`  - diff: ${c.changes.diffPath}`)
         lines.push(`  - changed files: ${c.changes.changedFilesPath}`)
       }
+      for (const file of c.artifacts ?? [])
+        lines.push(`  - check artifact: ${file}`)
     }
   } else {
     lines.push('- none')

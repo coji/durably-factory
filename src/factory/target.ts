@@ -19,6 +19,7 @@ import type {
  * database to work from.
  */
 import type { GradeResult } from '../engine/verification.js'
+import type { ReferenceFiles } from './references.js'
 import type { FactorySetup, ProfileRole, TestProbeRule } from './types.js'
 
 export type TargetKind = 'subject' | 'repo'
@@ -124,6 +125,17 @@ export interface RepoTargetConfig {
    */
   scope?: string | null
   context?: string | null
+  /**
+   * The owner's reference files, copied into the run's own directory at
+   * setup and listed in every role's prompt. Absent: none.
+   */
+  references?: ReferenceFiles
+  /**
+   * The directory, relative to the worktree, a completed check leaves its
+   * own outputs in; copied beside each candidate's diff for the reviewers.
+   * Absent: none.
+   */
+  checkArtifacts?: string
   /**
    * Files the factory's own stages produced, registered with
    * `withStageContext` and handed to the reviewers as trusted context.
@@ -419,6 +431,19 @@ export interface Target {
    */
   ownerContext(): string | null
   repairScope?(): string | null
+  /**
+   * The owner's reference files, in the run's own copy, which every role
+   * is shown and may read; null or absent without any.
+   */
+  references?(): ReferenceFiles | null
+  /**
+   * The copy of the check's own outputs a completed check of `candidate`
+   * left (`checkArtifacts`), with its files relative to `dir`; null when
+   * there is none.
+   */
+  checkArtifacts?(
+    candidate: CandidateRef,
+  ): Promise<{ dir: string; files: string[] } | null>
   /**
    * What each reviewer is asked to check. Reviewers see only the candidate
    * and the trusted context, so the questions have to come from whoever knows

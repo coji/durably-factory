@@ -279,6 +279,8 @@ export interface FakeReviewCall {
    * absent.
    */
   readable: Record<string, Record<string, string> | null>
+  /** The exact files outside the working directory the call may read. */
+  readableFiles: string[]
   /** Null unless the call used local instructions. */
   localInstructionsAtStart: LocalInstructionsSnapshot | null
   localInstructionsAtEnd: LocalInstructionsSnapshot | null
@@ -695,6 +697,7 @@ export class FakeProvider implements AgentProvider {
                   ),
                 )
               : {},
+            readableFiles: options.readableFiles ?? [],
             localInstructionsAtStart:
               review?.context === 'local-instructions'
                 ? await readLocalInstructions(options.workdir)

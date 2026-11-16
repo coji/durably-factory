@@ -74,6 +74,7 @@ import {
   specBlockers,
   type SpecState,
 } from './reducer.js'
+import { referencePaths } from './references.js'
 import {
   checkStageContextName,
   MAX_CONTEXT_BYTES,
@@ -266,6 +267,7 @@ export const codeStage: StageHandler = async ({
     promptVersion: promptVersionOf(state.setup.instructionsVersion),
     ownerContext: target.ownerContext(),
     scope: target.repairScope?.(),
+    references: target.references?.() ?? null,
     // Told it starts a new session only when it does. A repair on the
     // code profile keeps the prompt it always had, unless it repairs a
     // stopped call's work in a new session.
@@ -275,6 +277,7 @@ export const codeStage: StageHandler = async ({
     // Read from the reviews themselves, never from the notes' text.
     repairsReviewFeedback: repairsReviewFeedback(state),
   }
+  const references = referencePaths(promptArgs.references)
   const runCodeCall = (
     suffix: string,
     prompt: string,
@@ -291,6 +294,8 @@ export const codeStage: StageHandler = async ({
           providerName: profile.provider,
           prompt,
           workdir: target.workdir,
+          // The owner's reference files, outside the worktree, read only.
+          ...(references.length > 0 ? { readableFiles: references } : {}),
           timeoutMs: state.setup.agentTimeoutMs,
           ...idleLimitOf(state.setup),
           // A call the factory's timer stops is settled; what it left in the
@@ -833,10 +838,18 @@ async function reviewRoundOf(args: {
   // written again from its stored content for each round.
   // The implementer's notes on this candidate get a copy of their own, as
   // untrusted, never in the trusted context.
-  const [trustedContext, stageCopies] = await Promise.all([
+  // The owner's reference files and this candidate's check artifacts, which
+  // the trusted context lists, are readable too.
+  const [trustedContext, stageCopies, artifacts] = await Promise.all([
     target.reviewContext(candidate),
     target.prepareStageContext?.(state.implementerNotes) ?? null,
+    target.checkArtifacts?.(candidate) ?? null,
   ])
+  const references = target.references?.() ?? null
+  const extraDirs = [
+    ...(references ? [references.dir] : []),
+    ...(artifacts ? [artifacts.dir] : []),
+  ]
   const implementerNotes = state.implementerNotes
     ? {
         content: state.implementerNotes,
@@ -851,6 +864,10 @@ async function reviewRoundOf(args: {
     ...(changes ? [changes.diffPath, changes.changedFilesPath] : []),
     ...(stageCopies?.files ?? []),
     ...(implementerNotes?.path ? [implementerNotes.path] : []),
+    ...referencePaths(references),
+    ...(artifacts
+      ? artifacts.files.map((file) => join(artifacts.dir, ...file.split('/')))
+      : []),
   ]
   const setup = state.setup
   const experimental = setup.reviewSessionMode === 'reuse-experiment'
@@ -1006,6 +1023,7 @@ async function reviewRoundOf(args: {
                     // A command-mode reviewer reads by directory; the copies
                     // share one the factory keeps for nothing else.
                     ...(stageCopies ? [stageCopies.dir] : []),
+                    ...extraDirs,
                   ]
                 : [],
           }
@@ -1413,6 +1431,9 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
   const task = target
     .untrustedInputs('code')
     .filter((input) => input.label === 'TASK')
+  // The owner's reference files: every spec role is shown them and may
+  // read them.
+  const references = target.references?.() ?? null
 
   const write = async (role: 'author' | 'fix'): Promise<SpecVersion> => {
     const name = role === 'author' ? SPEC_AUTHOR_STEP : specFixStep(state.round)
@@ -1448,6 +1469,7 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
       specPath: spec.specPath,
       template: spec.template,
       untrusted: task,
+      references,
     }
     return step.run(
       name,
@@ -1479,7 +1501,10 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
             workdir: specDir,
             specWrite: {
               writableFile: spec.specPath,
-              readableDirs: [target.workdir],
+              readableDirs: [
+                target.workdir,
+                ...(references ? [references.dir] : []),
+              ],
             },
             timeoutMs: setup.agentTimeoutMs,
             ...idleLimitOf(setup),
@@ -1554,6 +1579,7 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
       reviewTemplate: spec.reviewTemplate,
       untrusted: task,
       output,
+      references,
     })
     // `{effort}` and `{base}` only: no candidate exists yet, and trigger
     // refuses `{head}`.
@@ -1591,7 +1617,9 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
           command: command !== null,
           context: invocation.context,
           output,
-          readableDirs: commandMode ? [target.workdir, specDir] : [],
+          readableDirs: commandMode
+            ? [target.workdir, specDir, ...(references ? [references.dir] : [])]
+            : [],
         }
       : null
     const stepName = specReviewStep(round, name)
@@ -1600,7 +1628,7 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
       providerName: profile.provider,
       prompt: input,
       workdir,
-      readableFiles: [spec.specPath],
+      readableFiles: [spec.specPath, ...referencePaths(references)],
       ...(settings ? { review: settings } : {}),
       specReviewer: name,
       timeoutMs: setup.agentTimeoutMs,

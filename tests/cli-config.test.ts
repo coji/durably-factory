@@ -17,6 +17,7 @@ import {
   readFile,
   readdir,
   rm,
+  symlink,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -5864,6 +5865,99 @@ describe('auto-started worker', { timeout: 300000 }, () => {
       if (workerPid !== null) await reap(workerPid)
       await reapRootWorker(box.stateRoot)
     }
+  })
+})
+
+describe('--reference', { timeout: 180000 }, () => {
+  it('stages a file and a directory at trigger with their names, sizes and hashes', async () => {
+    const box = await sandbox({ check: CHECK })
+    const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    await writeFile(join(box.root, 'mock.html'), '<main>mock</main>\n')
+    await mkdir(join(box.root, 'shots'))
+    await writeFile(join(box.root, 'shots', 'a.png'), PNG)
+    const runId = await trigger(box, [
+      '--repo',
+      box.repo,
+      '--task',
+      'Build the page',
+      '--reference',
+      'mock.html',
+      '--reference',
+      'shots/',
+    ])
+    const input = (await inputOf(box, runId)) as RunInput & {
+      target: {
+        references?: {
+          source: string
+          files: { name: string; size: number; sha256: string }[]
+        }
+      }
+    }
+    const references = input.target.references
+    assert.deepEqual(references?.files, [
+      { name: 'mock.html', size: 18, sha256: sha256('<main>mock</main>\n') },
+      {
+        name: 'shots/a.png',
+        size: 4,
+        sha256: createHash('sha256').update(PNG).digest('hex'),
+      },
+    ])
+    // Copied under the state root before the run existed, for its setup.
+    assert.ok(references?.source.startsWith(box.stateRoot))
+    assert.deepEqual(
+      await readFile(join(references?.source ?? '', 'shots', 'a.png')),
+      PNG,
+    )
+  })
+
+  it('stores checkArtifacts normalised, without a trailing slash', async () => {
+    const box = await sandbox({
+      check: CHECK,
+      checkArtifacts: './.factory/artifacts/',
+    })
+    const runId = await trigger(box, ['--repo', box.repo, '--task', 'x'])
+    const input = (await inputOf(box, runId)) as RunInput & {
+      target: { checkArtifacts?: string }
+    }
+    assert.equal(input.target.checkArtifacts, '.factory/artifacts')
+  })
+
+  it('refuses a checkArtifacts that names the work directory itself or .git', async () => {
+    // The directory is removed before every check.
+    for (const checkArtifacts of ['./', '.', 'a/..', '.git', './.git/x'])
+      await rejected(
+        await sandbox({ check: CHECK, checkArtifacts }),
+        ['--repo', 'repo', '--task', 'x'],
+        /checkArtifacts/,
+      )
+  })
+
+  it('refuses references over 20 MiB and symbolic links before the run exists', async () => {
+    const box = await sandbox({ check: CHECK })
+    await writeFile(
+      join(box.root, 'big.png'),
+      Buffer.alloc(20 * 1024 * 1024 + 1),
+    )
+    await writeFile(join(box.root, 'mock.html'), 'mock\n')
+    await symlink(join(box.root, 'mock.html'), join(box.root, 'link.html'))
+    await mkdir(join(box.root, 'shots'))
+    await symlink(join(box.root, 'mock.html'), join(box.root, 'shots', 'x'))
+    const base = ['--repo', box.repo, '--task', 'x', '--reference']
+    await rejected(
+      box,
+      [...base, 'big.png'],
+      /--reference: the references are over 20971520 bytes in total; the limit is 20 MiB/,
+    )
+    await rejected(
+      box,
+      [...base, 'link.html'],
+      /--reference link\.html: is a symbolic link/,
+    )
+    await rejected(
+      box,
+      [...base, 'shots'],
+      /--reference shots: .*shots\/x is a symbolic link/,
+    )
   })
 })
 

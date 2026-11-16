@@ -197,9 +197,10 @@ export function decideToolPermission(
   toolName: string,
   input: Record<string, unknown>,
   /**
-   * Exact files outside the root a read-only role may also read: the
-   * candidate's diff and changed-file list. Only whole paths match, so a
-   * directory or a sibling file is not opened up with them.
+   * Exact files outside the root a role may also read with `Read`: the
+   * candidate's diff and changed-file list, the owner's reference files and
+   * the check's artifacts. Only whole paths match, so a directory or a
+   * sibling file is not opened up with them.
    */
   readableFiles: readonly string[] = [],
 ): ToolDecision {
@@ -223,6 +224,18 @@ export function decideToolPermission(
       }
     }
     return { allow: true }
+  }
+  // A writing role may read the same exact files, such as the owner's
+  // reference files, and never write them.
+  if (toolName === 'Read') {
+    const p = input['file_path']
+    if (
+      typeof p === 'string' &&
+      readableFiles.some(
+        (file) => resolve(file) === resolveInside(allowedRoot, p),
+      )
+    )
+      return { allow: true }
   }
   const fileKeys = ['file_path', 'path', 'notebook_path'] as const
   for (const key of fileKeys) {

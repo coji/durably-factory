@@ -1,11 +1,16 @@
 /** Assemble a LoopReport from persisted Durably data for one run. */
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 import type { AnyDurably, Run } from '@coji/durably'
 
 import type { CodeResponse } from '../factory/code-response.js'
 import { asThresholdException } from '../factory/events.js'
+import {
+  candidateArtifactsDirOf,
+  checkArtifactFiles,
+} from '../factory/references.js'
 import { REPAIR_OF_LABEL, triageThatRuns } from '../factory/repair.js'
 import type { GenerationRecord } from '../factory/target.js'
 import { testProbeOutcomeOf } from '../factory/test-probe.js'
@@ -71,6 +76,7 @@ import {
   type ReportReview,
   type ReportReviewFindings,
   type ReportReviewRound,
+  type ReportReferenceFile,
   type ReportSealedCandidate,
   type ReportTestProbe,
   type ReportSpec,
@@ -123,6 +129,7 @@ interface PersistedInput {
     inputFiles?: Record<string, { path?: string } | null>
     reviewBlockerThreshold?: number | null
     generate?: string[][] | null
+    references?: { files: ReportReferenceFile[] } | null
   }
   review?: Partial<Record<string, { output?: string }>>
   repairOf?: {
@@ -1152,6 +1159,25 @@ export function repairCallsOf(rows: AttemptRow[]): ReportRepairCall[] {
   return [...calls.values()]
 }
 
+/**
+ * Each candidate with the check artifacts copied beside its diff, by
+ * absolute path; a candidate without any is left as it is.
+ */
+async function withCheckArtifacts(
+  candidates: ReportSealedCandidate[],
+): Promise<ReportSealedCandidate[]> {
+  return Promise.all(
+    candidates.map(async (c) => {
+      if (!c.changes) return c
+      const dir = candidateArtifactsDirOf(dirname(c.changes.diffPath))
+      const files = await checkArtifactFiles(dir)
+      return files.length > 0
+        ? { ...c, artifacts: files.map((f) => join(dir, ...f.split('/'))) }
+        : c
+    }),
+  )
+}
+
 /** A reference with the SHA-256 of the content, or null without either. */
 function hashed<R extends object>(ref: R | null | undefined, content: unknown) {
   return ref && typeof content === 'string'
@@ -1501,7 +1527,7 @@ export async function buildReport(
       ? setupOutput.reviewBlockerThreshold
       : input?.target?.reviewBlockerThreshold) ?? null
   const setupTarget = setupOutput?.target
-  const candidates = sealedCandidates(steps)
+  const candidates = await withCheckArtifacts(sealedCandidates(steps))
   const candidate = lastCandidate(output, candidates)
   const reviewRounds = reviewRoundsOf(
     steps,
@@ -1578,6 +1604,9 @@ export async function buildReport(
     stageUsage: usage,
     roleUsage: roleUsage(rows, profiles),
     inputs: inputHashes(input),
+    ...(input?.target?.references
+      ? { references: input.target.references.files }
+      : {}),
     ...(input?.prompts ? { prompts: input.prompts } : {}),
     retryOf: input?.retryOf ?? null,
     recheckOf: input?.recheckOf ?? null,
