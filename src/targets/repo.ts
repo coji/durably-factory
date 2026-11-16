@@ -94,9 +94,18 @@ import {
 } from '../factory/layout.js'
 import {
   changedPathsLine,
+  checkArtifactsLines,
+  referenceFilesSection,
   scopeContext,
   trustedContextLines,
 } from '../factory/prompts.js'
+import {
+  candidateArtifactsDirOf,
+  checkArtifactFiles,
+  checkArtifactsPathProblem,
+  copyCheckArtifacts,
+  type ReferenceFiles,
+} from '../factory/references.js'
 import {
   DEFAULT_COMMIT_SETTINGS,
   featureBaseOf,
@@ -538,15 +547,20 @@ export class RepoTarget implements Target {
    * reaches review still has them. Rewriting on a replay yields the same
    * bytes, because both commits are fixed.
    */
-  private async writeChanges(
-    id: string,
-    commit: string,
-  ): Promise<CandidateChanges> {
-    const dir = join(
+  /** Where one candidate's diff, file list and check artifacts are kept. */
+  private candidateDir(id: string): string {
+    return join(
       this.config.candidatesDir ??
         join(dirname(this.config.deliveryDir), 'candidates'),
       id,
     )
+  }
+
+  private async writeChanges(
+    id: string,
+    commit: string,
+  ): Promise<CandidateChanges> {
+    const dir = this.candidateDir(id)
     await mkdir(dir, { recursive: true })
     const diffPath = join(dir, 'changes.diff')
     const changedFilesPath = join(dir, 'changed-files.txt')
@@ -705,7 +719,48 @@ export class RepoTarget implements Target {
 
   async grade(args: GradeArgs): Promise<GradeResult> {
     await this.assertIntact(args.candidate)
-    return this.runCheck(args.logDir, args.signal)
+    // The artifact directory belongs to this check run: whatever an agent,
+    // an earlier check or the baseline left there is removed first, so the
+    // reviewers see only what this check wrote.
+    const artifacts = this.config.checkArtifacts
+    await this.clearCheckArtifacts()
+    const result = await this.runCheck(args.logDir, args.signal)
+    // A check that completed, passing or not, leaves its own outputs for
+    // the reviewers, copied beside the candidate's diff.
+    if (artifacts)
+      await copyCheckArtifacts(
+        join(this.config.workdir, artifacts),
+        candidateArtifactsDirOf(this.candidateDir(args.candidate.id)),
+      )
+    return result
+  }
+
+  /** Remove the check's artifact directory from the worktree, if set. */
+  private async clearCheckArtifacts(): Promise<void> {
+    const artifacts = this.config.checkArtifacts
+    if (!artifacts) return
+    // Checked again here, for an input stored without the config's check:
+    // removing the work directory or `.git` would destroy the candidate.
+    const problem = checkArtifactsPathProblem(artifacts)
+    if (problem)
+      throw new Error(`checkArtifacts ${JSON.stringify(artifacts)} ${problem}`)
+    await rm(join(this.config.workdir, artifacts), {
+      recursive: true,
+      force: true,
+    })
+  }
+
+  references(): ReferenceFiles | null {
+    return this.config.references ?? null
+  }
+
+  async checkArtifacts(
+    candidate: CandidateRef,
+  ): Promise<{ dir: string; files: string[] } | null> {
+    if (!this.config.checkArtifacts) return null
+    const dir = candidateArtifactsDirOf(this.candidateDir(candidate.id))
+    const files = await checkArtifactFiles(dir)
+    return files.length > 0 ? { dir, files } : null
   }
 
   /**
@@ -754,6 +809,8 @@ export class RepoTarget implements Target {
         { cause: err },
       )
     }
+    // The baseline's own artifacts are never a candidate's.
+    await this.clearCheckArtifacts()
     // A check that edits tracked files would slip its edits into the first
     // candidate, so the worktree must come out of it as it went in.
     await this.assertAtBase(
@@ -859,6 +916,11 @@ export class RepoTarget implements Target {
       head,
     )
     const parent = this.config.repairOf
+    // The owner's reference files and the check's own outputs, when any.
+    const files = [
+      ...referenceFilesSection(this.references(), 'review'),
+      ...checkArtifactsLines(await this.checkArtifacts(candidate)),
+    ]
     return [
       "TRUSTED CONTEXT (produced by the factory or confirmed by the run's owner, not by the implementer):",
       `Base commit: ${this.config.baseCommit}`,
@@ -876,6 +938,7 @@ export class RepoTarget implements Target {
       ...generatedLines(candidate.generated),
       ...trustedContextLines(this.ownerContext(), this.stageCopies()),
       ...scopeContext(this.config.scope),
+      ...(files.length > 0 ? ['', ...files] : []),
       '',
       'The task the implementer was given is in the untrusted TASK block below.',
     ].join('\n')

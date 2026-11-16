@@ -77,3 +77,4 @@ What we considered and why we didn't do it.
 | [0052](0052-current-model-presets.md)                           | Advertise only current model presets             | accepted |
 | [0053](0053-registered-price-updates.md)                        | Separate model adoption from price maintenance   | accepted |
 | [0058](0058-generate-before-seal.md)                            | Run generation commands before sealing           | accepted |
+| [0059](0059-reference-files-and-check-artifacts.md)             | Reference files and check artifacts              | accepted |
