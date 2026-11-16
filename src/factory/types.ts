@@ -510,6 +510,7 @@ export interface FactoryOutcome {
     | 'rejected'
     | 'verification-failed'
     | 'review-cap-reached'
+    | 'generate-failed'
   candidate: SealedCandidate | null
   iterations: number
   reviewRounds: number

@@ -38,6 +38,7 @@ import {
   resolveTimeouts,
   reviewBlockerThresholdSchema,
   selfCheckSchema,
+  generateSchema,
   specMaxRoundsSchema,
   specReviewerNameSchema,
   testProbeSchema,
@@ -192,6 +193,11 @@ const factoryConfigSchema = z
      * finishing. Prompt-only: the factory never runs them (ADR-0031).
      */
     selfCheck: selfCheckSchema.optional(),
+    /**
+     * Commands the factory runs in the worktree before each candidate is
+     * sealed, with the run's environment (ADR-0058); none when absent.
+     */
+    generate: generateSchema.optional(),
     /**
      * The added or modified test files to run on the base and on each
      * candidate, for the reviewers (ADR-0039); none when absent.
@@ -574,6 +580,7 @@ async function repoSettings(
       setupCommand:
         setupCommand && setupCommand.length > 0 ? setupCommand : null,
       selfCheck: config?.selfCheck ?? null,
+      generate: config?.generate ?? null,
       testProbe: config?.testProbe ?? null,
       reviewSessionMode: config?.review?.sessionMode ?? 'fresh',
       reviewBlockerThreshold:
@@ -1014,6 +1021,7 @@ interface StoredRepairInput {
     }
     commit?: CommitSettings
     selfCheck?: string[][] | null
+    generate?: string[][] | null
     testProbe?: TestProbeRule[] | null
     reviewSessionMode?: 'fresh' | 'reuse-experiment'
     reviewBlockerThreshold?: number | null
@@ -1377,6 +1385,11 @@ export function buildRepairInput(
         t,
         'selfCheck',
         () => parentInput.target?.selfCheck ?? null,
+      ),
+      generate: recorded(
+        t,
+        'generate',
+        () => parentInput.target?.generate ?? null,
       ),
       testProbe: recorded(
         t,

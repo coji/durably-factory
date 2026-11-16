@@ -750,6 +750,7 @@ Repository config: factory.json at the repository root, or --config <file>:
     "parallelReview": false, "codexPath": "<file>",
     "sandbox": { "network": ["code", "repair"] },
     "selfCheck": [["pnpm", "lint"], ["pnpm", "typecheck"]],
+    "generate": [["pnpm", "screenshots:update"]],
     "review": { "blockerThreshold": 5, "sessionMode": "fresh" },
     "checkTimeoutMs": 900000, "agentTimeoutMs": 7200000, "agentIdleTimeoutMs": 900000,
     "commit": { "authorName": "...", "authorEmail": "...",
@@ -814,6 +815,14 @@ Repository config: factory.json at the repository root, or --config <file>:
   "selfCheck" lists 1 to 5 quick commands (argv, like "check") that the
   code and repair prompts tell the agent to run in its worktree before
   finishing. The factory never runs them; only "check" grades the run.
+  "generate" lists 1 to 5 commands (argv, like "check") that the factory
+  runs in order in the worktree, with its own environment rather than the
+  agent's sandbox, after every implementation or repair call that leaves
+  changes and before the candidate is sealed, each within checkTimeoutMs.
+  Each gets FACTORY_SPEC_PATH (the run's spec, empty without one) and
+  FACTORY_RUN_ID. What they change is part of the candidate; the report and
+  the reviewers are told which paths they changed. A failure stops the run
+  as generate-failed before the candidate is sealed or verified.
   "review.sessionMode" defaults to "fresh". The opt-in "reuse-experiment"
   continues each reviewer independently, then requires two fresh reviews of
   the same candidate before approval or delivery. Final calls count in cost

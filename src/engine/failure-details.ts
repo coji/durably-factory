@@ -14,6 +14,9 @@ export const DETAIL_PREFIX = {
   checkTimeout: 'check timed out after: ',
   checkLogWriteError: 'check log write error: ',
   setupUntracked: 'untracked setup output: ',
+  generateCommand: 'generate command: ',
+  generateExitCode: 'generate exit code: ',
+  generateOutput: 'generate output tail: ',
 } as const
 
 /** The `checkAttempt` value of a cancelled or lease-lost grading attempt. */

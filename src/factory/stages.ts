@@ -410,6 +410,33 @@ export const codeStage: StageHandler = async ({
   const timedOut = call.timedOut
   if (timedOut && !(await target.hasChanges(state.candidate)))
     throw new AgentTimeoutError(timedOut, { role })
+  // With `generate`, the factory's own commands run in the worktree after a
+  // call that left changes and before the seal, so what they produce is
+  // part of the candidate (ADR-0058). Their result is this step's output, so
+  // a replay never runs them again; a failed command ends the run before
+  // any candidate is sealed or verified.
+  const generation =
+    state.setup.target.kind === 'repo' &&
+    (state.setup.target.generate?.length ?? 0) > 0 &&
+    target.generate
+      ? await step.run(
+          `${key}:generate`,
+          async (signal) =>
+            (await target.hasChanges(state.candidate))
+              ? ((await target.generate?.({
+                  iteration,
+                  runId: step.runId,
+                  signal,
+                })) ?? null)
+              : null,
+          { metadata: { stage: 'generate' } as unknown as JsonValue },
+        )
+      : null
+  if (generation?.failure)
+    return {
+      type: 'factory.finished',
+      outcome: outcome(state, 'generate-failed', null, target.workdir),
+    }
   // The reply's NOTES are read here, once, and kept in this step beside the
   // candidate they explain, so a replay and the report read them back and
   // never parse the reply again. A stopped call settled no reply, so it
@@ -425,6 +452,7 @@ export const codeStage: StageHandler = async ({
         attemptId: attempt.id,
         signal,
       })),
+      ...(generation?.changes ? { generated: generation.changes } : {}),
       ...(timedOut ? { timedOut } : {}),
       ...(notes ? { implementerNotes: { role, notes } } : {}),
     }
