@@ -7988,3 +7988,169 @@ describe('review-session reuse experiment', { timeout: 180000 }, () => {
     }
   })
 })
+
+describe('generate commands', { timeout: 240000 }, () => {
+  afterEach(() => {
+    recording?.stop()
+    recording = null
+  })
+
+  it('seals what the generate commands produce, lists it in the report and tells both reviewers', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'repo-generate-'))
+    const repo = await seedRepo(root)
+    process.env.FAKE_FAIL_FIRST = '0'
+    delete process.env.FAKE_REVIEW_SEQUENCE
+    recording = recordFakeReviewCalls({ plainReviews: true })
+    const durably = createAgentDurably({ stateRoot: join(root, 'state') })
+    await durably.init()
+    try {
+      const input = configuredRun(repo, {})
+      const run = await durably.jobs.agentLoop.trigger({
+        ...input,
+        target: {
+          ...input.target,
+          generate: [['sh', '-c', 'echo x > generated.txt']],
+        },
+      })
+      await waitFor(
+        async () => (await durably.getRun(run.id))?.status === 'completed',
+        150000,
+        'run with generate completes',
+      )
+      const output = (await durably.getRun(run.id))?.output as {
+        conclusion: string
+        workdir: string
+        candidate: { commit: string }
+      }
+      assert.equal(output.conclusion, 'approved')
+      assert.equal(
+        await git(repo, ['show', `${output.candidate.commit}:generated.txt`]),
+        'x\n',
+      )
+      const report = await buildReport(durably, run.id)
+      assert.deepEqual(report.generations, [
+        {
+          iteration: 1,
+          changes: { added: ['generated.txt'], modified: [], deleted: [] },
+          failure: null,
+        },
+      ])
+      assert.match(
+        reportToMarkdown(report),
+        /## Generation [^\n]*\n\n- command: sh -c echo x > generated.txt\n- iteration 1: 1 path\(s\) changed\n {2}- added: generated.txt\n/,
+      )
+      const reviews = endedCalls(output.workdir).filter(
+        (c) => c.role === 'review-a' || c.role === 'review-b',
+      )
+      assert.deepEqual(reviews.map((c) => c.role).sort(), [
+        'review-a',
+        'review-b',
+      ])
+      for (const { prompt } of reviews) {
+        const trusted = prompt.slice(
+          prompt.indexOf('TRUSTED CONTEXT'),
+          prompt.indexOf('<<<UNTRUSTED'),
+        )
+        assert.match(
+          trusted,
+          /generate commands[^\n]*\n- added: generated\.txt/,
+        )
+      }
+    } finally {
+      await durably.stop()
+      await durably.db.destroy()
+      delete process.env.FAKE_FAIL_FIRST
+    }
+  })
+
+  it('stops as generate-failed when a command exits non-zero, before any candidate is verified', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'repo-generate-failed-'))
+    const repo = await seedRepo(root)
+    process.env.FAKE_FAIL_FIRST = '0'
+    delete process.env.FAKE_REVIEW_SEQUENCE
+    const durably = createAgentDurably({ stateRoot: join(root, 'state') })
+    await durably.init()
+    try {
+      const input = configuredRun(repo, {})
+      const run = await durably.jobs.agentLoop.trigger({
+        ...input,
+        target: {
+          ...input.target,
+          generate: [['sh', '-c', 'echo regenerating; exit 1']],
+        },
+      })
+      await waitFor(
+        async () => (await durably.getRun(run.id))?.status === 'completed',
+        150000,
+        'run with a failing generate command completes',
+      )
+      const finished = await durably.getRun(run.id)
+      const output = finished?.output as { conclusion: string }
+      assert.equal(output.conclusion, 'generate-failed')
+      const steps = (await durably.getStepAttempts(run.id)).map(
+        (a) => a.stepName,
+      )
+      assert.ok(!steps.some((name) => name.endsWith(':code:candidate')))
+      assert.ok(!steps.some((name) => name.includes(':verify')))
+      const failure = await classifyRun(durably, finished as Run)
+      assert.equal(failure?.kind, 'generate-failed')
+      assert.ok(
+        failure?.details.includes(
+          'generate command: sh -c echo regenerating; exit 1',
+        ),
+      )
+      assert.ok(failure?.details.includes('generate exit code: 1'))
+      const markdown = reportToMarkdown(await buildReport(durably, run.id))
+      assert.match(
+        markdown,
+        /- iteration 1: failed: `sh -c echo regenerating; exit 1` exited with 1\n\n```\nregenerating\n```/,
+      )
+      assert.match(markdown, /- kind: generate-failed/)
+    } finally {
+      await durably.stop()
+      await durably.db.destroy()
+      delete process.env.FAKE_FAIL_FIRST
+    }
+  })
+
+  it('hands the generate commands the settled spec and the run id', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'repo-generate-spec-'))
+    const repo = await seedSpecRepo(root)
+    const durably = createAgentDurably({ stateRoot: join(root, 'state') })
+    await durably.init()
+    try {
+      const input = specRun(repo, { checkFromSpec: null })
+      const run = await durably.jobs.agentLoop.trigger({
+        ...input,
+        target: {
+          ...input.target,
+          generate: [
+            [
+              'sh',
+              '-c',
+              'cp "$FACTORY_SPEC_PATH" spec-copy.md && printf %s "$FACTORY_RUN_ID" > run-id.txt',
+            ],
+          ],
+        },
+      })
+      await waitFor(
+        async () => (await durably.getRun(run.id))?.status === 'completed',
+        200000,
+        'spec run with generate completes',
+      )
+      const output = (await durably.getRun(run.id))?.output as {
+        conclusion: string
+        candidate: { commit: string }
+      }
+      assert.equal(output.conclusion, 'approved')
+      const settled = (await buildReport(durably, run.id)).spec?.content
+      assert.ok(settled)
+      const commit = output.candidate.commit
+      assert.equal(await git(repo, ['show', `${commit}:spec-copy.md`]), settled)
+      assert.equal(await git(repo, ['show', `${commit}:run-id.txt`]), run.id)
+    } finally {
+      await durably.stop()
+      await durably.db.destroy()
+    }
+  })
+})

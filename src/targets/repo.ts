@@ -39,7 +39,7 @@ import {
 } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 
-import { runChild } from '../engine/child.js'
+import { childOutput, runChild } from '../engine/child.js'
 import {
   BASELINE_FAILED_MESSAGE,
   setupUntrackedError,
@@ -61,7 +61,9 @@ import {
   removeWorktreeRegistration,
   resolveCommit,
   someUntracked,
+  treeChanges,
   treeOf,
+  worktreeTree,
   type CommitAuthor,
   type RemoveFailure,
 } from '../engine/git.js'
@@ -85,6 +87,7 @@ import {
   reviewHeadTreeOf,
   reviewWorkdirOf,
   specReviewWorkdirOf,
+  specFileOf,
   stageContextDirOf,
   testProbeBaseRecordOf,
   worktreeRetiredMarkerOf,
@@ -100,6 +103,9 @@ import {
   type CommitSettings,
   type Delivery,
   type DeliverArgs,
+  type GenerateArgs,
+  type GenerationFailure,
+  type GenerationRecord,
   type GradeArgs,
   type RepairParentConclusion,
   type RepoTargetConfig,
@@ -192,6 +198,30 @@ export function commitAuthorOf(settings: CommitSettings): CommitAuthor {
 /** Hash-free identity of the pinned check, recorded so it cannot drift. */
 export function checkFingerprint(command: string[]): string {
   return command.join(' ')
+}
+
+/** How much of a failed `generate` command's output a run stores. */
+const GENERATE_OUTPUT_TAIL = 4000
+
+/**
+ * The trusted lines naming what the `generate` commands changed in a
+ * candidate, so reviewers know which files the implementer did not write.
+ */
+function generatedLines(generated: CandidateRef['generated']): string[] {
+  if (!generated) return []
+  const entries = [
+    ...generated.added.map((path) => `added: ${path}`),
+    ...generated.modified.map((path) => `modified: ${path}`),
+    ...generated.deleted.map((path) => `deleted: ${path}`),
+  ]
+  return entries.length === 0
+    ? [
+        "Generated files: the factory's generate commands ran after the implementer and changed no file.",
+      ]
+    : [
+        "Generated files: the factory's generate commands ran after the implementer and produced these changes; the implementer did not write them:",
+        ...entries.map((entry) => `- ${entry}`),
+      ]
 }
 
 /** Render argv for the POSIX shell commands an implementer is asked to run. */
@@ -399,6 +429,74 @@ export class RepoTarget implements Target {
         ? `${coverage} Judge them from any trusted stage result below that covers them, and say needsChanges when one shows a test meant to cover the change passing on the feature base commit (featureBase). Read the code to judge a test no such result covers.`
         : `${coverage} Say needsChanges when the new tests would pass against the feature base commit (featureBase), before the feature was implemented, not just before this repair.`,
     ]
+  }
+
+  /**
+   * Run each `generate` command in the worktree, in order, with the run's
+   * environment and the check's timeout (ADR-0058). Each gets the settled
+   * spec's path in `FACTORY_SPEC_PATH` (empty without a spec) and the run id
+   * in `FACTORY_RUN_ID`. Stops at the first command that fails; otherwise
+   * returns the paths the commands changed relative to what the implementer
+   * left, as the trees of the worktree before and after.
+   */
+  async generate(args: GenerateArgs): Promise<GenerationRecord | null> {
+    const commands = this.config.generate ?? []
+    if (commands.length === 0) return null
+    const { workdir, spec } = this.config
+    const specPath = spec !== null ? specFileOf(this.runRoot) : ''
+    if (spec !== null) {
+      await mkdir(dirname(specPath), { recursive: true })
+      await writeFile(specPath, spec, 'utf8')
+    }
+    const tail = (text: string) => text.slice(-GENERATE_OUTPUT_TAIL).trim()
+    const before = await worktreeTree(workdir, args.signal)
+    for (const argv of commands) {
+      const [command, ...rest] = argv
+      let failure: GenerationFailure | null = null
+      try {
+        const res = await runChild(command ?? '', rest, {
+          cwd: workdir,
+          env: { FACTORY_SPEC_PATH: specPath, FACTORY_RUN_ID: args.runId },
+          timeoutMs: this.config.checkTimeoutMs,
+          maxOutputChars: GENERATE_OUTPUT_TAIL,
+          signal: args.signal,
+        })
+        if (res.code !== 0)
+          failure = {
+            command: argv,
+            exitCode: res.code,
+            output: tail(`${res.stdout}${res.stderr}`),
+          }
+      } catch (error) {
+        if (
+          args.signal.aborted ||
+          (error as Error).name === 'SpawnCancelledError'
+        )
+          throw error
+        const out = childOutput(error)
+        failure = {
+          command: argv,
+          exitCode: null,
+          output: tail(
+            `${out.stdout}${out.stderr}\n${(error as Error).message}`,
+          ),
+        }
+      }
+      if (failure)
+        return {
+          iteration: args.iteration,
+          commands,
+          changes: null,
+          failure,
+        }
+    }
+    const after = await worktreeTree(workdir, args.signal)
+    return {
+      iteration: args.iteration,
+      commands,
+      changes: await treeChanges(workdir, before, after),
+      failure: null,
+    }
   }
 
   async seal(args: SealArgs): Promise<CandidateRef> {
@@ -775,6 +873,7 @@ export class RepoTarget implements Target {
         : []),
       `Candidate: ${candidate.id}`,
       changedPathsLine(changes, candidate.changes?.changedFilesPath),
+      ...generatedLines(candidate.generated),
       ...trustedContextLines(this.ownerContext(), this.stageCopies()),
       ...scopeContext(this.config.scope),
       '',

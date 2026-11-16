@@ -8,7 +8,7 @@
  * finished run's worktree and, when asked, its branches.
  */
 import { existsSync } from 'node:fs'
-import { realpath } from 'node:fs/promises'
+import { realpath, rm } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 
 import { runChild, SpawnTimeoutError } from './child.js'
@@ -549,6 +549,59 @@ export async function describeCommitChanges(
     i += takesTwo ? 3 : 2
   }
   return lines
+}
+
+/**
+ * The tree the worktree's files would make if all were committed now,
+ * honouring `.gitignore`, written through a scratch index so neither the
+ * worktree's index nor `HEAD` changes.
+ */
+export async function worktreeTree(
+  dir: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const pass = signal ? { signal } : {}
+  const index = resolve(
+    dir,
+    (
+      await git(dir, ['rev-parse', '--git-path', 'factory-scratch-index'])
+    ).trim(),
+  )
+  const env = { GIT_INDEX_FILE: index }
+  try {
+    await git(dir, ['read-tree', 'HEAD'], { ...pass, env })
+    await git(dir, ['add', '-A'], { ...pass, env })
+    return (await git(dir, ['write-tree'], { ...pass, env })).trim()
+  } finally {
+    await rm(index, { force: true })
+  }
+}
+
+/** The paths added, modified and deleted from tree `from` to tree `to`. */
+export async function treeChanges(
+  dir: string,
+  from: string,
+  to: string,
+): Promise<{ added: string[]; modified: string[]; deleted: string[] }> {
+  const out = await git(
+    dir,
+    ['diff-tree', '-r', '--no-renames', '--name-status', '-z', from, to],
+    { maxOutputChars: Number.POSITIVE_INFINITY },
+  )
+  const fields = out.split('\0').filter((f) => f.length > 0)
+  const changes = {
+    added: [] as string[],
+    modified: [] as string[],
+    deleted: [] as string[],
+  }
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const code = fields[i]?.charAt(0)
+    const path = fields[i + 1] ?? ''
+    if (code === 'A') changes.added.push(path)
+    else if (code === 'D') changes.deleted.push(path)
+    else changes.modified.push(path)
+  }
+  return changes
 }
 
 /** How big a change is, as git counts it. */

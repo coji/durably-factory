@@ -421,6 +421,39 @@ CHECK C2: not-run — the sandbox cannot start the required local server
 合否は引き続きfactoryが実行する固定検査で決めます。
 自己申告の欠落だけを理由に追加の呼び出しを行うことはありません。
 
+## 候補にする前に生成コマンドを実行する（generate）
+
+エージェントのsandboxでは作れないファイルがあります。たとえば、採点と同じコンテナの
+中で作り直すスクリーンショットの参照画像です。そのコンテナのコマンドは依存関係を
+インストールしますが、エージェントにはそれが許されていません。`factory.json` の
+`"generate"` にコマンドを書くと、factory 自身がそれを実行してから候補にします。
+
+```json
+{
+  "check": ["pnpm", "validate"],
+  "generate": [["pnpm", "screenshots:update"]]
+}
+```
+
+- 1 から 5 個のコマンドを書けます。各コマンドは `check` と同じく argv の配列で、
+  空の配列と空の文字列は、`trigger` のときに受け付けません。
+- 実装と修正の呼び出しが作業ツリーに変更を残したときだけ、その呼び出しのあと、
+  候補にする前に、書いた順に作業ツリーで実行します。エージェントのsandboxではなく、
+  ワーカーの環境で動きます。各コマンドの時間の上限は `checkTimeoutMs` です。
+- 各コマンドには、環境変数 `FACTORY_SPEC_PATH` に実行の仕様ファイルのパス（仕様が
+  なければ空文字列）を、`FACTORY_RUN_ID` に実行の ID を渡します。仕様の工程がある
+  実行では、確定した仕様のパスです。仕様から作り直すものを決めるのに使えます。
+- コマンドが変えたファイルは、そのまま候補に入ります。factory は、エージェントが
+  残した状態と比べて、生成で追加、変更、削除したパスを反復ごとに記録します。
+  レポートの「Generation」に出し、2 人のレビュアーにも trusted context として
+  渡すので、レビュアーはどのファイルをエージェントが書いたのではないかが分かります。
+- コマンドが 0 以外で終わるか、時間切れになるか、起動できなければ、実行はそこで
+  `generate-failed` として終わります。その作業は候補にならず、検証もしません。
+  レポートと `factory status` には、コマンド、終了コード、出力の末尾が出ます。
+- 書かなければ、これまでと同じです。値は `trigger` のときに実行の入力に保存し、
+  `retrigger`、`--reload-config`、`factory repair` は `selfCheck` と同じように扱います。
+  書いたときは `configVersion` に入ります。
+
 ## 新しいテストをベースと候補で動かす（testProbe）
 
 レビュアーはコマンドを実行できないので、新しいテストが変更を本当に確かめて
@@ -695,7 +728,7 @@ repair、recheck、通常の retrigger と自動再試行は保存した設定�
 その指定した設定から、ワーカーがプロバイダーのプリセットで決めます。ワーカーは
 元のファイルを読み直さないので、`trigger` のあとにファイルを書き換えても、その実行の
 設定とプロンプトは変わりません。時間の上限、`codexPath`、`baselineCheck`、
-`baselineReuse`、`parallelReview`、`selfCheck`、`testProbe`、`review.blockerThreshold`、`commit` も、
+`baselineReuse`、`parallelReview`、`selfCheck`、`generate`、`testProbe`、`review.blockerThreshold`、`commit` も、
 同じように解決した値を実行の入力に保存します。レポートには、入力ファイルごとの
 パスと、保存した本文から計算した SHA-256 が出ます。確定した文脈は、本文もレポートに
 出します。Markdown では、本文の中のどのバッククォートの並びよりも長いフェンスで

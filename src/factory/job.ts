@@ -189,6 +189,17 @@ export const selfCheckSchema = z
   .max(5)
 
 /**
+ * `generate` in a target and in factory.json: one to five commands, each
+ * argv like `check`, that the factory runs in the worktree after every
+ * implementation or repair call that leaves changes, before the candidate
+ * is sealed (ADR-0058).
+ */
+export const generateSchema = z
+  .array(z.array(z.string().min(1)).min(1))
+  .min(1)
+  .max(5)
+
+/**
  * `testProbe` in a target and in factory.json (ADR-0039): one or more
  * entries, each a glob over repository-relative paths and an argv run once
  * per matching test file, with each `{files}` element replaced by its path.
@@ -303,6 +314,11 @@ const targetSchema = z
        * finishing (ADR-0031). Null or absent: no such rule, as before.
        */
       selfCheck: selfCheckSchema.nullable().optional(),
+      /**
+       * Commands the factory runs in the worktree before each candidate is
+       * sealed (ADR-0058). Null or absent: none, as before.
+       */
+      generate: generateSchema.nullable().optional(),
       /**
        * The test files to run on the base and on each candidate before its
        * check and reviews (ADR-0039). Null or absent: none, as before.
@@ -974,6 +990,7 @@ const outputSchema = z.object({
     'rejected',
     'verification-failed',
     'review-cap-reached',
+    'generate-failed',
   ]),
   candidate: candidateSchema.nullable(),
   iterations: z.number(),
@@ -1655,6 +1672,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                     checkFromSpec: input.target.checkFromSpec ?? null,
                     setupCommand: input.target.setupCommand,
                     selfCheck: input.target.selfCheck ?? null,
+                    generate: input.target.generate ?? null,
                     testProbe: input.target.testProbe ?? null,
                     checkTimeoutMs: testTimeoutMs,
                     publish: input.target.publish,
@@ -1796,6 +1814,8 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                 commit: target.kind === 'repo' ? (target.commit ?? null) : null,
                 selfCheck:
                   target.kind === 'repo' ? (target.selfCheck ?? null) : null,
+                generate:
+                  target.kind === 'repo' ? (target.generate ?? null) : null,
                 review,
                 reviewBlockerThreshold,
                 reviewSessionMode,

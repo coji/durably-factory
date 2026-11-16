@@ -1,4 +1,8 @@
-import type { CandidateRef, ReviewSnapshots } from '../engine/types.js'
+import type {
+  CandidateRef,
+  GeneratedChanges,
+  ReviewSnapshots,
+} from '../engine/types.js'
 /**
  * What a factory is pointed at.
  *
@@ -78,6 +82,13 @@ export interface RepoTargetConfig {
    * rule, as on a run set up before it existed.
    */
   selfCheck?: string[][] | null
+  /**
+   * Commands, fixed at trigger, that the factory runs in the worktree in
+   * order after every implementation or repair call that leaves changes,
+   * before the candidate is sealed, outside the implementer's sandbox
+   * (ADR-0058). Null or absent: none, as on a run set up before it existed.
+   */
+  generate?: string[][] | null
   /**
    * Pinned check argv. Recorded at setup so the agent cannot redefine it.
    * Empty at setup on a run with `checkFromSpec`: the run grades with the
@@ -336,6 +347,34 @@ export interface SealArgs {
   signal: AbortSignal
 }
 
+/**
+ * One generation step's result, as the code stage stores it (ADR-0058):
+ * the paths the `generate` commands changed relative to what the
+ * implementer left, or the command that failed.
+ */
+export interface GenerationRecord {
+  /** Which pass through code ran it, from 1. */
+  iteration: number
+  commands: string[][]
+  /** Null when a command failed. */
+  changes: GeneratedChanges | null
+  failure: GenerationFailure | null
+}
+
+export interface GenerationFailure {
+  command: string[]
+  /** Null when the command timed out or could not start. */
+  exitCode: number | null
+  /** The tail of its combined output, or why it could not run. */
+  output: string
+}
+
+export interface GenerateArgs {
+  iteration: number
+  runId: string
+  signal: AbortSignal
+}
+
 export interface GradeArgs {
   candidate: CandidateRef
   /** Scratch space outside the agent's workdir, rebuilt per attempt. */
@@ -386,6 +425,12 @@ export interface Target {
    * what is being built.
    */
   reviewRules(lens: 'correctness' | 'edge-cases'): string[]
+  /**
+   * Run the configured `generate` commands in the workdir and report what
+   * they changed, or the one that failed; null when none are configured.
+   * Only a target that can have them implements it.
+   */
+  generate?(args: GenerateArgs): Promise<GenerationRecord | null>
   /** Seal the current workdir as an immutable candidate. */
   seal(args: SealArgs): Promise<CandidateRef>
   /**

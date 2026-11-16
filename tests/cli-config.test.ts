@@ -199,6 +199,7 @@ type RunInput = {
     parallelReview?: boolean
     sandbox?: { network: ('code' | 'repair')[] }
     selfCheck?: string[][] | null
+    generate?: string[][] | null
     testProbe?: { glob: string; command: string[] }[] | null
     reviewBlockerThreshold?: number | null
     reviewSessionMode?: 'fresh' | 'reuse-experiment'
@@ -2300,6 +2301,33 @@ describe('name', { timeout: 180000 }, () => {
         /invalid factory config[\s\S]*name/,
       )
     }
+  })
+})
+
+describe('generate', { timeout: 240000 }, () => {
+  it('stores one to five argv commands at trigger, null when left out, and refuses more', async () => {
+    const command = ['sh', '-c', 'echo x > generated.txt']
+    const box = await sandbox({ check: CHECK, generate: [command] })
+    const input = await inputOf(
+      box,
+      await trigger(box, ['--repo', box.repo, '--task', 'x']),
+    )
+    assert.deepEqual(input.target.generate, [command])
+    const plain = await sandbox({ check: CHECK })
+    const plainInput = await inputOf(
+      plain,
+      await trigger(plain, ['--repo', plain.repo, '--task', 'x']),
+    )
+    assert.equal(plainInput.target.generate, null)
+    const six = await sandbox({
+      check: CHECK,
+      generate: [1, 2, 3, 4, 5, 6].map((n) => ['node', '-e', `${n}`]),
+    })
+    await rejected(
+      six,
+      ['--repo', six.repo, '--task', 'x'],
+      /invalid factory config[\s\S]*generate/,
+    )
   })
 })
 

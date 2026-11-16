@@ -99,6 +99,7 @@ export const STOP_NAME: Record<FailureKind, string> = {
   'agent-timeout': '呼び出しの時間切れ',
   'verification-failed': '検証失敗',
   'review-cap-reached': 'レビュー上限',
+  'generate-failed': '生成コマンドの失敗',
   'uncertain-invocation': '結果が不明な呼び出し',
   cancelled: '取り消し',
   'cancelled-publish': '公開中の取り消し',
@@ -156,6 +157,7 @@ export const CONCLUSION_NAME: Record<string, string> = {
   rejected: '却下',
   'verification-failed': '検証失敗',
   'review-cap-reached': 'レビュー上限',
+  'generate-failed': '生成コマンドの失敗',
   failed: '失敗',
   cancelled: '取り消し',
 }
@@ -315,6 +317,12 @@ export const FAILURE_TEXT: Record<
     check:
       'レポートでレビューの指摘を読み、候補を手で仕上げるか、タスクを書き直す。',
   },
+  'generate-failed': {
+    reason:
+      '実装か修正のあとに走らせる生成コマンドが失敗したか、時間切れになったか、起動できませんでした。その作業を候補にして検証する前に止めました。',
+    check:
+      '下とレポートの「Generation」でコマンド、終了コード、出力を読み、コマンドか factory.json の generate を直して設定を読み直す再実行を、環境だけを直したときは通常の再実行を使う。',
+  },
   'uncertain-invocation': {
     reason:
       'エージェントの呼び出しを始めましたが、完了の記録がありません。プロバイダーが受け取って動いたかは分かりません。',
@@ -375,6 +383,9 @@ export const DETAIL_LABEL: Record<keyof typeof DETAIL_PREFIX, string> = {
   checkTimeout: '時間切れまでの時間',
   checkLogWriteError: 'ログの書き込みエラー',
   setupUntracked: '準備が残したファイル',
+  generateCommand: '生成コマンド',
+  generateExitCode: '生成コマンドの終了コード',
+  generateOutput: '生成コマンドの出力の末尾',
 }
 
 export const DETAIL_TEXT = {
@@ -454,6 +465,10 @@ export const COMMAND_NOTES: [string, string][] = [
     '納品物に記録された内容を確かめられます。',
   ],
   ['if none is running', 'ワーカーが動いていなければ起動します。'],
+  [
+    'the Generation section: the command and its output',
+    'レポートの生成の欄で、失敗した生成コマンドとその出力を読めます。',
+  ],
   [
     'the baseline check output',
     'ベースのコミットでのチェックの結果とログの場所を読めます。',

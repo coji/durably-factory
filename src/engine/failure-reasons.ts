@@ -36,6 +36,7 @@ export type FailureKind =
   | 'agent-timeout'
   | 'verification-failed'
   | 'review-cap-reached'
+  | 'generate-failed'
   | 'uncertain-invocation'
   | 'cancelled'
   | 'cancelled-publish'
@@ -264,6 +265,18 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
             `${FACTORY_COMMAND} repair --run ${runId}  # go on from the last candidate with a new repair budget; the findings are built from the last reviews unless --findings-file is given`,
           ]
         : []),
+      retrigger(runId),
+    ],
+  },
+  'generate-failed': {
+    reason:
+      'a generate command exited non-zero, timed out or could not start after an implementation or repair call; the run stopped before that work was sealed or verified',
+    retryable: true,
+    humanCheck:
+      'read the command, its exit code and its output below and in the report; fix the command or generate in factory.json and retry with --reload-config, or fix the environment and retry without it',
+    next: (runId, reload) => [
+      `${FACTORY_COMMAND} report --run ${runId}  # the Generation section: the command and its output`,
+      ...retriggerReloaded(runId, reload),
       retrigger(runId),
     ],
   },
@@ -548,6 +561,49 @@ function distinctLogs(
     })
 }
 
+/** A failed `generate` command, as its code stage's step stored it. */
+export interface GenerateFailureDetail {
+  command: string[]
+  exitCode: number | null
+  output: string
+}
+
+/**
+ * The failure the last completed `stage:<n>:code:generate` step stored, or
+ * null when none did.
+ */
+export function lastGenerateFailure(
+  steps: StoredStageStep[],
+): GenerateFailureDetail | null {
+  const failures = steps.flatMap((s) => {
+    const where = stageStep(s.name)
+    const failure = (s.output as { failure?: unknown } | null)?.failure as
+      | Partial<GenerateFailureDetail>
+      | null
+      | undefined
+    return s.status === 'completed' &&
+      where?.stage === 'code' &&
+      where.part === 'generate' &&
+      Array.isArray(failure?.command) &&
+      typeof failure.output === 'string'
+      ? [
+          {
+            sequence: where.sequence,
+            failure: {
+              command: failure.command.map(String),
+              exitCode:
+                typeof failure.exitCode === 'number' ? failure.exitCode : null,
+              output: failure.output,
+            },
+          },
+        ]
+      : []
+  })
+  return (
+    failures.sort((x, y) => x.sequence - y.sequence).at(-1)?.failure ?? null
+  )
+}
+
 export interface ClassifyInput {
   runId: string
   status: string
@@ -561,6 +617,8 @@ export interface ClassifyInput {
   automaticRetry?: 'provider-capacity' | 'review-incomplete' | null
   /** From `baselineLogs`: the base-commit check's logs. */
   baselineLogs?: VerificationLog[]
+  /** From `lastGenerateFailure`: the generate command that stopped the run. */
+  generateFailure?: GenerateFailureDetail | null
   /** A repo run that pushes and opens a pull request once approved. */
   publish?: boolean
   /** From `reloadAdvice`; a repository run with no flags when omitted. */
@@ -592,7 +650,19 @@ export function classifyFailure(
       for (const log of input.verificationLogs ?? [])
         details.push(...logDetails(log))
     } else if (conclusion === 'review-cap-reached') kind = 'review-cap-reached'
-    else return null
+    else if (conclusion === 'generate-failed') {
+      kind = 'generate-failed'
+      const failed = input.generateFailure
+      if (failed)
+        details.push(
+          `${DETAIL_PREFIX.generateCommand}${failed.command.join(' ')}`,
+          `${DETAIL_PREFIX.generateExitCode}${failed.exitCode ?? 'null'}`,
+          `${DETAIL_PREFIX.generateOutput}${failed.output
+            .slice(-500)
+            .trim()
+            .replace(/\s*\n\s*/g, ' | ')}`,
+        )
+    } else return null
   } else if (input.status === 'failed' || input.status === 'cancelled') {
     // An unresolved call outranks everything else: whatever else went wrong,
     // starting over could send that prompt a second time.
@@ -728,6 +798,15 @@ export async function classifyRun(
   let repairable = false
   let diagnostic: CheckFailureKind | null = null
   let automaticRetry: ClassifyInput['automaticRetry'] = null
+  let generateFailure: GenerateFailureDetail | null = null
+  if (
+    run.status === 'completed' &&
+    (run.output as { conclusion?: unknown } | null)?.conclusion ===
+      'generate-failed'
+  )
+    generateFailure = lastGenerateFailure(
+      await durably.storage.getSteps(run.id),
+    )
   if (run.status === 'failed' || run.status === 'cancelled') {
     const setup = (await durably.storage.getCompletedStep(run.id, 'setup'))
       ?.output as { checkpointsDir?: string } | null | undefined
@@ -820,6 +899,7 @@ export async function classifyRun(
     checkFailure: diagnostic,
     automaticRetry,
     baselineLogs: baseline,
+    generateFailure,
     publish:
       (run.input as { target?: { publish?: unknown } } | null)?.target
         ?.publish === true,
