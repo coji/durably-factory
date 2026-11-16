@@ -13,6 +13,7 @@ import {
 
 import {
   buildClaudeSettings,
+  WRITER_TOOLS,
   ClaudeProvider,
   EFFORT_RESUME_BLOCKING_ENV,
   EFFORT_RESUME_MODELS_LABEL,
@@ -195,6 +196,28 @@ describe('claude workdir guard (reviewer repro)', () => {
     assert.deepEqual(impl.allowedTools, ['Read', 'Edit', 'Write', 'Bash'])
     const review = buildClaudeSettings(ROOT, true, null)
     assert.deepEqual(review.allowedTools, ['Read'])
+  })
+
+  it('offers a writing role only tools that finish within its one turn', () => {
+    const impl = buildClaudeSettings(ROOT, false, null)
+    assert.deepEqual(impl.tools, WRITER_TOOLS)
+    for (const waiting of ['ScheduleWakeup', 'Monitor', 'CronCreate'])
+      assert.ok(!WRITER_TOOLS.includes(waiting), waiting)
+    assert.equal(impl.env?.['CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'], '1')
+    assert.equal(impl.env?.['BASH_DEFAULT_TIMEOUT_MS'], '600000')
+    assert.equal(buildClaudeSettings(ROOT, true, null).env, undefined)
+  })
+
+  it('refuses a background Bash command and allows the same one in the foreground', () => {
+    const background = decideToolPermission(ROOT, false, 'Bash', {
+      command: 'pnpm test',
+      run_in_background: true,
+    })
+    assert.equal(background.allow, false)
+    assert.deepEqual(
+      decideToolPermission(ROOT, false, 'Bash', { command: 'pnpm test' }),
+      { allow: true },
+    )
   })
 })
 
