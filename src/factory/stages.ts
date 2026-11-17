@@ -505,7 +505,9 @@ export const codeStage: StageHandler = async ({
 export const verifyStage: StageHandler = async (args) => {
   const { step, state, key, services } = args
   // With `parallelReview`, the candidate is reviewed while it is verified.
-  if (state.setup.parallelReview) return verifyReviewStage(args)
+  // With code review off there is nothing to run beside the check.
+  if (state.setup.parallelReview && state.setup.codeReview !== false)
+    return verifyReviewStage(args)
   const target = services.target
   const candidate = requireCandidate(state)
   await recoverProbe(args, candidate)

@@ -996,6 +996,8 @@ export interface ReportReviewCall {
 }
 
 export interface LoopReport {
+  /** The run reviewed no code; its approval rests on the check alone (ADR-0060). */
+  codeReview?: 'off'
   reviewSessionMode?: 'reuse-experiment'
   reviewCalls?: ReportReviewCall[]
   /** v7 reviewers cover the whole change; absent on historical reports. */
@@ -2135,7 +2137,11 @@ export function reportToMarkdown(r: LoopReport): string {
   lines.push('')
   lines.push('## Reviews')
   lines.push('')
-  if (r.reviews.length > 0) {
+  if (r.codeReview === 'off') {
+    lines.push(
+      '- code review: off; approved on the pinned check alone, and the repository reviews the delivery (ADR-0060)',
+    )
+  } else if (r.reviews.length > 0) {
     lines.push(...reviewLines(r.reviews, ''))
   } else {
     lines.push('- none (no review round has finished)')
@@ -2284,6 +2290,7 @@ export function reportToMarkdown(r: LoopReport): string {
   lines.push(`- cost (api-equiv): ${formatCost(s.costUsd)}`)
   lines.push(`- cost per success: ${formatCost(s.costPerSuccessUsd)}`)
   lines.push(`- repairs: ${s.repairs}, review rounds: ${s.reviewRounds}`)
+  if (r.codeReview === 'off') lines.push('- code review: off')
   if (r.discardedReviews)
     lines.push(
       `- reviews of candidates that failed verification: ${r.discardedReviews.invocations} call(s), cost ${formatCost(r.discardedReviews.costUsd)} (part of the cost above)`,

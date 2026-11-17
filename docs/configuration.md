@@ -376,6 +376,30 @@ web UI では、レビューの欄と工程の時系列の詳細に、「中止�
 理由が出ます。工程の時系列では、検証とレビューの重なりが実際の時刻どおりに
 見えます。
 
+## コードのレビューをしない（codeReview）
+
+リポジトリにマージ前のレビューの仕組みがあり、そこだけがコードをレビューすると
+決めているときは、`factory.json` に `"codeReview": false` を書きます。封印した
+候補が固定した検査に通れば、2 つのレビューを呼ばずに承認へ進みます。レビューの
+定義が factory とリポジトリの 2 か所にあると、同じ変更を違う基準で 2 回判定し、
+factory が承認したあとにリポジトリの側で指摘が出続けるためです（ADR-0060）。
+
+```json
+{
+  "codeReview": false
+}
+```
+
+- 書かなければオンで、これまでと同じです。値は `trigger` のときに実行の入力に
+  保存します。`retrigger` は保存した値を引き継ぎ、`--reload-config` はファイルを
+  読み直します。`factory repair` の修正の実行は、修正元の実行の値を引き継ぎます。
+- オフのとき、検査に落ちた候補はこれまでどおり修正に回り、修正した候補も検査
+  だけで判定します。仕様のレビュー（`spec.review`）は変わりません。
+- レビューの中身が変わるので、オフの実行は `configVersion` が変わります。
+- レポートには「code review: off」と出し、レビューを通ったようには見せません。
+- `review.sessionMode` の `"reuse-experiment"` は 2 人のレビューを前提にするので、
+  一緒には指定できません。`trigger` で止めます。
+
 ## 参照ファイルとチェックの出力を渡す（--reference、checkArtifacts）
 
 HTML のモックやその画面写真のように、テキストの入力では渡せない「正解の見本」は、
@@ -783,7 +807,7 @@ repair、recheck、通常の retrigger と自動再試行は保存した設定�
 その指定した設定から、ワーカーがプロバイダーのプリセットで決めます。ワーカーは
 元のファイルを読み直さないので、`trigger` のあとにファイルを書き換えても、その実行の
 設定とプロンプトは変わりません。時間の上限、`codexPath`、`baselineCheck`、
-`baselineReuse`、`parallelReview`、`selfCheck`、`generate`、`testProbe`、`checkArtifacts`、`review.blockerThreshold`、`commit` も、
+`baselineReuse`、`parallelReview`、`codeReview`、`selfCheck`、`generate`、`testProbe`、`checkArtifacts`、`review.blockerThreshold`、`commit` も、
 同じように解決した値を実行の入力に保存します。レポートには、入力ファイルごとの
 パスと、保存した本文から計算した SHA-256 が出ます。確定した文脈は、本文もレポートに
 出します。Markdown では、本文の中のどのバッククォートの並びよりも長いフェンスで

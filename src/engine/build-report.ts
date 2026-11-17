@@ -1504,6 +1504,7 @@ export async function buildReport(
     instructionsVersion?: string
     reviewSessionMode?: 'fresh' | 'reuse-experiment'
     parallelReview?: unknown
+    codeReview?: unknown
     review?: Partial<Record<string, { output?: string }>>
     reviewBlockerThreshold?: number | null
     agentTimeoutMs?: number
@@ -1568,6 +1569,11 @@ export async function buildReport(
       requestedEffort: null,
     })
   const report: LoopReport = {
+    // Set up without code review: say so, so no reader takes the absent
+    // reviews for passed ones (ADR-0060).
+    ...(setupOutput?.codeReview === false
+      ? { codeReview: 'off' as const }
+      : {}),
     ...(setupOutput?.reviewSessionMode === 'reuse-experiment'
       ? { reviewSessionMode: 'reuse-experiment' }
       : {}),

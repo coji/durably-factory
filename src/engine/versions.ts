@@ -235,6 +235,11 @@ export interface ConfigVersionInput {
   reviewSessionMode?: 'fresh' | 'reuse-experiment'
   reviewBlockerThreshold?: number | null
   /**
+   * False when the run reviews no code (ADR-0060). Left out when true or
+   * absent, so a run that reviews keeps its version.
+   */
+  codeReview?: boolean
+  /**
    * The spec stages: the author's, fix's and each named reviewer's profile
    * and invocation, the round limit, and the contents of the templates read
    * at trigger. Left out entirely on a run without them, so such a run keeps
@@ -345,6 +350,7 @@ export function configVersionOf(input: ConfigVersionInput): string {
     ...(input.reviewBlockerThreshold != null
       ? { reviewBlockerThreshold: input.reviewBlockerThreshold }
       : {}),
+    ...(input.codeReview === false ? { codeReview: false } : {}),
     ...(input.spec
       ? {
           spec: {

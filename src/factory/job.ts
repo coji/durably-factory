@@ -381,6 +381,11 @@ const targetSchema = z
        * version: it changes when the reviews run, not what they are.
        */
       parallelReview: z.boolean().optional(),
+      /**
+       * Review each candidate's code (ADR-0060). Absent: on, as on a run
+       * stored before it existed.
+       */
+      codeReview: z.boolean().optional(),
       sandbox: sandboxSchema.optional(),
     }),
   ])
@@ -1789,6 +1794,8 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
             const parallelReview =
               input.target.kind === 'repo' &&
               input.target.parallelReview === true
+            const codeReviewOff =
+              input.target.kind === 'repo' && input.target.codeReview === false
             const snapshotsDir = reviewSnapshotsDirOf(root)
             await rm(snapshotsDir, { recursive: true, force: true })
             const target: TargetConfig =
@@ -1881,6 +1888,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                 review,
                 reviewBlockerThreshold,
                 reviewSessionMode,
+                codeReview: !codeReviewOff,
                 spec,
                 prompts: input.prompts,
                 sandbox,
@@ -1936,6 +1944,8 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
               ...(spec ? { spec } : {}),
               // Only when on, so a run without it keeps the setup it had.
               ...(parallelReview ? { parallelReview } : {}),
+              // Only when off, so a run without it keeps the setup it had.
+              ...(codeReviewOff ? { codeReview: false } : {}),
               ...(sandbox ? { sandbox } : {}),
               ...(repairOf
                 ? {

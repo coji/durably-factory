@@ -271,6 +271,13 @@ const factoryConfigSchema = z
      * reviewers then read the candidate's sealed tree and diff (ADR-0029).
      */
     parallelReview: z.boolean().optional(),
+    /**
+     * Review each candidate's code; on when absent. False when the
+     * repository's own merge gate is the only code reviewer: a candidate that
+     * passes the pinned check goes straight to approval (ADR-0060). The spec
+     * stages' reviews still run.
+     */
+    codeReview: z.boolean().optional(),
     sandbox: sandboxSchema.optional(),
     /** The Codex CLI file to launch; relative to this file's directory. */
     codexPath: z.string().min(1).optional(),
@@ -587,6 +594,14 @@ async function repoSettings(
     )
   const setupCommand = a['setup'] ? splitArgv(a['setup']) : config?.setup
   const commit = config?.commit
+  // The reuse experiment requires both reviewers' fresh final confirmation.
+  if (
+    config?.codeReview === false &&
+    config.review?.sessionMode === 'reuse-experiment'
+  )
+    throw new Error(
+      `${loaded?.path ?? 'factory.json'}: codeReview false runs no code review, so review.sessionMode "reuse-experiment" cannot apply; drop one of them`,
+    )
   return {
     specStages,
     prompts: loaded
@@ -613,6 +628,7 @@ async function repoSettings(
       baselineCheck: config?.baselineCheck ?? false,
       baselineReuse: config?.baselineReuse ?? null,
       parallelReview: config?.parallelReview ?? false,
+      codeReview: config?.codeReview ?? true,
       ...(enabledSandbox(config?.sandbox)
         ? { sandbox: enabledSandbox(config?.sandbox) }
         : {}),
@@ -1075,6 +1091,7 @@ interface StoredRepairInput {
     baselineCheck?: boolean
     baselineReuse?: BaselineReuse | null
     parallelReview?: boolean
+    codeReview?: boolean
     sandbox?: SandboxSettings
   }
 }
@@ -1492,6 +1509,8 @@ export function buildRepairInput(
       // Setup records it only when on; otherwise the parent's input says.
       parallelReview:
         stored.parallelReview ?? parentInput.target?.parallelReview ?? false,
+      // Setup records it only when off; otherwise the parent's input says.
+      codeReview: stored.codeReview ?? parentInput.target?.codeReview ?? true,
     },
     autoApprove: stored.autoApprove,
     checkTimeoutMs: t.checkTimeoutMs,
