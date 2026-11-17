@@ -71,8 +71,11 @@ import {
 } from './engine/status.js'
 import { deliverySchema } from './factory/events.js'
 import { timeoutMsSchema } from './factory/job.js'
+import { runRootOf } from './factory/layout.js'
+import { referencesFromRun } from './factory/references.js'
 import {
   buildTriggerInput,
+  REPEATED_FLAG,
   readNotesFile,
   readRepairFiles,
   reloadTriggerInput,
@@ -143,7 +146,12 @@ function args(): Record<string, string> {
       const key = t.slice(2)
       const next = raw[i + 1]
       if (next && !next.startsWith('--')) {
-        out[key] = next
+        // `--reference` may be given more than once; every value is kept.
+        const earlier = out[key]
+        out[key] =
+          key === 'reference' && earlier !== undefined
+            ? `${earlier}${REPEATED_FLAG}${next}`
+            : next
         i++
       } else {
         out[key] = 'true'
@@ -674,6 +682,7 @@ Commands (run from the repository root):
       real repository:  --repo <path> (--issue 234 | --task "..." | --task-file <file>)
                         [--spec-file <file>] [--dispositions-file <file>]
                         [--context-file <file>] [--config <file>]
+                        [--reference <file|dir>]...
                         [--check "pnpm validate"] [--setup "pnpm install"] [--base <ref>]
                         [--publish] [--approve auto|manual]
   ${FACTORY_COMMAND} repair --run <id> [--findings-file <file>] [--dispositions-file <file>] [--scope-file <file>]
@@ -750,6 +759,7 @@ Repository config: factory.json at the repository root, or --config <file>:
     "parallelReview": false, "codexPath": "<file>",
     "sandbox": { "network": ["code", "repair"] },
     "selfCheck": [["pnpm", "lint"], ["pnpm", "typecheck"]],
+    "generate": [["pnpm", "screenshots:update"]],
     "review": { "blockerThreshold": 5, "sessionMode": "fresh" },
     "checkTimeoutMs": 900000, "agentTimeoutMs": 7200000, "agentIdleTimeoutMs": 900000,
     "commit": { "authorName": "...", "authorEmail": "...",
@@ -814,6 +824,14 @@ Repository config: factory.json at the repository root, or --config <file>:
   "selfCheck" lists 1 to 5 quick commands (argv, like "check") that the
   code and repair prompts tell the agent to run in its worktree before
   finishing. The factory never runs them; only "check" grades the run.
+  "generate" lists 1 to 5 commands (argv, like "check") that the factory
+  runs in order in the worktree, with its own environment rather than the
+  agent's sandbox, after every implementation or repair call that leaves
+  changes and before the candidate is sealed, each within checkTimeoutMs.
+  Each gets FACTORY_SPEC_PATH (the run's spec, empty without one) and
+  FACTORY_RUN_ID. What they change is part of the candidate; the report and
+  the reviewers are told which paths they changed. A failure stops the run
+  as generate-failed before the candidate is sealed or verified.
   "review.sessionMode" defaults to "fresh". The opt-in "reuse-experiment"
   continues each reviewer independently, then requires two fresh reviews of
   the same candidate before approval or delivery. Final calls count in cost
@@ -899,6 +917,19 @@ Repository config: factory.json at the repository root, or --config <file>:
   own, told to make no change against it and to say why under NOTES when one
   seems needed, and every reviewer gets it in the TRUSTED CONTEXT. The
   report shows its path, SHA-256 and content.
+  --reference <file|dir> (repeatable; at most 20 MiB in total, no symbolic
+  links) gives the owner's source of truth for the change, such as an HTML
+  mock and its screenshots. Trigger copies the files and records each one's
+  name, size and SHA-256; the run copies them into runs/<id>/references/,
+  and every role (spec author, spec reviewers, implementer, repairer, both
+  reviewers) is given their absolute paths and may read them. Repair,
+  recheck and retrigger keep the same files.
+  checkArtifacts in factory.json names a directory relative to the work
+  directory (such as ".factory/artifacts") where the check writes outputs of
+  its own, such as screenshots of the candidate. After each check that
+  completed, passing or failing, it is copied to
+  runs/<id>/candidates/<candidate>/artifacts/ (at most 50 MiB), listed in
+  the report, and given to both reviewers to compare with the references.
 State: database and run data live in ${dirname(dbPath())}
   (worktrees, checkpoints, verification scratch, delivery patches under runs/<id>/).
 Auto-started worker: after trigger, repair, retrigger, approve, reject and
@@ -1430,6 +1461,13 @@ if (cmd === 'worker') {
     const { input, configSha256 } = await reloadTriggerInput(
       run.input as Parameters<typeof reloadTriggerInput>[0],
     )
+    // The stopped run's setup removed the stage once it held its own copy
+    // of the references, so the new run copies them from that run.
+    if (input.target.kind === 'repo' && input.target.references)
+      input.target.references = await referencesFromRun(
+        input.target.references,
+        runRootOf(durably.stateRoot, runId),
+      )
     const next = await durably.jobs.agentLoop.trigger(input as Input, {
       idempotencyKey: `retrigger-of-${runId}-config-${configSha256 ?? 'none'}`,
     })

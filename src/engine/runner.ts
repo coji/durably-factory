@@ -45,7 +45,7 @@ export interface AgentCallSpec {
   providerName: ProviderName
   prompt: string
   workdir: string
-  /** Trusted files outside `workdir` a read-only role may read. */
+  /** Trusted files outside `workdir` the role may read. */
   readableFiles?: string[]
   /** A configured review's settings; see `AgentCallOptions.review`. */
   review?: ReviewCallSettings

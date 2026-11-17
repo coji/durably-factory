@@ -9,6 +9,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { z } from 'zod'
 
+import { defaultStateRoot } from './durably.js'
 import { runChild } from './engine/child.js'
 import {
   reviewIncompleteBase,
@@ -38,6 +39,7 @@ import {
   resolveTimeouts,
   reviewBlockerThresholdSchema,
   selfCheckSchema,
+  generateSchema,
   specMaxRoundsSchema,
   specReviewerNameSchema,
   testProbeSchema,
@@ -49,6 +51,12 @@ import {
   promptPolicyKey,
   readPromptPolicies,
 } from './factory/prompt-policy.js'
+import {
+  checkArtifactsPathProblem,
+  normalizeCheckArtifactsPath,
+  stageReferences,
+  type StoredReferences,
+} from './factory/references.js'
 import { repairLabels } from './factory/repair.js'
 import { reviewerAliases } from './factory/reviewers.js'
 import {
@@ -193,6 +201,11 @@ const factoryConfigSchema = z
      */
     selfCheck: selfCheckSchema.optional(),
     /**
+     * Commands the factory runs in the worktree before each candidate is
+     * sealed, with the run's environment (ADR-0058); none when absent.
+     */
+    generate: generateSchema.optional(),
+    /**
      * The added or modified test files to run on the base and on each
      * candidate, for the reviewers (ADR-0039); none when absent.
      */
@@ -230,6 +243,21 @@ const factoryConfigSchema = z
         repair: roleConfigSchema.optional(),
       })
       .strict()
+      .optional(),
+    /**
+     * A directory, relative to the work directory, where the check writes
+     * outputs of its own, such as screenshots of the candidate. After each
+     * completed check it is copied beside the candidate's diff, listed in
+     * the report and given to both reviewers.
+     */
+    checkArtifacts: z
+      .string()
+      .min(1)
+      .refine((path) => checkArtifactsPathProblem(path) === null, {
+        message:
+          'checkArtifacts must be a relative path to a directory inside the work directory',
+      })
+      .transform(normalizeCheckArtifactsPath)
       .optional(),
     /** Run `check` once on the base commit before any agent call. */
     baselineCheck: z.boolean().optional(),
@@ -574,7 +602,11 @@ async function repoSettings(
       setupCommand:
         setupCommand && setupCommand.length > 0 ? setupCommand : null,
       selfCheck: config?.selfCheck ?? null,
+      generate: config?.generate ?? null,
       testProbe: config?.testProbe ?? null,
+      ...(config?.checkArtifacts !== undefined
+        ? { checkArtifacts: config.checkArtifacts }
+        : {}),
       reviewSessionMode: config?.review?.sessionMode ?? 'fresh',
       reviewBlockerThreshold:
         config?.review?.blockerThreshold ?? DEFAULT_REVIEW_BLOCKER_THRESHOLD,
@@ -619,7 +651,11 @@ async function repoSettings(
  * A flag value is argv split on whitespace, not a shell line; a config value
  * is already argv. Flags win over the config.
  */
-export async function resolveTarget(a: Record<string, string>) {
+export async function resolveTarget(
+  a: Record<string, string>,
+  /** Where `--reference` files are staged; the default state root. */
+  stateRoot: string = defaultStateRoot(),
+) {
   const repo = a['repo']
   if (!repo) {
     for (const flag of [
@@ -629,6 +665,7 @@ export async function resolveTarget(a: Record<string, string>) {
       'spec-file',
       'dispositions-file',
       'context-file',
+      'reference',
       'config',
     ]) {
       if (a[flag]) throw new Error(`--${flag} needs --repo <path>`)
@@ -676,6 +713,10 @@ export async function resolveTarget(a: Record<string, string>) {
   const task = issue ? issue.body : (taskFile?.content ?? a['task'])
   if (!task || task.trim().length === 0)
     throw new Error('the task is empty; there is nothing to implement')
+  // After every other input is read, so a bad one stages nothing.
+  const references = a['reference']
+    ? await stageReferences(a['reference'].split(REPEATED_FLAG), stateRoot)
+    : null
   return {
     target: {
       kind: 'repo' as const,
@@ -684,6 +725,7 @@ export async function resolveTarget(a: Record<string, string>) {
       spec: specFile?.content ?? null,
       dispositions: dispositionsFile?.content ?? null,
       context: contextFile?.content ?? null,
+      ...(references ? { references } : {}),
       inputFiles: {
         task: taskFile?.ref ?? null,
         spec: specFile?.ref ?? null,
@@ -792,9 +834,18 @@ function assembleInput(a: Record<string, string>, resolved: ResolvedTarget) {
  * Everything the run depends on, read and resolved before it exists: the
  * worker never reads factory.json or an input file again.
  */
-export async function buildTriggerInput(a: Record<string, string>) {
-  return assembleInput(a, await resolveTarget(a))
+export async function buildTriggerInput(
+  a: Record<string, string>,
+  stateRoot?: string,
+) {
+  return assembleInput(a, await resolveTarget(a, stateRoot))
 }
+
+/**
+ * What joins the values of a flag given more than once, such as
+ * `--reference`: a character no command-line argument can hold.
+ */
+export const REPEATED_FLAG = '\0'
 
 /** The parts of a stored run input a reload reads. */
 interface StoredInput {
@@ -861,6 +912,7 @@ export async function reloadTriggerInput(stored: StoredInput): Promise<{
   const {
     name: _storedName,
     sandbox: _storedSandbox,
+    checkArtifacts: _storedCheckArtifacts,
     ...storedTarget
   } = stored.target as Extract<ResolvedTarget['target'], { kind: 'repo' }>
   const { settings, codexPath, configSource, specStages, prompts } =
@@ -1014,7 +1066,10 @@ interface StoredRepairInput {
     }
     commit?: CommitSettings
     selfCheck?: string[][] | null
+    generate?: string[][] | null
     testProbe?: TestProbeRule[] | null
+    references?: StoredReferences | null
+    checkArtifacts?: string | null
     reviewSessionMode?: 'fresh' | 'reuse-experiment'
     reviewBlockerThreshold?: number | null
     baselineCheck?: boolean
@@ -1363,6 +1418,17 @@ export function buildRepairInput(
       dispositions,
       context,
       scope,
+      // The parent's references, which the child's setup copies from the
+      // parent run's own `references/`, and its check artifacts directory.
+      ...(parentInput.target?.references
+        ? { references: parentInput.target.references }
+        : {}),
+      ...((t.checkArtifacts ?? parentInput.target?.checkArtifacts)
+        ? {
+            checkArtifacts:
+              t.checkArtifacts ?? parentInput.target?.checkArtifacts,
+          }
+        : {}),
       inputFiles: {
         task: storedFiles.task ?? null,
         spec: storedFiles.spec ?? null,
@@ -1377,6 +1443,11 @@ export function buildRepairInput(
         t,
         'selfCheck',
         () => parentInput.target?.selfCheck ?? null,
+      ),
+      generate: recorded(
+        t,
+        'generate',
+        () => parentInput.target?.generate ?? null,
       ),
       testProbe: recorded(
         t,

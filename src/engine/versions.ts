@@ -210,6 +210,12 @@ export interface ConfigVersionInput {
    */
   selfCheck?: string[][] | null
   /**
+   * The repository run's `generate` commands, which the factory runs before
+   * each candidate is sealed. Left out when absent or empty, so such a run
+   * keeps its version.
+   */
+  generate?: string[][] | null
+  /**
    * The fixed command, context and output of each reviewer that named any
    * of them. A lens that named none is left out, and so is the whole field
    * when none did, so such a run keeps its version.
@@ -328,6 +334,9 @@ export function configVersionOf(input: ConfigVersionInput): string {
     ...(commitKey ? { commit: commitKey } : {}),
     ...(input.selfCheck && input.selfCheck.length > 0
       ? { selfCheck: input.selfCheck }
+      : {}),
+    ...(input.generate && input.generate.length > 0
+      ? { generate: input.generate }
       : {}),
     ...(review.length > 0 ? { review: Object.fromEntries(review) } : {}),
     ...(input.reviewSessionMode === 'reuse-experiment'

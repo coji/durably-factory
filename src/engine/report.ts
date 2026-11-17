@@ -212,6 +212,18 @@ export interface ReportSealedCandidate extends ReportCandidate {
   iteration: number
   /** The stage sequence of the code entry that sealed it. */
   sequence: number
+  /**
+   * The check's own outputs copied beside its diff (`checkArtifacts`), by
+   * absolute path; absent when there are none.
+   */
+  artifacts?: string[]
+}
+
+/** One `--reference` file, as trigger recorded it. */
+export interface ReportReferenceFile {
+  name: string
+  size: number
+  sha256: string
 }
 
 /**
@@ -219,6 +231,18 @@ export interface ReportSealedCandidate extends ReportCandidate {
  * as its candidate step stored them: the implementer's own explanation,
  * untrusted (ADR-0038).
  */
+/**
+ * One run of the `generate` commands (ADR-0058), as its step stored it:
+ * the paths they changed relative to what the implementer left, or the
+ * command that failed.
+ */
+export interface ReportGeneration {
+  /** Which pass through code ran it, from 1. */
+  iteration: number
+  changes: { added: string[]; modified: string[]; deleted: string[] } | null
+  failure: { command: string[]; exitCode: number | null; output: string } | null
+}
+
 export interface ReportImplementerNotes {
   /** Which pass through code sealed the candidate, from 1. */
   iteration: number
@@ -1039,6 +1063,8 @@ export interface LoopReport {
   roleUsage: RoleUsage[]
   /** SHA-256 of each input file's content, as stored in the run. */
   inputs: ReportInputs
+  /** The `--reference` files the run was given; absent without any. */
+  references?: ReportReferenceFile[]
   lineage: ReportLineage
   /** Last sealed candidate, whatever the conclusion; null before one exists. */
   candidate: ReportCandidate | null
@@ -1048,6 +1074,13 @@ export interface LoopReport {
   featureBase?: string | null
   /** Every candidate's test probe, oldest first; absent on old reports. */
   testProbes?: ReportTestProbe[]
+  /**
+   * The `generate` commands fixed at trigger; null without them. Absent on
+   * a report made before they existed.
+   */
+  generate?: string[][] | null
+  /** Each run of the `generate` commands, oldest first. */
+  generations?: ReportGeneration[]
   /**
    * Each code attempt's NOTES, oldest first; only the attempts that left
    * any. Absent on a report made before it existed.
@@ -1929,6 +1962,13 @@ export function reportToMarkdown(r: LoopReport): string {
     )
   }
   lines.push('')
+  if (r.references && r.references.length > 0) {
+    lines.push('## Reference files (trusted, SHA-256 recorded at trigger)')
+    lines.push('')
+    for (const file of r.references)
+      lines.push(`- ${file.name}: ${file.sha256} (${file.size} bytes)`)
+    lines.push('')
+  }
   // Its path and hash are among the inputs above; here, what the prompts
   // were given.
   if (r.inputs.context) {
@@ -1973,11 +2013,45 @@ export function reportToMarkdown(r: LoopReport): string {
         lines.push(`  - diff: ${c.changes.diffPath}`)
         lines.push(`  - changed files: ${c.changes.changedFilesPath}`)
       }
+      for (const file of c.artifacts ?? [])
+        lines.push(`  - check artifact: ${file}`)
     }
   } else {
     lines.push('- none')
   }
   lines.push('')
+  if (r.generate && r.generate.length > 0) {
+    lines.push(
+      '## Generation (generate commands run by the factory before each seal)',
+    )
+    lines.push('')
+    for (const command of r.generate)
+      lines.push(`- command: ${command.join(' ')}`)
+    const generations = r.generations ?? []
+    if (generations.length === 0) lines.push('- runs: none yet')
+    for (const g of generations) {
+      if (g.failure) {
+        lines.push(
+          `- iteration ${g.iteration}: failed: \`${g.failure.command.join(' ')}\` exited with ${g.failure.exitCode ?? 'no exit code'}`,
+          '',
+          ...fencedText(g.failure.output || '(no output)'),
+          '',
+        )
+        continue
+      }
+      const changes = g.changes ?? { added: [], modified: [], deleted: [] }
+      const entries = [
+        ...changes.added.map((path) => `added: ${path}`),
+        ...changes.modified.map((path) => `modified: ${path}`),
+        ...changes.deleted.map((path) => `deleted: ${path}`),
+      ]
+      lines.push(
+        `- iteration ${g.iteration}: ${entries.length === 0 ? 'changed no file' : `${entries.length} path(s) changed`}`,
+      )
+      for (const entry of entries) lines.push(`  - ${entry}`)
+    }
+    lines.push('')
+  }
   if (r.implementerNotes && r.implementerNotes.length > 0) {
     lines.push(
       "## Implementer notes (untrusted, the implementer's own explanations)",

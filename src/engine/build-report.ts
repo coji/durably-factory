@@ -1,12 +1,18 @@
 /** Assemble a LoopReport from persisted Durably data for one run. */
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 import type { AnyDurably, Run } from '@coji/durably'
 
 import type { CodeResponse } from '../factory/code-response.js'
 import { asThresholdException } from '../factory/events.js'
+import {
+  candidateArtifactsDirOf,
+  checkArtifactFiles,
+} from '../factory/references.js'
 import { REPAIR_OF_LABEL, triageThatRuns } from '../factory/repair.js'
+import type { GenerationRecord } from '../factory/target.js'
 import { testProbeOutcomeOf } from '../factory/test-probe.js'
 import {
   BASELINE_STEP,
@@ -59,6 +65,7 @@ import {
   type ReportDelivery,
   type ReportFinding,
   type ReportFindings,
+  type ReportGeneration,
   type ReportImplementerNotes,
   type ReportInputs,
   type ReportLineage,
@@ -69,6 +76,7 @@ import {
   type ReportReview,
   type ReportReviewFindings,
   type ReportReviewRound,
+  type ReportReferenceFile,
   type ReportSealedCandidate,
   type ReportTestProbe,
   type ReportSpec,
@@ -120,6 +128,8 @@ interface PersistedInput {
     scope?: string | null
     inputFiles?: Record<string, { path?: string } | null>
     reviewBlockerThreshold?: number | null
+    generate?: string[][] | null
+    references?: { files: ReportReferenceFile[] } | null
   }
   review?: Partial<Record<string, { output?: string }>>
   repairOf?: {
@@ -495,6 +505,36 @@ function implementerNotesOf(steps: StoredStep[]): ReportImplementerNotes[] {
         ]
       : []
   })
+}
+
+/**
+ * Every completed `stage:<n>:code:generate` step that ran the `generate`
+ * commands, oldest first (ADR-0058). Only the stored record is read;
+ * nothing is run again.
+ */
+function generationsOf(steps: StoredStep[]): ReportGeneration[] {
+  return steps
+    .flatMap((s) => {
+      const where = stageStep(s.name)
+      const record = s.output as Partial<GenerationRecord> | null
+      return s.status === 'completed' &&
+        where?.stage === 'code' &&
+        where.part === 'generate' &&
+        typeof record?.iteration === 'number'
+        ? [
+            {
+              sequence: where.sequence,
+              generation: {
+                iteration: record.iteration,
+                changes: record.changes ?? null,
+                failure: record.failure ?? null,
+              },
+            },
+          ]
+        : []
+    })
+    .sort((x, y) => x.sequence - y.sequence)
+    .map((g) => g.generation)
 }
 
 function codeResponsesOf(steps: StoredStep[]): CodeResponse[] {
@@ -1119,6 +1159,25 @@ export function repairCallsOf(rows: AttemptRow[]): ReportRepairCall[] {
   return [...calls.values()]
 }
 
+/**
+ * Each candidate with the check artifacts copied beside its diff, by
+ * absolute path; a candidate without any is left as it is.
+ */
+async function withCheckArtifacts(
+  candidates: ReportSealedCandidate[],
+): Promise<ReportSealedCandidate[]> {
+  return Promise.all(
+    candidates.map(async (c) => {
+      if (!c.changes) return c
+      const dir = candidateArtifactsDirOf(dirname(c.changes.diffPath))
+      const files = await checkArtifactFiles(dir)
+      return files.length > 0
+        ? { ...c, artifacts: files.map((f) => join(dir, ...f.split('/'))) }
+        : c
+    }),
+  )
+}
+
 /** A reference with the SHA-256 of the content, or null without either. */
 function hashed<R extends object>(ref: R | null | undefined, content: unknown) {
   return ref && typeof content === 'string'
@@ -1440,6 +1499,7 @@ export async function buildReport(
       workdir?: string
       baseCommit?: string
       featureBase?: string
+      generate?: string[][] | null
     }
     instructionsVersion?: string
     reviewSessionMode?: 'fresh' | 'reuse-experiment'
@@ -1467,7 +1527,7 @@ export async function buildReport(
       ? setupOutput.reviewBlockerThreshold
       : input?.target?.reviewBlockerThreshold) ?? null
   const setupTarget = setupOutput?.target
-  const candidates = sealedCandidates(steps)
+  const candidates = await withCheckArtifacts(sealedCandidates(steps))
   const candidate = lastCandidate(output, candidates)
   const reviewRounds = reviewRoundsOf(
     steps,
@@ -1544,6 +1604,9 @@ export async function buildReport(
     stageUsage: usage,
     roleUsage: roleUsage(rows, profiles),
     inputs: inputHashes(input),
+    ...(input?.target?.references
+      ? { references: input.target.references.files }
+      : {}),
     ...(input?.prompts ? { prompts: input.prompts } : {}),
     retryOf: input?.retryOf ?? null,
     recheckOf: input?.recheckOf ?? null,
@@ -1558,6 +1621,10 @@ export async function buildReport(
         ? (setupTarget.featureBase ?? setupTarget.baseCommit ?? null)
         : null,
     testProbes: testProbesOf(steps),
+    // As setup fixed them, else as the trigger stored them.
+    generate:
+      (setupTarget ? setupTarget.generate : input?.target?.generate) ?? null,
+    generations: generationsOf(steps),
     implementerNotes: implementerNotesOf(steps),
     codeResponses: codeResponsesOf(steps),
     repairSession: repairSession?.report ?? null,

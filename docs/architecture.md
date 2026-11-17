@@ -86,7 +86,13 @@ LLM の呼び出しと固定テストは、実行する前に、`operationKey` �
   動きます。
 - Claude のレビューは Read だけです。実装と修正では、`canUseTool` と
   `PreToolUse` フックの両方で、作業ディレクトリの外のパスを拒否します。これは
-  入力の検査で、OS のサンドボックスではありません。`command` か
+  入力の検査で、OS のサンドボックスではありません。実装と修正の Claude が使える
+  道具は `WRITER_TOOLS`（`Read`、`Edit`、`Write`、`Bash`、`Glob`、`Grep`、
+  `Agent`、`TodoWrite`、`WebFetch`、`WebSearch`）だけです。ファクトリーの呼び出しは
+  1 回のターンで終わり、あとから起こされないので、`ScheduleWakeup` や `Monitor`
+  のように次のターンを待つ道具と、コネクタや MCP の道具は渡しません。裏で動かす
+  `Bash` は拒否し、`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` と
+  `BASH_DEFAULT_TIMEOUT_MS=600000` で、長いコマンドも前で最後まで待ちます。`command` か
   `local-instructions` を使う Claude のレビューは `Read`、`Grep`、`Glob`、
   `Agent` だけで、読める場所は、自分の作業ディレクトリ、作業ツリー、レビュー資料の
   ディレクトリです（[「レビュー役の呼び出しと出力」](review-and-repair.md)を参照）。このレビューが

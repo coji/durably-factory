@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
+import { decideToolPermission } from '../src/engine/providers/claude.js'
 import { READ_ONLY_ROLES } from '../src/engine/providers/types.js'
 import { IMPLEMENTER_NOTES_MAX_BYTES } from '../src/factory/events.js'
 import {
@@ -9,6 +10,9 @@ import {
   parseImplementerNotes,
   parseReviewOutput,
   parseTriageOutput,
+  specAuthorPrompt,
+  specFixPrompt,
+  specReviewPrompt,
   TIMED_OUT_CANDIDATE_LINE,
   triagePrompt,
 } from '../src/factory/prompts.js'
@@ -259,6 +263,80 @@ describe("the owner's confirmed context in the code and repair prompts", () => {
     const without = codePrompt(args)
     assert.equal(codePrompt({ ...args, ownerContext: null }), without)
     assert.doesNotMatch(without, /OWNER CONTEXT|TRUSTED OWNER_CONTEXT/)
+  })
+})
+
+describe("the owner's reference files in every writing and spec prompt", () => {
+  const references = {
+    dir: '/state/runs/r1/references',
+    files: [
+      { name: 'mock.html', size: 5, sha256: 'a'.repeat(64) },
+      { name: 'shots/a.png', size: 8, sha256: 'b'.repeat(64) },
+    ],
+  }
+  const paths = [
+    '/state/runs/r1/references/mock.html',
+    '/state/runs/r1/references/shots/a.png',
+  ]
+  const untrusted = [{ label: 'TASK' as const, content: 'TASK-BODY' }]
+  const code = {
+    iteration: 1,
+    repairNotes: [],
+    task: 'Build the page.',
+    rules: [],
+    untrusted,
+    references,
+  }
+  const spec = {
+    worktree: '/work',
+    specPath: '/spec/spec.md',
+    template: null,
+    untrusted,
+    references,
+  }
+
+  it('lists their absolute paths as the owner’s source of truth, before the untrusted data', () => {
+    const prompts = {
+      implement: codePrompt({ ...code, role: 'implement' }),
+      repair: codePrompt({ ...code, role: 'repair', newSession: true }),
+      'spec-author': specAuthorPrompt(spec),
+      'spec-fix': specFixPrompt({ ...spec, feedback: [] }),
+      'spec-review': specReviewPrompt({
+        ...spec,
+        name: 'product',
+        reviewTemplate: null,
+        output: 'verdict',
+      }),
+    }
+    for (const [role, prompt] of Object.entries(prompts)) {
+      const section = prompt.indexOf('REFERENCE FILES (trusted')
+      assert.ok(section >= 0, role)
+      assert.ok(section < prompt.indexOf('UNTRUSTED INPUT DATA:'), role)
+      assert.match(prompt, /owner's source of truth for this change/, role)
+      for (const path of paths) assert.ok(prompt.includes(`- ${path} (`), role)
+    }
+    // Without any, nothing is added.
+    assert.doesNotMatch(
+      codePrompt({ ...code, role: 'implement', references: null }),
+      /REFERENCE FILES/,
+    )
+  })
+
+  it('lets a Claude implementer read a reference file and never write it', () => {
+    const png = paths[1] ?? ''
+    assert.deepEqual(
+      decideToolPermission('/work', false, 'Read', { file_path: png }, paths),
+      { allow: true },
+    )
+    assert.equal(
+      decideToolPermission('/work', false, 'Write', { file_path: png }, paths)
+        .allow,
+      false,
+    )
+    assert.equal(
+      decideToolPermission('/work', false, 'Read', { file_path: png }).allow,
+      false,
+    )
   })
 })
 

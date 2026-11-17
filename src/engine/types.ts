@@ -81,4 +81,20 @@ export interface CandidateRef {
   commit?: string
   /** Size and diff files of a repository candidate; absent otherwise. */
   changes?: CandidateChanges
+  /**
+   * The paths the configured `generate` commands changed after the
+   * implementer's call, relative to what the implementer left; absent on a
+   * run without `generate`.
+   */
+  generated?: GeneratedChanges
+}
+
+/**
+ * Repository-relative paths the `generate` commands added, modified or
+ * deleted in the worktree after an implementation or repair call.
+ */
+export interface GeneratedChanges {
+  added: string[]
+  modified: string[]
+  deleted: string[]
 }

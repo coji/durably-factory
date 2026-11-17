@@ -21,6 +21,14 @@ export const candidateSchema = z.object({
   branch: z.string().optional(),
   commit: z.string().optional(),
   changes: candidateChangesSchema.optional(),
+  /** What the `generate` commands changed; absent without `generate`. */
+  generated: z
+    .object({
+      added: z.array(z.string()),
+      modified: z.array(z.string()),
+      deleted: z.array(z.string()),
+    })
+    .optional(),
   /**
    * The factory's limit that stopped the call whose unfinished work the
    * candidate holds; absent when the call finished.
@@ -214,6 +222,7 @@ export const FactoryEventSchema = z.discriminatedUnion('type', [
         'rejected',
         'verification-failed',
         'review-cap-reached',
+        'generate-failed',
       ]),
       candidate: candidateSchema.nullable(),
       iterations: z.number(),

@@ -80,6 +80,7 @@ import {
   testProbeMarkerOf,
 } from '../src/factory/layout.js'
 import { codePrompt, REVIEW_STATUS_COMPLETE } from '../src/factory/prompts.js'
+import { stageReferences } from '../src/factory/references.js'
 import { repairLabels } from '../src/factory/repair.js'
 import {
   codeStage,
@@ -116,6 +117,8 @@ import {
 } from '../src/targets/repo.js'
 import {
   buildRepairInput,
+  reloadTriggerInput,
+  startableRecheck,
   startableRepair,
   type RepairFiles,
 } from '../src/trigger-input.js'
@@ -6145,6 +6148,175 @@ describe('owner context and stage context', { timeout: 240000 }, () => {
     }
   })
 
+  it('copies the reference files into the run and hands them, with the check artifacts, to both reviewers', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'repo-references-'))
+    const repo = await seedRepo(root)
+    await writeFile(join(repo, '.gitignore'), '.factory/\n')
+    await git(repo, ['add', '-A'])
+    await git(repo, ['commit', '-m', 'ignore check artifacts'])
+    const MOCK = '<main class="mock">Total</main>\n'
+    const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    await writeFile(join(root, 'mock.html'), MOCK)
+    await mkdir(join(root, 'shots'))
+    await writeFile(join(root, 'shots', 'a.png'), PNG)
+    const stateRoot = join(root, 'state')
+    const references = await stageReferences(
+      [join(root, 'mock.html'), join(root, 'shots')],
+      stateRoot,
+    )
+    // Edited after trigger: the run keeps what was staged.
+    await writeFile(join(root, 'mock.html'), 'CHANGED\n')
+    delete process.env.FAKE_REVIEW_SEQUENCE
+    recording = recordFakeReviewCalls({ plainReviews: true })
+    const durably = createAgentDurably({ stateRoot })
+    await durably.init()
+    try {
+      const input = configuredRun(
+        repo,
+        {},
+        { fakeScenario: { failIterations: 0 } },
+      )
+      const run = await durably.jobs.agentLoop.trigger({
+        ...input,
+        target: {
+          ...input.target,
+          references,
+          // A trailing slash names the same directory.
+          checkArtifacts: '.factory/artifacts/',
+          baselineCheck: true,
+          // A check that takes a screenshot of the candidate. Its first run,
+          // the baseline's, also leaves a file the candidate's check does
+          // not write: it must not reach the candidate's artifacts.
+          checkCommand: [
+            'node',
+            '-e',
+            "const fs = require('node:fs'); const first = !fs.existsSync('.factory/count'); fs.mkdirSync('.factory/artifacts', { recursive: true }); fs.writeFileSync('.factory/count', '1'); if (first) fs.writeFileSync('.factory/artifacts/baseline.png', 'OLD'); fs.writeFileSync('.factory/artifacts/a.png', 'SHOT')",
+          ],
+        },
+      })
+      await waitFor(
+        async () => (await durably.getRun(run.id))?.status === 'completed',
+        150000,
+        'run with references and check artifacts completes',
+      )
+      const output = (await durably.getRun(run.id))?.output as {
+        conclusion: string
+        workdir: string
+        candidate: { id: string }
+      }
+      assert.equal(output.conclusion, 'approved')
+      const runRoot = join(stateRoot, 'runs', run.id)
+      const mock = join(runRoot, 'references', 'mock.html')
+      const shot = join(runRoot, 'references', 'shots', 'a.png')
+      assert.equal(await readFile(mock, 'utf8'), MOCK)
+      assert.deepEqual(await readFile(shot), PNG)
+      // The run holds its copy, so the trigger's stage is gone.
+      assert.equal(existsSync(references.source), false)
+      const artifact = join(
+        runRoot,
+        'candidates',
+        output.candidate.id,
+        'artifacts',
+        'a.png',
+      )
+      assert.equal(await readFile(artifact, 'utf8'), 'SHOT')
+
+      const reviews = endedCalls(output.workdir).filter(
+        (c) => c.role === 'review-a' || c.role === 'review-b',
+      )
+      assert.deepEqual(reviews.map((c) => c.role).sort(), [
+        'review-a',
+        'review-b',
+      ])
+      for (const call of reviews) {
+        const prompt = call.input ?? ''
+        assert.match(prompt, /REFERENCE FILES \(trusted/)
+        assert.match(prompt, /CHECK ARTIFACTS \(trusted/)
+        for (const path of [mock, shot, artifact])
+          assert.ok(prompt.includes(`- ${path}`), path)
+        // A Claude reviewer may read the reference PNG and the screenshot.
+        for (const path of [shot, artifact])
+          assert.deepEqual(
+            decideToolPermission(
+              call.workdir,
+              true,
+              'Read',
+              { file_path: path },
+              call.readableFiles,
+            ),
+            { allow: true },
+          )
+      }
+
+      const report = await buildReport(durably, run.id)
+      assert.deepEqual(report.references, references.files)
+      assert.deepEqual(report.candidates.at(-1)?.artifacts, [artifact])
+      const md = reportToMarkdown(report)
+      assert.ok(md.includes(`  - check artifact: ${artifact}`))
+      assert.ok(
+        md.includes(
+          `- shots/a.png: ${createHash('sha256').update(PNG).digest('hex')} (8 bytes)`,
+        ),
+      )
+
+      // A repair, a recheck and a retrigger keep the same references and
+      // check artifacts directory; the repair's setup copies the files again.
+      const repair = await startableRepair(
+        durably,
+        run.id,
+        {
+          findings: {
+            content: '- keep the total aligned\n',
+            ref: { path: join(root, 'findings.md') },
+          },
+          dispositions: null,
+        },
+        { failIterations: 0 },
+      )
+      const recheck = await startableRecheck(durably, run.id)
+      // `retrigger --reload-config`, as for a run triggered with `--check`.
+      const { input: reloaded } = await reloadTriggerInput({
+        ...((await durably.getRun(run.id))?.input as Parameters<
+          typeof reloadTriggerInput
+        >[0]),
+        configSource: { path: null, flags: { check: 'node -e 0' } },
+      })
+      for (const next of [repair.input, recheck.input, reloaded]) {
+        assert.deepEqual(
+          (next.target as { references?: unknown }).references,
+          references,
+        )
+      }
+      for (const next of [repair.input, recheck.input])
+        assert.equal(
+          (next.target as { checkArtifacts?: unknown }).checkArtifacts,
+          '.factory/artifacts/',
+        )
+      // With the stage removed, the repair copies the parent run's own.
+      const child = await durably.jobs.agentLoop.trigger(repair.input, {
+        idempotencyKey: repair.idempotencyKey,
+        labels: repair.labels,
+      })
+      await waitFor(
+        async () => (await durably.getRun(child.id))?.status === 'completed',
+        150000,
+        'repair of a run with references completes',
+      )
+      const childRoot = join(stateRoot, 'runs', child.id)
+      assert.equal(
+        await readFile(join(childRoot, 'references', 'mock.html'), 'utf8'),
+        MOCK,
+      )
+      assert.deepEqual(
+        await readFile(join(childRoot, 'references', 'shots', 'a.png')),
+        PNG,
+      )
+    } finally {
+      await durably.stop()
+      await durably.db.destroy()
+    }
+  })
+
   it('completes a run whose code replies have no NOTES, with no notes for its reviewers or its report', async () => {
     const root = await mkdtemp(join(tmpdir(), 'repo-no-implementer-notes-'))
     const repo = await seedRepo(root)
@@ -7982,6 +8154,172 @@ describe('review-session reuse experiment', { timeout: 180000 }, () => {
         assert.equal((await durably.getWaits(run.id)).length, 0)
         assert.equal(report.delivery, null)
       }
+    } finally {
+      await durably.stop()
+      await durably.db.destroy()
+    }
+  })
+})
+
+describe('generate commands', { timeout: 240000 }, () => {
+  afterEach(() => {
+    recording?.stop()
+    recording = null
+  })
+
+  it('seals what the generate commands produce, lists it in the report and tells both reviewers', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'repo-generate-'))
+    const repo = await seedRepo(root)
+    process.env.FAKE_FAIL_FIRST = '0'
+    delete process.env.FAKE_REVIEW_SEQUENCE
+    recording = recordFakeReviewCalls({ plainReviews: true })
+    const durably = createAgentDurably({ stateRoot: join(root, 'state') })
+    await durably.init()
+    try {
+      const input = configuredRun(repo, {})
+      const run = await durably.jobs.agentLoop.trigger({
+        ...input,
+        target: {
+          ...input.target,
+          generate: [['sh', '-c', 'echo x > generated.txt']],
+        },
+      })
+      await waitFor(
+        async () => (await durably.getRun(run.id))?.status === 'completed',
+        150000,
+        'run with generate completes',
+      )
+      const output = (await durably.getRun(run.id))?.output as {
+        conclusion: string
+        workdir: string
+        candidate: { commit: string }
+      }
+      assert.equal(output.conclusion, 'approved')
+      assert.equal(
+        await git(repo, ['show', `${output.candidate.commit}:generated.txt`]),
+        'x\n',
+      )
+      const report = await buildReport(durably, run.id)
+      assert.deepEqual(report.generations, [
+        {
+          iteration: 1,
+          changes: { added: ['generated.txt'], modified: [], deleted: [] },
+          failure: null,
+        },
+      ])
+      assert.match(
+        reportToMarkdown(report),
+        /## Generation [^\n]*\n\n- command: sh -c echo x > generated.txt\n- iteration 1: 1 path\(s\) changed\n {2}- added: generated.txt\n/,
+      )
+      const reviews = endedCalls(output.workdir).filter(
+        (c) => c.role === 'review-a' || c.role === 'review-b',
+      )
+      assert.deepEqual(reviews.map((c) => c.role).sort(), [
+        'review-a',
+        'review-b',
+      ])
+      for (const { prompt } of reviews) {
+        const trusted = prompt.slice(
+          prompt.indexOf('TRUSTED CONTEXT'),
+          prompt.indexOf('<<<UNTRUSTED'),
+        )
+        assert.match(
+          trusted,
+          /generate commands[^\n]*\n- added: generated\.txt/,
+        )
+      }
+    } finally {
+      await durably.stop()
+      await durably.db.destroy()
+      delete process.env.FAKE_FAIL_FIRST
+    }
+  })
+
+  it('stops as generate-failed when a command exits non-zero, before any candidate is verified', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'repo-generate-failed-'))
+    const repo = await seedRepo(root)
+    process.env.FAKE_FAIL_FIRST = '0'
+    delete process.env.FAKE_REVIEW_SEQUENCE
+    const durably = createAgentDurably({ stateRoot: join(root, 'state') })
+    await durably.init()
+    try {
+      const input = configuredRun(repo, {})
+      const run = await durably.jobs.agentLoop.trigger({
+        ...input,
+        target: {
+          ...input.target,
+          generate: [['sh', '-c', 'echo regenerating; exit 1']],
+        },
+      })
+      await waitFor(
+        async () => (await durably.getRun(run.id))?.status === 'completed',
+        150000,
+        'run with a failing generate command completes',
+      )
+      const finished = await durably.getRun(run.id)
+      const output = finished?.output as { conclusion: string }
+      assert.equal(output.conclusion, 'generate-failed')
+      const steps = (await durably.getStepAttempts(run.id)).map(
+        (a) => a.stepName,
+      )
+      assert.ok(!steps.some((name) => name.endsWith(':code:candidate')))
+      assert.ok(!steps.some((name) => name.includes(':verify')))
+      const failure = await classifyRun(durably, finished as Run)
+      assert.equal(failure?.kind, 'generate-failed')
+      assert.ok(
+        failure?.details.includes(
+          'generate command: sh -c echo regenerating; exit 1',
+        ),
+      )
+      assert.ok(failure?.details.includes('generate exit code: 1'))
+      const markdown = reportToMarkdown(await buildReport(durably, run.id))
+      assert.match(
+        markdown,
+        /- iteration 1: failed: `sh -c echo regenerating; exit 1` exited with 1\n\n```\nregenerating\n```/,
+      )
+      assert.match(markdown, /- kind: generate-failed/)
+    } finally {
+      await durably.stop()
+      await durably.db.destroy()
+      delete process.env.FAKE_FAIL_FIRST
+    }
+  })
+
+  it('hands the generate commands the settled spec and the run id', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'repo-generate-spec-'))
+    const repo = await seedSpecRepo(root)
+    const durably = createAgentDurably({ stateRoot: join(root, 'state') })
+    await durably.init()
+    try {
+      const input = specRun(repo, { checkFromSpec: null })
+      const run = await durably.jobs.agentLoop.trigger({
+        ...input,
+        target: {
+          ...input.target,
+          generate: [
+            [
+              'sh',
+              '-c',
+              'cp "$FACTORY_SPEC_PATH" spec-copy.md && printf %s "$FACTORY_RUN_ID" > run-id.txt',
+            ],
+          ],
+        },
+      })
+      await waitFor(
+        async () => (await durably.getRun(run.id))?.status === 'completed',
+        200000,
+        'spec run with generate completes',
+      )
+      const output = (await durably.getRun(run.id))?.output as {
+        conclusion: string
+        candidate: { commit: string }
+      }
+      assert.equal(output.conclusion, 'approved')
+      const settled = (await buildReport(durably, run.id)).spec?.content
+      assert.ok(settled)
+      const commit = output.candidate.commit
+      assert.equal(await git(repo, ['show', `${commit}:spec-copy.md`]), settled)
+      assert.equal(await git(repo, ['show', `${commit}:run-id.txt`]), run.id)
     } finally {
       await durably.stop()
       await durably.db.destroy()

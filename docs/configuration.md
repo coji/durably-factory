@@ -35,7 +35,8 @@
 pnpm factory trigger \
   --repo ~/progs/myapp --task-file ~/work/task.md \
   [--spec-file ~/work/spec.md] [--dispositions-file ~/work/dispositions.md] \
-  [--context-file ~/work/decisions.md]
+  [--context-file ~/work/decisions.md] \
+  [--reference ~/work/mock.html --reference ~/work/shots/]
 ```
 
 - `--repo` のリポジトリから `git worktree` で作業ツリーを作り、その中だけで作業
@@ -375,6 +376,60 @@ web UI では、レビューの欄と工程の時系列の詳細に、「中止�
 理由が出ます。工程の時系列では、検証とレビューの重なりが実際の時刻どおりに
 見えます。
 
+## 参照ファイルとチェックの出力を渡す（--reference、checkArtifacts）
+
+HTML のモックやその画面写真のように、テキストの入力では渡せない「正解の見本」は、
+`trigger --reference <path>` で渡します。ファイルでもディレクトリでもよく、何度でも
+指定できます。
+
+```bash
+pnpm factory trigger --repo ~/progs/myapp --task-file ~/work/task.md \
+  --reference ~/work/mock.html --reference ~/work/shots/
+```
+
+- `trigger` のときに一度だけ読み、ファイルごとの名前、大きさ、SHA-256 を実行の入力に
+  記録します。ファイルは状態ディレクトリの下にいったん写し、実行の `setup` が
+  `runs/<id>/references/` に写して、いったん写したものは消します。そのとき SHA-256 を
+  確かめるので、`trigger` のあとに元のファイルを書き換えても、その実行が見るものは
+  変わりません。`repair`、`recheck`、`retrigger` も同じファイルを使い、元の実行の
+  `runs/<id>/references/` から、SHA-256 を確かめて写します。
+- ファイルはその名前のまま、ディレクトリは `shots/a.png` のように、ディレクトリの
+  名前の下に置きます。合計 20 MiB を超えるもの、シンボリックリンク（ディレクトリの
+  中のものも）、同じ名前になる 2 つのファイルは、実行を作る前に受け付けません。
+- 仕様の作成と修正、仕様のレビュー、実装、修正、2 つのコードレビューのすべての
+  プロンプトに、`REFERENCE FILES` の区画で絶対パスの一覧を入れ、「依頼した人が
+  決めた、この変更の正解（たとえば画面のデザイン）」として示します。Claude の役は
+  これらのファイルを `Read` で読めます（画像も読めます）。書き込みはできません。
+  Codex の役は、同じ絶対パスを作業場所から読みます。
+- レポートには「Reference files」の節に、名前、SHA-256、大きさが出ます。
+
+検査が候補の画面写真などを書き出すときは、`factory.json` の `"checkArtifacts"` に、
+その出力先を作業ディレクトリからの相対パスで書きます。
+
+```json
+{
+  "check": ["pnpm", "test:e2e"],
+  "checkArtifacts": ".factory/artifacts"
+}
+```
+
+- 検査が終わるたびに（合格でも不合格でも）、そのディレクトリがあれば、候補の記録の
+  `runs/<id>/candidates/<候補>/artifacts/` に写します。写すのは通常のファイルだけで、
+  シンボリックリンクは写さず、合計 50 MiB までです。検査が時間切れで止まったときも
+  写します。取り消しなどで検査が終わらなかったときは写しません。
+- このディレクトリは検査のものです。候補の検査の前と、基準の検査（`baselineCheck`）の
+  あとに、作業ディレクトリから消します。そのため、写すのはその検査が書いたファイル
+  だけで、エージェントや前の検査が残したものは写しません。
+- 写したファイルは、レポートの「Candidates」の節に候補ごとに出ます。
+- 2 つのコードレビューには、TRUSTED CONTEXT の中の `CHECK ARTIFACTS` の区画で、
+  「検査そのものが書き出したもの（たとえば候補の画面写真）。参照ファイルと見比べる」
+  として、絶対パスの一覧を渡します。どちらのレビューも読めます。
+- `parallelReview` では、レビューが検査と同時に始まるので、その回のレビューには
+  まだ写したものがありません。
+- 絶対パスや、作業ディレクトリの外を指すパス（`..`）、作業ディレクトリそのもの
+  （`./` など）、`.git` とその中は受け付けません。値は
+  末尾の `/` を除いて整えてから、`trigger` のときに実行の入力に保存し、`repair` と `recheck` は元の実行の値を使います。
+
 ## 終える前にエージェントに確かめさせる（selfCheck）
 
 `factory.json` の `"selfCheck"` に短いコマンドを書くと、実装と修正のプロンプトに、
@@ -420,6 +475,39 @@ CHECK C2: not-run — the sandbox cannot start the required local server
 これらは実装担当の申告であり、実行を保証する証拠ではありません。
 合否は引き続きfactoryが実行する固定検査で決めます。
 自己申告の欠落だけを理由に追加の呼び出しを行うことはありません。
+
+## 候補にする前に生成コマンドを実行する（generate）
+
+エージェントのsandboxでは作れないファイルがあります。たとえば、採点と同じコンテナの
+中で作り直すスクリーンショットの参照画像です。そのコンテナのコマンドは依存関係を
+インストールしますが、エージェントにはそれが許されていません。`factory.json` の
+`"generate"` にコマンドを書くと、factory 自身がそれを実行してから候補にします。
+
+```json
+{
+  "check": ["pnpm", "validate"],
+  "generate": [["pnpm", "screenshots:update"]]
+}
+```
+
+- 1 から 5 個のコマンドを書けます。各コマンドは `check` と同じく argv の配列で、
+  空の配列と空の文字列は、`trigger` のときに受け付けません。
+- 実装と修正の呼び出しが作業ツリーに変更を残したときだけ、その呼び出しのあと、
+  候補にする前に、書いた順に作業ツリーで実行します。エージェントのsandboxではなく、
+  ワーカーの環境で動きます。各コマンドの時間の上限は `checkTimeoutMs` です。
+- 各コマンドには、環境変数 `FACTORY_SPEC_PATH` に実行の仕様ファイルのパス（仕様が
+  なければ空文字列）を、`FACTORY_RUN_ID` に実行の ID を渡します。仕様の工程がある
+  実行では、確定した仕様のパスです。仕様から作り直すものを決めるのに使えます。
+- コマンドが変えたファイルは、そのまま候補に入ります。factory は、エージェントが
+  残した状態と比べて、生成で追加、変更、削除したパスを反復ごとに記録します。
+  レポートの「Generation」に出し、2 人のレビュアーにも trusted context として
+  渡すので、レビュアーはどのファイルをエージェントが書いたのではないかが分かります。
+- コマンドが 0 以外で終わるか、時間切れになるか、起動できなければ、実行はそこで
+  `generate-failed` として終わります。その作業は候補にならず、検証もしません。
+  レポートと `factory status` には、コマンド、終了コード、出力の末尾が出ます。
+- 書かなければ、これまでと同じです。値は `trigger` のときに実行の入力に保存し、
+  `retrigger`、`--reload-config`、`factory repair` は `selfCheck` と同じように扱います。
+  書いたときは `configVersion` に入ります。
 
 ## 新しいテストをベースと候補で動かす（testProbe）
 
@@ -695,7 +783,7 @@ repair、recheck、通常の retrigger と自動再試行は保存した設定�
 その指定した設定から、ワーカーがプロバイダーのプリセットで決めます。ワーカーは
 元のファイルを読み直さないので、`trigger` のあとにファイルを書き換えても、その実行の
 設定とプロンプトは変わりません。時間の上限、`codexPath`、`baselineCheck`、
-`baselineReuse`、`parallelReview`、`selfCheck`、`testProbe`、`review.blockerThreshold`、`commit` も、
+`baselineReuse`、`parallelReview`、`selfCheck`、`generate`、`testProbe`、`checkArtifacts`、`review.blockerThreshold`、`commit` も、
 同じように解決した値を実行の入力に保存します。レポートには、入力ファイルごとの
 パスと、保存した本文から計算した SHA-256 が出ます。確定した文脈は、本文もレポートに
 出します。Markdown では、本文の中のどのバッククォートの並びよりも長いフェンスで

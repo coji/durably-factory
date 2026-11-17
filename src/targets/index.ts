@@ -68,6 +68,8 @@ export interface PrepareRepoArgs {
   setupCommand: string[] | null
   /** Fixed at trigger; see `RepoTargetConfig.selfCheck`. */
   selfCheck?: string[][] | null
+  /** Fixed at trigger; see `RepoTargetConfig.generate`. */
+  generate?: string[][] | null
   /** Fixed at trigger; see `RepoTargetConfig.testProbe`. */
   testProbe?: TestProbeRule[] | null
   checkTimeoutMs: number
@@ -137,6 +139,7 @@ export async function prepareRepoTarget(
     workdir,
     setupCommand: args.setupCommand,
     selfCheck: args.selfCheck ?? null,
+    ...(args.generate ? { generate: args.generate } : {}),
     checkCommand: args.checkCommand,
     ...(args.checkFromSpec ? { checkFromSpec: args.checkFromSpec } : {}),
     checkTimeoutMs: args.checkTimeoutMs,

@@ -1,4 +1,8 @@
-import type { CandidateRef, ReviewSnapshots } from '../engine/types.js'
+import type {
+  CandidateRef,
+  GeneratedChanges,
+  ReviewSnapshots,
+} from '../engine/types.js'
 /**
  * What a factory is pointed at.
  *
@@ -15,6 +19,7 @@ import type { CandidateRef, ReviewSnapshots } from '../engine/types.js'
  * database to work from.
  */
 import type { GradeResult } from '../engine/verification.js'
+import type { ReferenceFiles } from './references.js'
 import type { FactorySetup, ProfileRole, TestProbeRule } from './types.js'
 
 export type TargetKind = 'subject' | 'repo'
@@ -79,6 +84,13 @@ export interface RepoTargetConfig {
    */
   selfCheck?: string[][] | null
   /**
+   * Commands, fixed at trigger, that the factory runs in the worktree in
+   * order after every implementation or repair call that leaves changes,
+   * before the candidate is sealed, outside the implementer's sandbox
+   * (ADR-0058). Null or absent: none, as on a run set up before it existed.
+   */
+  generate?: string[][] | null
+  /**
    * Pinned check argv. Recorded at setup so the agent cannot redefine it.
    * Empty at setup on a run with `checkFromSpec`: the run grades with the
    * check that script returns, fixed in its own step before the baseline.
@@ -113,6 +125,17 @@ export interface RepoTargetConfig {
    */
   scope?: string | null
   context?: string | null
+  /**
+   * The owner's reference files, copied into the run's own directory at
+   * setup and listed in every role's prompt. Absent: none.
+   */
+  references?: ReferenceFiles
+  /**
+   * The directory, relative to the worktree, a completed check leaves its
+   * own outputs in; copied beside each candidate's diff for the reviewers.
+   * Absent: none.
+   */
+  checkArtifacts?: string
   /**
    * Files the factory's own stages produced, registered with
    * `withStageContext` and handed to the reviewers as trusted context.
@@ -336,6 +359,34 @@ export interface SealArgs {
   signal: AbortSignal
 }
 
+/**
+ * One generation step's result, as the code stage stores it (ADR-0058):
+ * the paths the `generate` commands changed relative to what the
+ * implementer left, or the command that failed.
+ */
+export interface GenerationRecord {
+  /** Which pass through code ran it, from 1. */
+  iteration: number
+  commands: string[][]
+  /** Null when a command failed. */
+  changes: GeneratedChanges | null
+  failure: GenerationFailure | null
+}
+
+export interface GenerationFailure {
+  command: string[]
+  /** Null when the command timed out or could not start. */
+  exitCode: number | null
+  /** The tail of its combined output, or why it could not run. */
+  output: string
+}
+
+export interface GenerateArgs {
+  iteration: number
+  runId: string
+  signal: AbortSignal
+}
+
 export interface GradeArgs {
   candidate: CandidateRef
   /** Scratch space outside the agent's workdir, rebuilt per attempt. */
@@ -381,11 +432,30 @@ export interface Target {
   ownerContext(): string | null
   repairScope?(): string | null
   /**
+   * The owner's reference files, in the run's own copy, which every role
+   * is shown and may read; null or absent without any.
+   */
+  references?(): ReferenceFiles | null
+  /**
+   * The copy of the check's own outputs a completed check of `candidate`
+   * left (`checkArtifacts`), with its files relative to `dir`; null when
+   * there is none.
+   */
+  checkArtifacts?(
+    candidate: CandidateRef,
+  ): Promise<{ dir: string; files: string[] } | null>
+  /**
    * What each reviewer is asked to check. Reviewers see only the candidate
    * and the trusted context, so the questions have to come from whoever knows
    * what is being built.
    */
   reviewRules(lens: 'correctness' | 'edge-cases'): string[]
+  /**
+   * Run the configured `generate` commands in the workdir and report what
+   * they changed, or the one that failed; null when none are configured.
+   * Only a target that can have them implements it.
+   */
+  generate?(args: GenerateArgs): Promise<GenerationRecord | null>
   /** Seal the current workdir as an immutable candidate. */
   seal(args: SealArgs): Promise<CandidateRef>
   /**

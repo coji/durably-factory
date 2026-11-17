@@ -197,9 +197,10 @@ export function decideToolPermission(
   toolName: string,
   input: Record<string, unknown>,
   /**
-   * Exact files outside the root a read-only role may also read: the
-   * candidate's diff and changed-file list. Only whole paths match, so a
-   * directory or a sibling file is not opened up with them.
+   * Exact files outside the root a role may also read with `Read`: the
+   * candidate's diff and changed-file list, the owner's reference files and
+   * the check's artifacts. Only whole paths match, so a directory or a
+   * sibling file is not opened up with them.
    */
   readableFiles: readonly string[] = [],
 ): ToolDecision {
@@ -224,6 +225,18 @@ export function decideToolPermission(
     }
     return { allow: true }
   }
+  // A writing role may read the same exact files, such as the owner's
+  // reference files, and never write them.
+  if (toolName === 'Read') {
+    const p = input['file_path']
+    if (
+      typeof p === 'string' &&
+      readableFiles.some(
+        (file) => resolve(file) === resolveInside(allowedRoot, p),
+      )
+    )
+      return { allow: true }
+  }
   const fileKeys = ['file_path', 'path', 'notebook_path'] as const
   for (const key of fileKeys) {
     const p = input[key]
@@ -235,6 +248,14 @@ export function decideToolPermission(
     }
   }
   if (toolName === 'Bash') {
+    // A background command outlives the call: the model ends its turn to
+    // wait for it, and nothing resumes the session (see WRITER_TOOLS).
+    if (input['run_in_background'] === true)
+      return {
+        allow: false,
+        reason:
+          'background commands are not available in a factory call; run it in the foreground and wait for its result',
+      }
     const cmd = input['command']
     if (typeof cmd === 'string') {
       const reason = bashEscapeReason(allowedRoot, cmd)
@@ -276,6 +297,40 @@ function bashEscapeReason(root: string, cmd: string): string | null {
   }
   return null
 }
+
+/**
+ * The tools a writing role (implementer, repairer) has; every other tool does
+ * not exist. A factory call is one headless turn: when the model ends it,
+ * nothing wakes the session again. Tools that wait for a later turn
+ * (`ScheduleWakeup`, `Monitor`, cron, background tasks) or reach outside the
+ * worktree (connectors, MCP servers) would end the call with the work
+ * unfinished and unreported, so they are not offered.
+ */
+export const WRITER_TOOLS = [
+  'Read',
+  'Edit',
+  'Write',
+  'Bash',
+  'Glob',
+  'Grep',
+  'Agent',
+  'TodoWrite',
+  'WebFetch',
+  'WebSearch',
+]
+
+/**
+ * The environment a writing role's Claude Code runs with. Background tasks
+ * are switched off, so a long command (a project's own integration test, say)
+ * runs in the foreground instead of being moved to the background when it
+ * passes the default two-minute Bash timeout, and the default timeout is the
+ * CLI's ten-minute maximum. A command that takes longer is stopped and its
+ * timeout reported to the model, which can still answer in the same turn.
+ */
+export const WRITER_ENV = {
+  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1',
+  BASH_DEFAULT_TIMEOUT_MS: '600000',
+} as const
 
 /** The tools a command-mode review has; every other tool does not exist. */
 export const COMMAND_MODE_REVIEW_TOOLS = ['Read', 'Grep', 'Glob', 'Agent']
@@ -630,8 +685,13 @@ export function buildClaudeSettings(
     settingSources: [],
     permissionMode: 'default',
     // A configured review that is not in command mode (a findings-only
-    // one) is not shown any tool the guard would refuse.
-    ...(review ? { tools: ['Read'] } : {}),
+    // one) is not shown any tool the guard would refuse; a writing role
+    // has only the tools a single headless turn can finish with.
+    ...(review
+      ? { tools: ['Read'] }
+      : readOnly
+        ? {}
+        : { tools: [...WRITER_TOOLS], env: { ...WRITER_ENV } }),
     allowedTools: readOnly ? ['Read'] : ['Read', 'Edit', 'Write', 'Bash'],
     canUseTool: extraReviewRoots
       ? canUseToolWith((name, input) =>

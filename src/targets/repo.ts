@@ -39,7 +39,7 @@ import {
 } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 
-import { runChild } from '../engine/child.js'
+import { childOutput, runChild } from '../engine/child.js'
 import {
   BASELINE_FAILED_MESSAGE,
   setupUntrackedError,
@@ -61,7 +61,9 @@ import {
   removeWorktreeRegistration,
   resolveCommit,
   someUntracked,
+  treeChanges,
   treeOf,
+  worktreeTree,
   type CommitAuthor,
   type RemoveFailure,
 } from '../engine/git.js'
@@ -85,21 +87,34 @@ import {
   reviewHeadTreeOf,
   reviewWorkdirOf,
   specReviewWorkdirOf,
+  specFileOf,
   stageContextDirOf,
   testProbeBaseRecordOf,
   worktreeRetiredMarkerOf,
 } from '../factory/layout.js'
 import {
   changedPathsLine,
+  checkArtifactsLines,
+  referenceFilesSection,
   scopeContext,
   trustedContextLines,
 } from '../factory/prompts.js'
+import {
+  candidateArtifactsDirOf,
+  checkArtifactFiles,
+  checkArtifactsPathProblem,
+  copyCheckArtifacts,
+  type ReferenceFiles,
+} from '../factory/references.js'
 import {
   DEFAULT_COMMIT_SETTINGS,
   featureBaseOf,
   type CommitSettings,
   type Delivery,
   type DeliverArgs,
+  type GenerateArgs,
+  type GenerationFailure,
+  type GenerationRecord,
   type GradeArgs,
   type RepairParentConclusion,
   type RepoTargetConfig,
@@ -192,6 +207,30 @@ export function commitAuthorOf(settings: CommitSettings): CommitAuthor {
 /** Hash-free identity of the pinned check, recorded so it cannot drift. */
 export function checkFingerprint(command: string[]): string {
   return command.join(' ')
+}
+
+/** How much of a failed `generate` command's output a run stores. */
+const GENERATE_OUTPUT_TAIL = 4000
+
+/**
+ * The trusted lines naming what the `generate` commands changed in a
+ * candidate, so reviewers know which files the implementer did not write.
+ */
+function generatedLines(generated: CandidateRef['generated']): string[] {
+  if (!generated) return []
+  const entries = [
+    ...generated.added.map((path) => `added: ${path}`),
+    ...generated.modified.map((path) => `modified: ${path}`),
+    ...generated.deleted.map((path) => `deleted: ${path}`),
+  ]
+  return entries.length === 0
+    ? [
+        "Generated files: the factory's generate commands ran after the implementer and changed no file.",
+      ]
+    : [
+        "Generated files: the factory's generate commands ran after the implementer and produced these changes; the implementer did not write them:",
+        ...entries.map((entry) => `- ${entry}`),
+      ]
 }
 
 /** Render argv for the POSIX shell commands an implementer is asked to run. */
@@ -401,6 +440,74 @@ export class RepoTarget implements Target {
     ]
   }
 
+  /**
+   * Run each `generate` command in the worktree, in order, with the run's
+   * environment and the check's timeout (ADR-0058). Each gets the settled
+   * spec's path in `FACTORY_SPEC_PATH` (empty without a spec) and the run id
+   * in `FACTORY_RUN_ID`. Stops at the first command that fails; otherwise
+   * returns the paths the commands changed relative to what the implementer
+   * left, as the trees of the worktree before and after.
+   */
+  async generate(args: GenerateArgs): Promise<GenerationRecord | null> {
+    const commands = this.config.generate ?? []
+    if (commands.length === 0) return null
+    const { workdir, spec } = this.config
+    const specPath = spec !== null ? specFileOf(this.runRoot) : ''
+    if (spec !== null) {
+      await mkdir(dirname(specPath), { recursive: true })
+      await writeFile(specPath, spec, 'utf8')
+    }
+    const tail = (text: string) => text.slice(-GENERATE_OUTPUT_TAIL).trim()
+    const before = await worktreeTree(workdir, args.signal)
+    for (const argv of commands) {
+      const [command, ...rest] = argv
+      let failure: GenerationFailure | null = null
+      try {
+        const res = await runChild(command ?? '', rest, {
+          cwd: workdir,
+          env: { FACTORY_SPEC_PATH: specPath, FACTORY_RUN_ID: args.runId },
+          timeoutMs: this.config.checkTimeoutMs,
+          maxOutputChars: GENERATE_OUTPUT_TAIL,
+          signal: args.signal,
+        })
+        if (res.code !== 0)
+          failure = {
+            command: argv,
+            exitCode: res.code,
+            output: tail(`${res.stdout}${res.stderr}`),
+          }
+      } catch (error) {
+        if (
+          args.signal.aborted ||
+          (error as Error).name === 'SpawnCancelledError'
+        )
+          throw error
+        const out = childOutput(error)
+        failure = {
+          command: argv,
+          exitCode: null,
+          output: tail(
+            `${out.stdout}${out.stderr}\n${(error as Error).message}`,
+          ),
+        }
+      }
+      if (failure)
+        return {
+          iteration: args.iteration,
+          commands,
+          changes: null,
+          failure,
+        }
+    }
+    const after = await worktreeTree(workdir, args.signal)
+    return {
+      iteration: args.iteration,
+      commands,
+      changes: await treeChanges(workdir, before, after),
+      failure: null,
+    }
+  }
+
   async seal(args: SealArgs): Promise<CandidateRef> {
     const sealed = await commitAll(
       this.config.workdir,
@@ -440,15 +547,20 @@ export class RepoTarget implements Target {
    * reaches review still has them. Rewriting on a replay yields the same
    * bytes, because both commits are fixed.
    */
-  private async writeChanges(
-    id: string,
-    commit: string,
-  ): Promise<CandidateChanges> {
-    const dir = join(
+  /** Where one candidate's diff, file list and check artifacts are kept. */
+  private candidateDir(id: string): string {
+    return join(
       this.config.candidatesDir ??
         join(dirname(this.config.deliveryDir), 'candidates'),
       id,
     )
+  }
+
+  private async writeChanges(
+    id: string,
+    commit: string,
+  ): Promise<CandidateChanges> {
+    const dir = this.candidateDir(id)
     await mkdir(dir, { recursive: true })
     const diffPath = join(dir, 'changes.diff')
     const changedFilesPath = join(dir, 'changed-files.txt')
@@ -607,7 +719,48 @@ export class RepoTarget implements Target {
 
   async grade(args: GradeArgs): Promise<GradeResult> {
     await this.assertIntact(args.candidate)
-    return this.runCheck(args.logDir, args.signal)
+    // The artifact directory belongs to this check run: whatever an agent,
+    // an earlier check or the baseline left there is removed first, so the
+    // reviewers see only what this check wrote.
+    const artifacts = this.config.checkArtifacts
+    await this.clearCheckArtifacts()
+    const result = await this.runCheck(args.logDir, args.signal)
+    // A check that completed, passing or not, leaves its own outputs for
+    // the reviewers, copied beside the candidate's diff.
+    if (artifacts)
+      await copyCheckArtifacts(
+        join(this.config.workdir, artifacts),
+        candidateArtifactsDirOf(this.candidateDir(args.candidate.id)),
+      )
+    return result
+  }
+
+  /** Remove the check's artifact directory from the worktree, if set. */
+  private async clearCheckArtifacts(): Promise<void> {
+    const artifacts = this.config.checkArtifacts
+    if (!artifacts) return
+    // Checked again here, for an input stored without the config's check:
+    // removing the work directory or `.git` would destroy the candidate.
+    const problem = checkArtifactsPathProblem(artifacts)
+    if (problem)
+      throw new Error(`checkArtifacts ${JSON.stringify(artifacts)} ${problem}`)
+    await rm(join(this.config.workdir, artifacts), {
+      recursive: true,
+      force: true,
+    })
+  }
+
+  references(): ReferenceFiles | null {
+    return this.config.references ?? null
+  }
+
+  async checkArtifacts(
+    candidate: CandidateRef,
+  ): Promise<{ dir: string; files: string[] } | null> {
+    if (!this.config.checkArtifacts) return null
+    const dir = candidateArtifactsDirOf(this.candidateDir(candidate.id))
+    const files = await checkArtifactFiles(dir)
+    return files.length > 0 ? { dir, files } : null
   }
 
   /**
@@ -656,6 +809,8 @@ export class RepoTarget implements Target {
         { cause: err },
       )
     }
+    // The baseline's own artifacts are never a candidate's.
+    await this.clearCheckArtifacts()
     // A check that edits tracked files would slip its edits into the first
     // candidate, so the worktree must come out of it as it went in.
     await this.assertAtBase(
@@ -761,6 +916,11 @@ export class RepoTarget implements Target {
       head,
     )
     const parent = this.config.repairOf
+    // The owner's reference files and the check's own outputs, when any.
+    const files = [
+      ...referenceFilesSection(this.references(), 'review'),
+      ...checkArtifactsLines(await this.checkArtifacts(candidate)),
+    ]
     return [
       "TRUSTED CONTEXT (produced by the factory or confirmed by the run's owner, not by the implementer):",
       `Base commit: ${this.config.baseCommit}`,
@@ -775,8 +935,10 @@ export class RepoTarget implements Target {
         : []),
       `Candidate: ${candidate.id}`,
       changedPathsLine(changes, candidate.changes?.changedFilesPath),
+      ...generatedLines(candidate.generated),
       ...trustedContextLines(this.ownerContext(), this.stageCopies()),
       ...scopeContext(this.config.scope),
+      ...(files.length > 0 ? ['', ...files] : []),
       '',
       'The task the implementer was given is in the untrusted TASK block below.',
     ].join('\n')

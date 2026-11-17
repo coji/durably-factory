@@ -1,5 +1,6 @@
 /** Prompt builders — separate sessions for parallel reviews. */
 import { createHash } from 'node:crypto'
+import { join } from 'node:path'
 
 import { z } from 'zod'
 
@@ -8,6 +9,7 @@ import type { RepairFinding } from './code-response.js'
 import { asThresholdException, IMPLEMENTER_NOTES_MAX_BYTES } from './events.js'
 import type { PromptPolicy } from './prompt-policy.js'
 import type { PromptVersion } from './prompt-version.js'
+import type { ReferenceFiles } from './references.js'
 import { reviewerId } from './reviewers.js'
 import type {
   RepairParentConclusion,
@@ -107,6 +109,53 @@ export function trustedContextLines(
   ]
 }
 
+/** What a role does with the owner's reference files. */
+const REFERENCE_USE = {
+  write:
+    'Keep what you write consistent with them; where the task or the spec leaves something open that they show, follow them.',
+  review:
+    'Judge the change against them: a difference from them that the task, the spec or the owner context does not call for is a finding.',
+} as const
+
+/**
+ * The owner's reference files with their absolute paths, for every role's
+ * prompt: trusted, the owner's source of truth for the change. Nothing
+ * without any.
+ */
+export function referenceFilesSection(
+  references: ReferenceFiles | null | undefined,
+  use: keyof typeof REFERENCE_USE,
+): string[] {
+  if (!references || references.files.length === 0) return []
+  return [
+    "REFERENCE FILES (trusted, supplied by the run's owner):",
+    `The files below are the owner's source of truth for this change, for example its visual design. They are outside the repository; read them, images included, at these absolute paths. ${REFERENCE_USE[use]}`,
+    ...references.files.map(
+      (file) =>
+        `- ${join(references.dir, ...file.name.split('/'))} (${file.size} bytes, sha256 ${file.sha256})`,
+    ),
+    '',
+  ]
+}
+
+/**
+ * The check's own outputs for this candidate, for a reviewer's trusted
+ * context. Nothing without any.
+ */
+export function checkArtifactsLines(
+  artifacts: { dir: string; files: string[] } | null,
+): string[] {
+  if (!artifacts || artifacts.files.length === 0) return []
+  return [
+    `CHECK ARTIFACTS (trusted, written by the pinned check of this candidate and copied by the factory to ${artifacts.dir}):`,
+    "These are the check's own outputs, for example screenshots of the candidate. Read them, images included, and compare them with the reference files when there are any.",
+    ...artifacts.files.map(
+      (file) => `- ${join(artifacts.dir, ...file.split('/'))}`,
+    ),
+    '',
+  ]
+}
+
 /** The label of the block that carries a failed candidate's reviews. */
 export const FAILED_CANDIDATE_REVIEWS_LABEL = 'FAILED_CANDIDATE_REVIEWS'
 
@@ -182,6 +231,8 @@ export interface CodePromptArgs {
   /** The owner's confirmed context, as trusted; null or absent: none. */
   ownerContext?: string | null
   scope?: string | null
+  /** The owner's reference files, as trusted; null or absent: none. */
+  references?: ReferenceFiles | null
   /**
    * A repair on its own profile, in a session that has not seen the
    * implementation: it is told the earlier attempt is in the working tree.
@@ -467,6 +518,7 @@ export function codePrompt(args: CodePromptArgs): string {
     ...customPolicySection(args.policy),
     ...ownerContextSection(args.ownerContext ?? null),
     ...scopeContext(args.scope),
+    ...referenceFilesSection(args.references, 'write'),
     ...untrustedSection(args.untrusted ?? []),
     ...(legacy ? LEGACY_CODE_REPLY_FORMAT : CODE_REPLY_FORMAT).map((line) =>
       args.requiresNotes || args.repairFindings?.length
@@ -1278,6 +1330,8 @@ export interface SpecAuthorPromptArgs {
   template: string | null
   /** The task, fenced off as data. */
   untrusted: UntrustedInput[]
+  /** The owner's reference files, as trusted; null or absent: none. */
+  references?: ReferenceFiles | null
 }
 
 /** The spec author: read the repository, write the spec file. */
@@ -1300,6 +1354,7 @@ export function specAuthorPrompt(args: SpecAuthorPromptArgs): string {
     '- Do not start the implementation.',
     '',
     ...specTemplateSection(args.template),
+    ...referenceFilesSection(args.references, 'write'),
     ...untrustedSection(args.untrusted),
     'Reply with a one-line summary once the spec file is written.',
   ].join('\n')
@@ -1329,6 +1384,7 @@ export function specFixPrompt(args: SpecFixPromptArgs): string {
     ...workPolicy(['- Keep what the reviewers did not question.'], args.policy),
     '',
     ...specTemplateSection(args.template),
+    ...referenceFilesSection(args.references, 'write'),
     ...untrustedSection([...args.untrusted, ...args.feedback]),
     'Reply with a one-line summary once the spec file is changed.',
   ].join('\n')
@@ -1345,6 +1401,8 @@ export interface SpecReviewPromptArgs {
   /** The task, fenced off as data. */
   untrusted: UntrustedInput[]
   output: ReviewOutput
+  /** The owner's reference files, as trusted; null or absent: none. */
+  references?: ReferenceFiles | null
 }
 
 /** One spec reviewer: read the spec and the repository, judge the spec. */
@@ -1380,6 +1438,7 @@ export function specReviewPrompt(args: SpecReviewPromptArgs): string {
           '',
         ]
       : []),
+    ...referenceFilesSection(args.references, 'review'),
     ...untrustedSection(args.untrusted),
     ...replyShape(args.output, args.promptVersion),
   ].join('\n')

@@ -95,6 +95,11 @@ import {
   triagePrompt,
 } from './prompts.js'
 import { reduce } from './reducer.js'
+import {
+  copyReferences,
+  referencesDirOf,
+  removeStagedReferences,
+} from './references.js'
 import { triageThatRuns } from './repair.js'
 import {
   runCheckFromSpec,
@@ -189,6 +194,17 @@ export const selfCheckSchema = z
   .max(5)
 
 /**
+ * `generate` in a target and in factory.json: one to five commands, each
+ * argv like `check`, that the factory runs in the worktree after every
+ * implementation or repair call that leaves changes, before the candidate
+ * is sealed (ADR-0058).
+ */
+export const generateSchema = z
+  .array(z.array(z.string().min(1)).min(1))
+  .min(1)
+  .max(5)
+
+/**
  * `testProbe` in a target and in factory.json (ADR-0039): one or more
  * entries, each a glob over repository-relative paths and an argv run once
  * per matching test file, with each `{files}` element replaced by its path.
@@ -275,6 +291,30 @@ const targetSchema = z
        */
       context: contextSchema.nullable().optional(),
       scope: contextSchema.nullable().optional(),
+      /**
+       * `--reference` files, staged at trigger: setup copies them into the
+       * run's `references/` and checks each hash. Absent or null: none.
+       */
+      references: z
+        .object({
+          source: z.string().min(1),
+          files: z
+            .array(
+              z.object({
+                name: z.string().min(1),
+                size: z.number().int().min(0),
+                sha256: z.string().regex(/^[0-9a-f]{64}$/),
+              }),
+            )
+            .min(1),
+        })
+        .nullable()
+        .optional(),
+      /**
+       * The directory, relative to the worktree, whose files a completed
+       * check leaves for the reviewers. Absent or null: none.
+       */
+      checkArtifacts: z.string().min(1).nullable().optional(),
       /** Where each input came from, when it was read from a file. */
       inputFiles: z
         .object({
@@ -303,6 +343,11 @@ const targetSchema = z
        * finishing (ADR-0031). Null or absent: no such rule, as before.
        */
       selfCheck: selfCheckSchema.nullable().optional(),
+      /**
+       * Commands the factory runs in the worktree before each candidate is
+       * sealed (ADR-0058). Null or absent: none, as before.
+       */
+      generate: generateSchema.nullable().optional(),
       /**
        * The test files to run on the base and on each candidate before its
        * check and reviews (ADR-0039). Null or absent: none, as before.
@@ -974,6 +1019,7 @@ const outputSchema = z.object({
     'rejected',
     'verification-failed',
     'review-cap-reached',
+    'generate-failed',
   ]),
   candidate: candidateSchema.nullable(),
   iterations: z.number(),
@@ -1624,7 +1670,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
               }),
             )
             await mkdir(root, { recursive: true })
-            const prepared: TargetConfig =
+            const preparedTarget: TargetConfig =
               input.target.kind === 'subject'
                 ? await prepareSubjectTarget({
                     subjectDir: subjectDir(),
@@ -1655,6 +1701,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                     checkFromSpec: input.target.checkFromSpec ?? null,
                     setupCommand: input.target.setupCommand,
                     selfCheck: input.target.selfCheck ?? null,
+                    generate: input.target.generate ?? null,
                     testProbe: input.target.testProbe ?? null,
                     checkTimeoutMs: testTimeoutMs,
                     publish: input.target.publish,
@@ -1694,6 +1741,39 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                       : {}),
                     signal,
                   })
+            // The references are copied into the run's own directory, each
+            // checked against its hash: from the parent run's own copy for a
+            // retrigger, repair or recheck, else from where trigger staged
+            // them. The stage goes once the run holds its copy.
+            const storedReferences =
+              input.target.kind === 'repo' ? input.target.references : null
+            const references = storedReferences
+              ? await copyReferences(
+                  storedReferences,
+                  referencesDirOf(root),
+                  [
+                    input.retryOf?.runId,
+                    input.repairOf?.runId,
+                    input.recheckOf?.runId,
+                  ]
+                    .filter((id): id is string => !!id)
+                    .map((id) => referencesDirOf(runRoot(id))),
+                )
+              : null
+            if (storedReferences)
+              await removeStagedReferences(storedReferences, options.stateRoot)
+            const checkArtifacts =
+              input.target.kind === 'repo'
+                ? (input.target.checkArtifacts ?? null)
+                : null
+            const prepared: TargetConfig =
+              preparedTarget.kind === 'repo'
+                ? {
+                    ...preparedTarget,
+                    ...(references ? { references } : {}),
+                    ...(checkArtifacts ? { checkArtifacts } : {}),
+                  }
+                : preparedTarget
             // Only a reviewer with its own command or local instructions reads
             // the base and head trees, or every reviewer when reviews run
             // beside the check, so only then are they extracted. Trees an
@@ -1796,6 +1876,8 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                 commit: target.kind === 'repo' ? (target.commit ?? null) : null,
                 selfCheck:
                   target.kind === 'repo' ? (target.selfCheck ?? null) : null,
+                generate:
+                  target.kind === 'repo' ? (target.generate ?? null) : null,
                 review,
                 reviewBlockerThreshold,
                 reviewSessionMode,
