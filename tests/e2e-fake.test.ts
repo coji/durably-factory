@@ -3412,6 +3412,89 @@ describe('verification and review side by side', { timeout: 300000 }, () => {
     }
   })
 
+  it('approves on the check alone when code review is off, and says so', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'e2e-no-code-review-'))
+    const dir = join(home, '.local', 'state', 'durably-factory')
+    const repo = await slowCheckRepo(home)
+    delete process.env.FAKE_FAIL_FIRST
+    delete process.env.FAKE_REVIEW_SEQUENCE
+    delete process.env.FAKE_REVIEW_SLOW_MS
+    const durably = createAgentDurably({ stateRoot: dir })
+    await durably.migrate()
+    const recording = recordFakeReviewCalls()
+    try {
+      const start = async (parallelReview: boolean, failIterations: number) =>
+        (
+          await durably.jobs.agentLoop.trigger({
+            provider: 'fake',
+            profiles: { code: fake, correctness: fake, 'edge-cases': fake },
+            target: {
+              kind: 'repo' as const,
+              repoPath: repo,
+              baseRef: 'HEAD',
+              task: 'Fix add() so decimal inputs are not truncated.',
+              spec: null,
+              dispositions: null,
+              inputFiles: { task: null, spec: null, dispositions: null },
+              issue: null,
+              checkCommand: ['node', 'check.mjs', 'none'],
+              setupCommand: null,
+              publish: false,
+              parallelReview,
+              codeReview: false,
+            },
+            maxIterations: 2,
+            context: 'reuse',
+            fakeScenario: { failIterations },
+          })
+        ).id
+      // Sequential and parallel set-ups; one fails its first check, so the
+      // repair is also graded by the check alone.
+      const ids = [await start(false, 0), await start(true, 1)]
+      await durably.init()
+      for (const id of ids)
+        await waitFor(
+          async () =>
+            ['completed', 'failed'].includes(
+              (await durably.getRun(id))?.status ?? '',
+            ),
+          120000,
+          'the run without code review settles',
+        )
+      for (const id of ids) {
+        const output = (await durably.getRun(id))?.output as {
+          conclusion: string
+          reviewRounds: number
+        }
+        assert.equal(output.conclusion, 'approved')
+        assert.equal(output.reviewRounds, 0)
+        const steps = (await durably.storage.getSteps(id)).map((s) => s.name)
+        assert.ok(!steps.some((n) => /:review(:|$)/.test(n)), steps.join(','))
+        const setup = (await durably.storage.getCompletedStep(id, 'setup'))
+          ?.output as { codeReview?: boolean }
+        assert.equal(setup.codeReview, false)
+        const report = await buildReport(durably, id)
+        assert.equal(report.codeReview, 'off')
+        assert.match(
+          reportToMarkdown(report),
+          /- code review: off; approved on the pinned check alone/,
+        )
+        assert.equal(JSON.parse(reportToJson(report)).codeReview, 'off')
+      }
+      assert.equal(
+        recording.calls.filter(
+          (c) => c.role === 'review-a' || c.role === 'review-b',
+        ).length,
+        0,
+      )
+    } finally {
+      recording.stop()
+      await durably.stop()
+      await durably.db.destroy()
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+
   it('hands the repair a review that answered before the check failed, and none that was cancelled', async () => {
     const home = await mkdtemp(join(tmpdir(), 'e2e-parallel-mixed-'))
     const dir = join(home, '.local', 'state', 'durably-factory')

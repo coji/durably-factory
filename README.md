@@ -149,7 +149,7 @@ fake の事前確認、待ち時間、使用量、`fakeScenario` は [仕組み�
   `wait`、アーカイブ、作業ツリーの片付け、DB と作業物の置き場所
 - [ブラウザで見る（web UI）](docs/ui.md)：一覧、実行の詳細、デモデータ
 - [実際のリポジトリで動かす](docs/configuration.md)：`factory.json` と設定の項目
-  （`baselineCheck`、`parallelReview`、`testProbe`、`review.blockerThreshold`、
+  （`baselineCheck`、`parallelReview`、`codeReview`、`testProbe`、`review.blockerThreshold`、
   `profiles.repair` など）
 - [見立て、レビュー、修正](docs/review-and-repair.md)：見立て、レビュー役の呼び出しと
   出力、仕様（spec）、外部の指摘から修正する `factory repair`

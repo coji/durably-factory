@@ -86,6 +86,52 @@ describe('factory reducer and policy', () => {
     assert.equal(decide(state).stage, 'finish')
   })
 
+  it('goes from a passing check to approval when code review is off', () => {
+    const verified = (s: FactorySetup) => {
+      let state = initialState(s)
+      state = reduce(state, {
+        type: 'code.completed',
+        role: 'implement',
+        candidate,
+        session: null,
+      })
+      return reduce(state, {
+        type: 'verify.completed',
+        targetId: candidate.id,
+        passed: true,
+        stdout: 'ok',
+        exitCode: 0,
+      })
+    }
+    assert.equal(
+      decide(verified({ ...setup, codeReview: false })).stage,
+      'approve',
+    )
+    assert.equal(
+      decide(verified({ ...setup, codeReview: false, autoApprove: true }))
+        .stage,
+      'finish',
+    )
+    // A failing check is still repaired, never approved.
+    let failing = initialState({ ...setup, codeReview: false })
+    failing = reduce(failing, {
+      type: 'code.completed',
+      role: 'implement',
+      candidate,
+      session: null,
+    })
+    failing = reduce(failing, {
+      type: 'verify.completed',
+      targetId: candidate.id,
+      passed: false,
+      stdout: 'fail',
+      exitCode: 1,
+    })
+    assert.equal(decide(failing).stage, 'code')
+    // On by default: the same state is reviewed.
+    assert.equal(decide(verified(setup)).stage, 'review')
+  })
+
   it('invalidates verification and reviews when repair creates a candidate', () => {
     let state = initialState(setup)
     state = reduce(state, {

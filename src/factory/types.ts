@@ -215,6 +215,12 @@ export interface FactorySetup {
    * false: review follows a passing verification, as before (ADR-0029).
    */
   parallelReview?: boolean
+  /**
+   * False when the run reviews no code, fixed at trigger from `factory.json`:
+   * a candidate that passes the pinned check goes straight to approval, and
+   * the repository's own gate reviews the delivery (ADR-0060). Absent: on.
+   */
+  codeReview?: boolean
   /** Codex network opt-ins fixed at trigger; absent when disabled. */
   sandbox?: SandboxSettings
 }

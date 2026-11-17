@@ -11,8 +11,8 @@ import { estimateCostUsd } from '../src/engine/pricing.js'
 
 describe('model presets', () => {
   it('maps each preset model to its default effort', () => {
-    assert.equal(presetForModel('gpt-6-astra')?.effort, 'low')
-    assert.equal(presetForModel('gpt-6.1-sol')?.effort, 'medium')
+    assert.equal(presetForModel('gpt-6.2-astra')?.effort, 'medium')
+    assert.equal(presetForModel('gpt-6.2-sol')?.effort, 'medium')
     assert.equal(presetForModel('gpt-6.1-terra')?.effort, 'medium')
     assert.equal(presetForModel('claude-fable-5-2')?.effort, 'medium')
     assert.equal(presetForModel('claude-sonnet-5-5')?.effort, 'high')
@@ -21,6 +21,8 @@ describe('model presets', () => {
 
   it('keeps explicit historical settings stable without advertising old models', () => {
     for (const [model, effort] of Object.entries({
+      'gpt-6-astra': 'low',
+      'gpt-6.1-sol': 'medium',
       'gpt-6-sol': 'medium',
       'gpt-5.6-sol': 'low',
       'gpt-5.6-terra': 'medium',
@@ -40,7 +42,7 @@ describe('model presets', () => {
   })
 
   it('resolves explicit > preset > null', () => {
-    assert.equal(resolveEffort('high', 'gpt-6-astra'), 'high')
+    assert.equal(resolveEffort('high', 'gpt-6.2-astra'), 'high')
     assert.equal(resolveEffort(undefined, 'claude-opus-5'), 'high')
     assert.equal(resolveEffort(undefined, 'gpt-5.6-luna'), 'max')
     assert.equal(resolveEffort(undefined, 'unknown'), null)
@@ -68,6 +70,8 @@ describe('model presets', () => {
         actual !== null && Math.abs(actual - expected) < 1e-9,
         `expected ~${expected}, got ${actual}`,
       )
+    approx(estimateCostUsd('gpt-6.2-astra', usage), 0.048)
+    approx(estimateCostUsd('gpt-6.2-sol', usage), 0.012)
     approx(estimateCostUsd('gpt-6-astra', usage), 0.06)
     approx(estimateCostUsd('gpt-6.1-sol', usage), 0.012)
     approx(estimateCostUsd('gpt-6.1-terra', usage), 0.006)

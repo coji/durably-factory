@@ -15,7 +15,10 @@ export function availableActions(state: FactoryState): StageName[] {
       return ['stop']
     return state.iteration < state.setup.maxIterations ? ['code'] : ['stop']
   }
-  if (state.reviews.length === 0) return ['review']
+  // With code review off, the repository's own gate reviews the delivery,
+  // so a passing check goes straight to approval (ADR-0060).
+  if (state.setup.codeReview !== false && state.reviews.length === 0)
+    return ['review']
   if (state.reviews.some((review) => review.decision === 'needsChanges')) {
     return state.iteration < state.setup.maxIterations ? ['code'] : ['stop']
   }
