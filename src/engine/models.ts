@@ -8,8 +8,8 @@ export interface ModelPreset {
 }
 
 export const MODEL_PRESETS: readonly ModelPreset[] = [
-  { model: 'gpt-6.2-astra', provider: 'codex', effort: 'low' },
-  { model: 'gpt-6.2-sol', provider: 'codex', effort: 'low' },
+  { model: 'gpt-6.2-astra', provider: 'codex', effort: 'medium' },
+  { model: 'gpt-6.2-sol', provider: 'codex', effort: 'medium' },
   { model: 'gpt-6.1-terra', provider: 'codex', effort: 'medium' },
   { model: 'gpt-6-luna', provider: 'codex', effort: 'medium' },
   { model: 'claude-fable-5-2', provider: 'claude', effort: 'medium' },

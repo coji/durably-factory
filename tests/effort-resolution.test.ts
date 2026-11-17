@@ -92,7 +92,7 @@ describe('resolveExecution (resolved settings, saved before launch)', () => {
       requestedEffort: null,
     })
     assert.equal(codex.model, 'gpt-6.2-sol')
-    assert.equal(codex.effort, 'low')
+    assert.equal(codex.effort, 'medium')
     const claude = new ClaudeProvider().resolveExecution({
       requestedModel: null,
       requestedEffort: null,
@@ -107,7 +107,7 @@ describe('resolveExecution (resolved settings, saved before launch)', () => {
         requestedModel: null,
         requestedEffort: null,
       })
-      assert.deepEqual(codex, { model: 'gpt-6.2-sol', effort: 'low' })
+      assert.deepEqual(codex, { model: 'gpt-6.2-sol', effort: 'medium' })
       const claude = new ClaudeProvider().resolveExecution({
         requestedModel: null,
         requestedEffort: null,

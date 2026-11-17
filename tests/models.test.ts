@@ -11,8 +11,8 @@ import { estimateCostUsd } from '../src/engine/pricing.js'
 
 describe('model presets', () => {
   it('maps each preset model to its default effort', () => {
-    assert.equal(presetForModel('gpt-6.2-astra')?.effort, 'low')
-    assert.equal(presetForModel('gpt-6.2-sol')?.effort, 'low')
+    assert.equal(presetForModel('gpt-6.2-astra')?.effort, 'medium')
+    assert.equal(presetForModel('gpt-6.2-sol')?.effort, 'medium')
     assert.equal(presetForModel('gpt-6.1-terra')?.effort, 'medium')
     assert.equal(presetForModel('claude-fable-5-2')?.effort, 'medium')
     assert.equal(presetForModel('claude-sonnet-5-5')?.effort, 'high')
