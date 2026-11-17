@@ -272,11 +272,12 @@ Markdown の集計の行も、工程や役割の合計と同じ試行から数�
 
 | プロバイダー | モデル候補                                                                     |
 | ------------ | ------------------------------------------------------------------------------ |
-| Codex        | `gpt-6-astra`、`gpt-6.1-sol`、`gpt-6.1-terra`、`gpt-6-luna`                    |
+| Codex        | `gpt-6.2-astra`、`gpt-6.2-sol`、`gpt-6.1-terra`、`gpt-6-luna`                  |
 | Claude       | `claude-fable-5-2`、`claude-opus-5-5`、`claude-sonnet-5-5`、`claude-haiku-5-5` |
 
-モデルを省略すると、Codex は `gpt-6.1-sol`（effort: `medium`）、Claude は
+モデルを省略すると、Codex は `gpt-6.2-sol`（effort: `medium`）、Claude は
 `claude-sonnet-5-5`（effort: `high`）を使います。
+GPT-6.2 Astra を指定して effort を省略した場合も `medium` を使います。
 Fable 5.2 を指定して effort を省略すると、Claude Code の既定値に合わせて
 `medium` を使います。Fable 5.1 を明示した設定は、従来どおり `low` です。
 旧モデルを明示した設定は引き続き読めます。旧モデルの effort の既定値と価格データも残します。
@@ -394,10 +395,10 @@ pnpm factory report --run <runId> --format json \
 
 ```bash
 pnpm factory trigger \
-  --provider codex --context reuse --model gpt-6.1-sol --effort medium
+  --provider codex --context reuse --model gpt-6.2-sol --effort medium
 
 pnpm factory trigger \
-  --provider codex --context fresh --model gpt-6.1-sol --effort medium
+  --provider codex --context fresh --model gpt-6.2-sol --effort medium
 ```
 
 両方を承認まで進め、`compare` で、修正回数、キャッシュの読み込みと書き込み、

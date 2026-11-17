@@ -73,11 +73,11 @@ describe('calc', () => {
       check: ['node', '--test', 'test/**/*.test.js'],
       base: 'main',
       profiles: {
-        code: { provider: 'fake', model: 'gpt-6.1-sol', effort: 'medium' },
+        code: { provider: 'fake', model: 'gpt-6.2-sol', effort: 'medium' },
         review: {
           'review-a': {
             provider: 'fake',
-            model: 'gpt-6.1-sol',
+            model: 'gpt-6.2-sol',
             effort: 'medium',
           },
           'review-b': {
