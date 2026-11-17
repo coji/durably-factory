@@ -198,6 +198,7 @@ type RunInput = {
     baselineCheck?: boolean
     baselineReuse?: { maxAgeMs: number } | null
     parallelReview?: boolean
+    codeReview?: boolean
     sandbox?: { network: ('code' | 'repair')[] }
     selfCheck?: string[][] | null
     generate?: string[][] | null
@@ -2257,6 +2258,115 @@ describe('parallelReview', { timeout: 180000 }, () => {
     // Setup records it only when on; a parent without it is off.
     assert.equal(repair(parent(false), setup), false)
     assert.equal(repair(parent(), setup), false)
+  })
+})
+
+describe('codeReview', { timeout: 180000 }, () => {
+  it('fixes the setting at trigger, on when left out, and reloads it', async () => {
+    const off = await sandbox({ check: CHECK, codeReview: false })
+    const input = await inputOf(
+      off,
+      await trigger(off, ['--repo', off.repo, '--task', 'x']),
+    )
+    assert.equal(input.target.codeReview, false)
+    const plain = await sandbox({ check: CHECK })
+    const plainInput = await inputOf(
+      plain,
+      await trigger(plain, ['--repo', plain.repo, '--task', 'x']),
+    )
+    assert.equal(plainInput.target.codeReview, true)
+    const bad = await sandbox({ check: CHECK, codeReview: 'no' })
+    await rejected(
+      bad,
+      ['--repo', bad.repo, '--task', 'x'],
+      /invalid factory config[\s\S]*codeReview/,
+    )
+    await writeFile(
+      join(off.repo, 'factory.json'),
+      JSON.stringify({ check: CHECK }),
+    )
+    const reloaded = await reloadTriggerInput(
+      input as unknown as Parameters<typeof reloadTriggerInput>[0],
+    )
+    assert.equal(
+      (reloaded.input.target as { codeReview?: boolean }).codeReview,
+      true,
+    )
+  })
+
+  it('refuses the reuse experiment, which needs both reviewers', async () => {
+    const both = await sandbox({
+      check: CHECK,
+      codeReview: false,
+      review: { sessionMode: 'reuse-experiment' },
+    })
+    await rejected(
+      both,
+      ['--repo', both.repo, '--task', 'x'],
+      /codeReview false runs no code review/,
+    )
+  })
+
+  it('gives a repair run the setting its parent was set up with', () => {
+    const commit = 'a'.repeat(40)
+    const profile = (role: string) => ({
+      id: `fake:provider-default:provider-default:${role}`,
+      provider: 'fake',
+      requestedModel: null,
+      requestedEffort: null,
+      effectiveModel: null,
+      effectiveEffort: null,
+    })
+    const parent = (codeReview?: boolean) => ({
+      id: 'p',
+      status: 'completed',
+      input: {
+        provider: 'fake',
+        target: {
+          kind: 'repo',
+          ...(codeReview === undefined ? {} : { codeReview }),
+        },
+      },
+      output: {
+        approved: true,
+        conclusion: 'approved',
+        candidate: { commit, branch: 'factory/p' },
+        delivery: { commit },
+      },
+    })
+    const setup = {
+      contextMode: 'reuse',
+      maxIterations: 1,
+      agentTimeoutMs: 600000,
+      autoApprove: true,
+      profiles: {
+        code: profile('code'),
+        correctness: profile('correctness'),
+        'edge-cases': profile('edge-cases'),
+      },
+      target: {
+        kind: 'repo',
+        repoPath: '/repo',
+        task: 'task',
+        spec: null,
+        dispositions: null,
+        issue: null,
+        checkCommand: ['true'],
+        setupCommand: null,
+        checkTimeoutMs: 120000,
+        publish: false,
+      },
+    }
+    const files = {
+      findings: { content: 'FINDING\n', ref: { path: '/f.md' } },
+      dispositions: null,
+    }
+    const repair = (p: ReturnType<typeof parent>, s: object) =>
+      buildRepairInput(p, s, files).input.target.codeReview
+    assert.equal(repair(parent(false), { ...setup, codeReview: false }), false)
+    // Setup records it only when off; a parent without it reviews.
+    assert.equal(repair(parent(true), setup), true)
+    assert.equal(repair(parent(), setup), true)
   })
 })
 
