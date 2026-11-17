@@ -8,9 +8,8 @@ export interface ModelPreset {
 }
 
 export const MODEL_PRESETS: readonly ModelPreset[] = [
-  { model: 'gpt-6-astra', provider: 'codex', effort: 'low' },
-  // New models use each vendor's own default effort.
-  { model: 'gpt-6.1-sol', provider: 'codex', effort: 'medium' },
+  { model: 'gpt-6.2-astra', provider: 'codex', effort: 'low' },
+  { model: 'gpt-6.2-sol', provider: 'codex', effort: 'low' },
   { model: 'gpt-6.1-terra', provider: 'codex', effort: 'medium' },
   { model: 'gpt-6-luna', provider: 'codex', effort: 'medium' },
   { model: 'claude-fable-5-2', provider: 'claude', effort: 'medium' },
@@ -22,6 +21,8 @@ export const MODEL_PRESETS: readonly ModelPreset[] = [
 // Explicit older model IDs keep their previous effort when a stored input is
 // retriggered. They are no longer advertised as current presets.
 const HISTORICAL_EFFORTS: Record<string, string> = {
+  'gpt-6-astra': 'low',
+  'gpt-6.1-sol': 'medium',
   'gpt-6-sol': 'medium',
   'gpt-5.6-terra': 'medium',
   'gpt-5.6-sol': 'low',
@@ -39,7 +40,7 @@ const byModel: Record<string, ModelPreset> = Object.fromEntries(
  * effort and pricing resolve without unknowns. Single source of truth —
  * providers must use this instead of hardcoding their own default. */
 const DEFAULT_MODEL: Record<Exclude<ProviderName, 'fake'>, string> = {
-  codex: 'gpt-6.1-sol',
+  codex: 'gpt-6.2-sol',
   claude: 'claude-sonnet-5-5',
 }
 

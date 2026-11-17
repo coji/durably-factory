@@ -20,7 +20,7 @@
     "authorEmail": "factory-bot@example.com"
   },
   "profiles": {
-    "code": { "provider": "codex", "model": "gpt-6.1-sol", "effort": "medium" },
+    "code": { "provider": "codex", "model": "gpt-6.2-sol", "effort": "medium" },
     "review": {
       "review-a": { "provider": "codex", "model": "gpt-5.6-terra" },
       "review-b": { "provider": "claude", "model": "claude-sonnet-5-5" }
@@ -823,7 +823,7 @@ repair、recheck、通常の retrigger と自動再試行は保存した設定�
 ```json
 {
   "profiles": {
-    "code": { "provider": "codex", "model": "gpt-6.1-sol", "effort": "medium" },
+    "code": { "provider": "codex", "model": "gpt-6.2-sol", "effort": "medium" },
     "repair": {
       "provider": "codex",
       "model": "gpt-5.6-terra",
