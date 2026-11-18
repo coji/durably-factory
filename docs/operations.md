@@ -4,10 +4,9 @@
 
 ## ワーカーは状態のルートごとに 1 つだけ動く
 
-ワーカーは状態のルート（state root）ごとに 1 つだけ動きます。ワーカーは起動するときに
-`~/.local/state/durably-factory/worker.lock` を OS のファイルロック（SQLite の排他
-トランザクション）で握ります。同じ状態のルートで 2 つ目を起動すると、動いている
-ワーカーの pid と起動元のチェックアウトを表示し、終了コード 1 で起動を断ります。
+ワーカーは状態のルート（state root）ごとに 1 つだけ動きます。起動すると、保存先の
+`worker.lock` を SQLite の排他トランザクションでロックします。同じ保存先で 2 つ目を
+起動すると、稼働中のワーカーの pid と起動元を表示して、終了コード 1 で止まります。
 
 ```text
 another worker already runs on ~/.local/state/durably-factory: pid 41234, started 2026-09-25T01:02:03.000Z from /Users/me/src/durably-factory. Stop it first (kill 41234); two workers would pick up each other's runs.
@@ -26,7 +25,7 @@ another worker already runs on ~/.local/state/durably-factory: pid 41234, starte
 - ロックファイルが読めない（壊れている、権限がないなど）ときは、ワーカーがいるかを
   「不明」（`running: null`、`worker: unknown`）と表示します。`wait` は「不明」を
   「ワーカーがいない」とは数えないので、それだけで終了コード 6 にはなりません。
-- 別の状態のルート（`HOME` が違う環境）のワーカーどうしは、互いを断りません。
+- 別の状態のルート（`DURABLY_FACTORY_STATE_DIR` で分けた環境など）のワーカーどうしは、互いを断りません。
 - 時間の上限は `trigger` のときに実行の入力へ固定されるので、ワーカーの環境変数で
   既存の実行の値が変わることはありません（[「`trigger` のときに固定されるもの」](configuration.md)）。
 
@@ -98,12 +97,9 @@ another worker already runs on ~/.local/state/durably-factory: pid 41234, starte
 - 自動起動したワーカーのアイドル期間は `DURABLY_FACTORY_IDLE_MS`（既定 30000）で
   変えられます。1 から 2147483647 までの整数のミリ秒だけを受け付け、範囲の外なら
   ワーカーを起動せずに警告します。
-- 自動起動したワーカーは、コマンドを実行したチェックアウトの CLI で動きます（どの
-  チェックアウトかは `worker.json` の `checkout` に残ります）。同じ状態のルートを
-  共有していると、固定したチェックアウト（[「durably-factory のチェックアウトを固定して呼ぶ」](configuration.md)の節）とは
-  別のチェックアウトから実行したコマンドが、そのチェックアウトのワーカーを起動する
-  ことがあります。固定したチェックアウトのワーカーで処理したいときは、その
-  チェックアウトでワーカーを動かしておくか、自動起動を止めてください。
+- 自動起動したワーカーは、コマンドを実行した CLI と同じインストールで動きます。
+  `worker.json` の `checkout` に起動元、`factoryVersion` にバージョンが残ります。
+  同じ状態のルートですでに動くワーカーがいれば、そのワーカーが run を処理します。
 
 `factory worker --exit-when-idle [--idle-ms <ms>]` は、仕事がない状態が `--idle-ms`
 （既定 30000、1 から 2147483647 までの整数）続くと終わります。オプションなしの
@@ -482,7 +478,7 @@ pnpm factory prune --delete-branches --apply
 
 ## DB と作業物の置き場所
 
-DB（データベース）と、すべての実行のデータは、`~/.local/state/durably-factory/`
+DB（データベース）と、すべての実行のデータは、既定で `~/.local/state/durably-factory/`
 に置きます。
 
 ```text
@@ -533,12 +529,9 @@ DB（データベース）と、すべての実行のデータは、`~/.local/st
   2 つのファイルの絶対パスが入り、全文を読むよう指示します。Claude のレビュアーは、
   作業場所の外では、この 2 つのファイルだけを読めて、書き込みはできません。
 
-`worker`、`trigger`、`status`、`waits`、`approve`、`report`、`compare` は、どれも引数なしで同じ
-DB を見ます。ディレクトリがなければ、DB を開く前に作ります。durably-factory の
-チェックアウトの中にも、対象のリポジトリの中にも、DB や `runs/` は作りません。
-チェックアウトをどのコミットに切り替えても、過去の実行はそのまま読めます。置き場所を
-変える引数や環境変数はありません。2 つのプロセスが別の DB を見ると、実行が黙って
-見えなくなるからです。
+`DURABLY_FACTORY_STATE_DIR` を設定すると、CLI と UI は指定したディレクトリの DB を
+使います。CLI は DB を開くときに、保存先のディレクトリがなければ作ります。
+これまでの実行を読むときは、その実行を記録した保存先を使ってください。
 
 ## 検査失敗の分類と自動再試行
 

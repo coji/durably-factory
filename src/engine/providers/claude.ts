@@ -38,15 +38,15 @@ import {
   resolve,
   sep,
 } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { generateText } from 'ai'
-import {
-  claudeCode,
-  isAuthenticationError,
-  type ClaudeCodeSettings,
-  type SDKMessage,
+import type {
+  ClaudeCodeSettings,
+  SDKMessage,
 } from 'ai-sdk-provider-claude-code'
 
+import { isSourceCheckout, packageRoot } from '../../installation.js'
 import { defaultModelFor, resolveEffort } from '../models.js'
 import { resolveModelPrice } from '../pricing.js'
 import { tokenCount, type TokenUsage } from '../usage.js'
@@ -62,6 +62,21 @@ import {
   type ReviewCallSettings,
   type SpecWriteAccess,
 } from './types.js'
+
+const require = createRequire(import.meta.url)
+const claudeProviderEntry = isSourceCheckout
+  ? require.resolve('ai-sdk-provider-claude-code')
+  : join(packageRoot, 'dist', 'server', 'vendor', 'claude-provider', 'index.js')
+const { claudeCode, isAuthenticationError } = (await import(
+  pathToFileURL(claudeProviderEntry).href
+)) as typeof import('ai-sdk-provider-claude-code')
+
+export function claudeProviderVersion(): string | null {
+  const manifest = isSourceCheckout
+    ? 'ai-sdk-provider-claude-code/package.json'
+    : join(dirname(claudeProviderEntry), 'package.json')
+  return (require(manifest) as { version?: string }).version ?? null
+}
 
 const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
 
@@ -133,10 +148,7 @@ export function claudeExecutable(): string | null {
 
 function resolveClaudeExecutable(): string | null {
   try {
-    const provider = createRequire(import.meta.url).resolve(
-      'ai-sdk-provider-claude-code',
-    )
-    const sdk = createRequire(provider).resolve(AGENT_SDK)
+    const sdk = createRequire(claudeProviderEntry).resolve(AGENT_SDK)
     const load = createRequire(sdk)
     const { platform, arch } = process
     const ext = platform === 'win32' ? '.exe' : ''

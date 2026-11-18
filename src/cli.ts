@@ -1,10 +1,9 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 /** CLI: worker | trigger | repair | status | wait | waits | approve | reject | spec-revise | retrigger | archive | unarchive | prune | report | compare | ui | seed */
 import { spawn } from 'node:child_process'
 import { closeSync, mkdirSync, openSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { dirname, join, resolve } from 'node:path'
 
 import type { Run } from '@coji/durably'
 
@@ -25,9 +24,12 @@ import { isSpecWait } from './approval.js'
 import { automaticRetries } from './automatic-retry.js'
 import {
   acquireWorkerLock,
+  configuredStateRoot,
+  defaultStateRoot,
   createAgentDurably,
   dbPath,
   LEASE_MS,
+  STATE_DIR_ENV,
   probeWorkerLock,
   reclaimWorkerLeases,
   sweepRunScratch,
@@ -74,6 +76,12 @@ import { timeoutMsSchema } from './factory/job.js'
 import { runRootOf } from './factory/layout.js'
 import { referencesFromRun } from './factory/references.js'
 import {
+  cliPath,
+  factoryVersion,
+  isSourceCheckout,
+  packageRoot,
+} from './installation.js'
+import {
   buildTriggerInput,
   REPEATED_FLAG,
   readNotesFile,
@@ -85,10 +93,7 @@ import {
 
 async function emit(text: string, out: string | undefined): Promise<void> {
   if (out) {
-    const here = dirname(fileURLToPath(import.meta.url))
-    // `join` does not reset on an absolute segment, so without this an
-    // absolute --out lands under the example directory instead.
-    const dest = isAbsolute(out) ? out : join(here, '..', out)
+    const dest = resolve(isSourceCheckout ? packageRoot : process.cwd(), out)
     await mkdir(dirname(dest), { recursive: true })
     await writeFile(dest, text)
     console.log(`wrote ${dest}`)
@@ -167,12 +172,13 @@ function args(): Record<string, string> {
  * lock holder's own, shown only while it holds the lock.
  */
 function workerStatus() {
-  const { running, holder, unknownReason } = probeWorkerLock()
+  const { running, holder, unknownReason } = probeWorkerLock(stateRoot)
   return {
     /** Null when the lock could not be read. */
     running,
     pid: running ? (holder?.pid ?? null) : null,
     startedAt: running ? (holder?.startedAt ?? null) : null,
+    factoryVersion: running ? (holder?.factoryVersion ?? null) : null,
     /** The command that starts one; null unless none is known to run. */
     start: running === false ? `${FACTORY_COMMAND} worker` : null,
     /** Why `running` is unknown; null otherwise. */
@@ -566,8 +572,6 @@ function localDate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-const CLI_PATH = fileURLToPath(import.meta.url)
-
 /** A worker `startWorkerIfNeeded` started, and the file it logs to. */
 interface AutoStartedWorker {
   pid: number
@@ -636,15 +640,15 @@ async function startWorkerIfNeeded(
       process.execPath,
       [
         ...process.execArgv,
-        CLI_PATH,
+        cliPath,
         'worker',
         '--exit-when-idle',
         '--idle-ms',
         String(idleMs),
       ],
       {
-        cwd: join(dirname(CLI_PATH), '..'),
-        env: process.env,
+        cwd: packageRoot,
+        env: { ...process.env, [STATE_DIR_ENV]: durably.stateRoot },
         detached: true,
         stdio: ['ignore', fd, fd],
       },
@@ -667,7 +671,8 @@ async function startWorkerIfNeeded(
 
 function usage(): void {
   console.log(`durably-factory — local agent factory
-Commands (run from the repository root):
+Commands:
+  ${FACTORY_COMMAND} --version                show the installed Factory version
   ${FACTORY_COMMAND} worker [--exit-when-idle [--idle-ms <ms>]]
                                             start worker (long-running; kill -9 to test resume)
                                             one per state root: a second one is refused.
@@ -935,13 +940,14 @@ Repository config: factory.json at the repository root, or --config <file>:
   completed, passing or failing, it is copied to
   runs/<id>/candidates/<candidate>/artifacts/ (at most 50 MiB), listed in
   the report, and given to both reviewers to compare with the references.
-State: database and run data live in ${dirname(dbPath())}
+State: database and run data live in ${dirname(dbPath(stateRoot))}.
+Set ${STATE_DIR_ENV} to select a state directory for all commands.
   (worktrees, checkpoints, verification scratch, delivery patches under runs/<id>/).
 Auto-started worker: after trigger, repair, retrigger, approve, reject and
   spec-revise succeed, a worker --exit-when-idle is started in a session of its
   own when a run needs one and no worker runs (none when whether one runs is
   unknown; a warning says so). Its output is appended to
-  ${join(dirname(dbPath()), 'logs', 'worker-YYYY-MM-DD.log')}; its messages go to stderr.
+  ${join(dirname(dbPath(stateRoot)), 'logs', 'worker-YYYY-MM-DD.log')}; its messages go to stderr.
   --no-auto-worker on the command, or ${NO_AUTO_WORKER_ENV}=1, starts none;
   ${IDLE_MS_ENV}=<ms> sets its idle period (default 30000, 1 to 2147483647).
 Model presets (--model selects one; effort defaults from the preset and is
@@ -971,6 +977,11 @@ Env (fake provider, read by the worker):
 }
 
 const cmd = process.argv[2]
+if (cmd === '--version' || cmd === '-v') {
+  console.log(factoryVersion ?? 'unknown')
+  process.exit(0)
+}
+const stateRoot = cmd === 'seed' ? defaultStateRoot() : configuredStateRoot()
 if (!cmd || cmd === '--help' || cmd === '-h') {
   usage()
   process.exit(0)
@@ -986,13 +997,13 @@ if (cmd === 'worker') {
   const idleMs = idleFlag ?? DEFAULT_IDLE_MS
   // One worker per state root. The lock is the operating system's, so it
   // ends with this process however the process ends.
-  const lock = acquireWorkerLock()
+  const lock = acquireWorkerLock(stateRoot)
   if (!lock.acquired) {
     const who = lock.holder
     console.error(
       who
-        ? `another worker already runs on ${dirname(dbPath())}: pid ${who.pid}, started ${who.startedAt} from ${who.checkout}. Stop it first (kill ${who.pid}); two workers would pick up each other's runs.`
-        : `another worker already runs on ${dirname(dbPath())}; it has not recorded its pid yet. Stop it first.`,
+        ? `another worker already runs on ${dirname(dbPath(stateRoot))}: pid ${who.pid}, started ${who.startedAt} from ${who.checkout}. Stop it first (kill ${who.pid}); two workers would pick up each other's runs.`
+        : `another worker already runs on ${dirname(dbPath(stateRoot))}; it has not recorded its pid yet. Stop it first.`,
     )
     process.exit(1)
   }
@@ -1013,7 +1024,7 @@ if (cmd === 'worker') {
   })
   process.on('SIGINT', () => requestShutdown('SIGINT'))
   process.on('SIGTERM', () => requestShutdown('SIGTERM'))
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   durably.on('run:leased', (e) =>
     console.log(`[run:leased] ${e.jobName} ${e.runId}`),
   )
@@ -1087,8 +1098,8 @@ if (cmd === 'worker') {
   process.exit(0)
 } else if (cmd === 'trigger') {
   const a = args()
-  const input = await buildTriggerInput(withoutAutoWorkerFlag(a))
-  const durably = createAgentDurably()
+  const input = await buildTriggerInput(withoutAutoWorkerFlag(a), stateRoot)
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   const run = await durably.jobs.agentLoop.trigger(input)
   // Started before the JSON is printed, so the JSON never tells the caller
@@ -1100,7 +1111,7 @@ if (cmd === 'worker') {
         runId: run.id,
         status: run.status,
         target: input.target.kind,
-        db: dbPath(),
+        db: dbPath(stateRoot),
         // Without a worker the run stays pending; `start` says how to start
         // one. An auto-started worker may not hold the lock yet: `start` is
         // then null and `autoStarted` names it.
@@ -1119,7 +1130,7 @@ if (cmd === 'worker') {
   if (!runId) throw new Error('--run <id> required')
   // Read before the database is opened: a bad file starts nothing.
   const files = await readRepairFiles(withoutAutoWorkerFlag(a))
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   try {
     const { input, idempotencyKey, labels } = await startableRepair(
@@ -1140,7 +1151,7 @@ if (cmd === 'worker') {
           parentRunId: runId,
           baseCommit: input.target.baseRef,
           branch: `factory/${run.id}`,
-          db: dbPath(),
+          db: dbPath(stateRoot),
         },
         null,
         2,
@@ -1155,7 +1166,7 @@ if (cmd === 'worker') {
   if (format !== 'text' && format !== 'json')
     throw new Error('--format must be text or json')
   const { readOnce, runName } = await import('./ui/server.js')
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   const now = Date.now()
   const worker = workerStatus()
@@ -1250,15 +1261,15 @@ if (cmd === 'worker') {
     for (const r of shelved)
       out.push(`  ${r.id}  ${FACTORY_COMMAND} unarchive --run ${r.id}`)
   }
-  out.push('', workerLine(worker), `database: ${dbPath()}`)
+  out.push('', workerLine(worker), `database: ${dbPath(stateRoot)}`)
   console.log(
     format === 'json'
-      ? JSON.stringify({ tasks, worker, database: dbPath() }, null, 2)
+      ? JSON.stringify({ tasks, worker, database: dbPath(stateRoot) }, null, 2)
       : out.join('\n'),
   )
 } else if (cmd === 'status') {
   const runId = args()['run'] as string
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   const run = await durably.getRun(runId)
   const attempts = await durably.getStepAttempts(runId)
@@ -1336,7 +1347,7 @@ if (cmd === 'worker') {
   const format = a['format'] ?? 'text'
   if (format !== 'text' && format !== 'json')
     throw new Error('--format must be text or json')
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   let exitCode: number
   try {
     await durably.migrate()
@@ -1353,7 +1364,7 @@ if (cmd === 'worker') {
   const a = args()
   const runId = a['run']
   if (!runId) throw new Error('--run <id> required')
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   console.log(JSON.stringify(await durably.getWaits(runId), null, 2))
   await durably.db.destroy()
@@ -1362,7 +1373,7 @@ if (cmd === 'worker') {
   const runId = a['run']
   const waitId = a['wait']
   if (!runId || !waitId) throw new Error('--run <id> --wait <waitId> required')
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   try {
     const receipt = await decideRun(
@@ -1385,7 +1396,7 @@ if (cmd === 'worker') {
     throw new Error('--run <id> --notes-file <path> required')
   // Read before the database is opened: a bad file signals nothing.
   const notes = await readNotesFile(notesFile)
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   try {
     const receipt = await reviseSpec(durably, runId, notes, (line) =>
@@ -1407,7 +1418,7 @@ if (cmd === 'worker') {
     throw new Error(
       `resume does not accept ${other.map((key) => `--${key}`).join(', ')}`,
     )
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   try {
     await resumeUncertainRun(
@@ -1433,7 +1444,7 @@ if (cmd === 'worker') {
     throw new Error(
       `recheck takes only --run; not accepted: ${other.map((key) => `--${key}`).join(', ')}`,
     )
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   try {
     const { input, idempotencyKey, labels } = await startableRecheck(
@@ -1455,7 +1466,7 @@ if (cmd === 'worker') {
   const a = args()
   const runId = a['run']
   if (!runId) throw new Error('--run <id> required')
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   if (a['reload-config'] === 'true') {
     const run = await retriggerableRun(durably, runId)
@@ -1498,7 +1509,7 @@ if (cmd === 'worker') {
   if (a['run'] !== undefined)
     throw new Error('--run and --series exclude each other')
   if (seriesIds.length === 0) throw new Error('--series <id> required')
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   try {
     // One task after another, each as `archive --series` does it alone; a
@@ -1559,7 +1570,7 @@ if (cmd === 'worker') {
     throw new Error(
       '--run <id> required, or --series <id> for every stopped run of its task',
     )
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   try {
     const done = await archiveRun(durably, runId, {
@@ -1587,7 +1598,7 @@ if (cmd === 'worker') {
 } else if (cmd === 'unarchive') {
   const runIds = argValues('run')
   if (runIds.length === 0) throw new Error('--run <id> required')
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   try {
     for (const runId of runIds) {
@@ -1605,7 +1616,7 @@ if (cmd === 'worker') {
   const a = args()
   const apply = a['apply'] === 'true'
   const deleteBranches = a['delete-branches'] === 'true'
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   try {
     const plan = await planPrune(durably, { deleteBranches })
@@ -1646,7 +1657,7 @@ if (cmd === 'worker') {
   const runId = a['run']
   if (!runId) throw new Error('--run <id> required')
   const format = a['format'] ?? 'md'
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   const report = await buildReport(durably, runId)
   const text =
@@ -1663,7 +1674,7 @@ if (cmd === 'worker') {
   const format = a['format'] ?? 'md'
   if (format !== 'md' && format !== 'json')
     throw new Error('--format must be md or json')
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   const now = Date.now()
   const runs = await durably.getRuns({ jobName: durably.jobs.agentLoop.name })
@@ -1695,7 +1706,7 @@ if (cmd === 'worker') {
       '--runs <id,id,...> required (comma-separated run ids), or --trend',
     )
   const format = a['format'] ?? 'md'
-  const durably = createAgentDurably()
+  const durably = createAgentDurably({ stateRoot })
   await durably.migrate()
   const reports: LoopReport[] = []
   for (const runId of runIds) reports.push(await buildReport(durably, runId))
@@ -1715,9 +1726,9 @@ if (cmd === 'worker') {
   if (!/^\d{1,5}$/.test(rawPort) || +rawPort < 1 || +rawPort > 65535)
     throw new Error('--port must be an integer between 1 and 65535')
   const { startUiServer } = await import('./ui/server.js')
-  const ui = await startUiServer({ port: Number(rawPort) })
+  const ui = await startUiServer({ port: Number(rawPort), stateRoot })
   console.log(`web UI: ${ui.url}`)
-  console.log(`database: ${dbPath()}`)
+  console.log(`database: ${dbPath(stateRoot)}`)
   console.log(
     'actions on the page call the same functions as approve, reject, spec-revise, retrigger and archive; no worker is started',
   )

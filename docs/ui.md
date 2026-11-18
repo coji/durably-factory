@@ -12,10 +12,9 @@ pnpm factory ui --port 4500
 
 - 表示された URL をブラウザで開きます。待ち受けるのは `127.0.0.1` だけで、外には
   公開しません。`--port` は 1〜65535 の整数だけを受け付けます。
-- 前もってビルドする必要はありません。画面は、要求されたときに Vite が変換して
-  配信します。`pnpm build:ui` は、静的なファイルを
-  ビルドできるかを確かめるためのものです。
-- UI は、固定した状態のルートの DB を、CLI と同じ接続で開きます。DB がまだなければ
+- npm 版では同梱の画面を配信します。ソースから起動した場合は、Vite がリクエストごとに
+  画面を変換します。どちらも起動前のビルドは不要です。
+- UI は、CLI と同じ保存先の DB を開きます。DB がまだなければ
   空の画面を出し、DB は作りません。ワーカーか `trigger` が DB を作ると、次の更新
   から表示されます。画面を読むだけでは、何も書き込みません。
 - UI はワーカーを起動せず、ワーカーのロックも取りません。承認や再実行のあとで
@@ -293,6 +292,6 @@ pnpm factory seed --home ~/tmp/factory-demo --latency 3000-15000
 表示します。
 
 ```bash
-HOME=<表示された場所> pnpm factory ui
-HOME=<表示された場所> pnpm factory worker
+HOME=<表示された場所> DURABLY_FACTORY_STATE_DIR=<デモの保存先> pnpm factory ui
+HOME=<表示された場所> DURABLY_FACTORY_STATE_DIR=<デモの保存先> pnpm factory worker
 ```

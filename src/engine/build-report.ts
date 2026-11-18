@@ -1354,6 +1354,12 @@ export async function buildReport(
   const run = await durably.getRun(runId)
   if (!run) throw new Error(`run not found: ${runId}`)
   const attempts = await durably.getStepAttempts(runId)
+  const setupAttempt = attempts
+    .filter((attempt) => attempt.stepName === 'setup')
+    .at(-1)
+  const setupVersion = (
+    setupAttempt?.metadata as { factoryVersion?: unknown } | null
+  )?.factoryVersion
   const waits = await durably.getWaits(runId)
   const failure = await classifyRun(durably, run)
   const input = run.input as PersistedInput | null
@@ -1583,6 +1589,7 @@ export async function buildReport(
     input: run.input,
     output: run.output,
     fake: isFake,
+    factoryVersion: typeof setupVersion === 'string' ? setupVersion : null,
     configVersion,
     agentTimeouts,
     reviewBlockerThreshold,
