@@ -178,7 +178,6 @@ function workerStatus() {
     running,
     pid: running ? (holder?.pid ?? null) : null,
     startedAt: running ? (holder?.startedAt ?? null) : null,
-    factoryVersion: running ? (holder?.factoryVersion ?? null) : null,
     /** The command that starts one; null unless none is known to run. */
     start: running === false ? `${FACTORY_COMMAND} worker` : null,
     /** Why `running` is unknown; null otherwise. */
