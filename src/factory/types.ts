@@ -104,7 +104,11 @@ export interface FactorySetup {
   reviewSessionMode?: ReviewSessionMode
   prompts?: import('./prompt-policy.js').PromptPolicies
   automaticRetryLimit?: number
-  recheckOf?: { runId: string; candidateCommit: string }
+  recheckOf?: {
+    runId: string
+    candidateCommit: string
+    onto?: { from: string; to: string }
+  }
   /** True when every role runs the fake provider. Roles never mix the two. */
   fake: boolean
   contextMode: ContextMode

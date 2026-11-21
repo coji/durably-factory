@@ -711,6 +711,9 @@ Commands (run from the repository root):
                                             fix the blocked spec once more with the notes,
                                             then review it once more
   ${FACTORY_COMMAND} recheck --run <id>              check and review the same candidate without implementation or findings
+  ${FACTORY_COMMAND} recheck --run <id> --onto <ref>
+                                            the same, on the candidate's changes moved onto a newer
+                                            base commit; refused when they conflict
   ${FACTORY_COMMAND} resume --run <id> --acknowledge-uncertain
                                             resend an unknown call after inspecting provider history
                                             and worktree; stop the worker first; keep completed work
@@ -1427,25 +1430,34 @@ if (cmd === 'worker') {
   const runId = a['run']
   if (!runId) throw new Error('--run <id> required')
   const other = Object.keys(a).filter(
-    (key) => !['run', 'no-auto-worker'].includes(key),
+    (key) => !['run', 'onto', 'no-auto-worker'].includes(key),
   )
   if (other.length)
     throw new Error(
-      `recheck takes only --run; not accepted: ${other.map((key) => `--${key}`).join(', ')}`,
+      `recheck takes only --run and --onto; not accepted: ${other.map((key) => `--${key}`).join(', ')}`,
     )
+  const onto = a['onto']
+  if (onto === 'true' || onto === '')
+    throw new Error('--onto <ref> needs a commit or branch')
   const durably = createAgentDurably()
   await durably.migrate()
   try {
     const { input, idempotencyKey, labels } = await startableRecheck(
       durably,
       runId,
+      onto,
     )
     const next = await durably.jobs.agentLoop.trigger(input, {
       idempotencyKey,
       labels,
     })
+    const moved = input.recheckOf.onto
     console.log(
-      `${next.disposition === 'created' ? 'new recheck' : 'already rechecked as'} ${next.id}; unchanged candidate of ${runId}`,
+      `${next.disposition === 'created' ? 'new recheck' : 'already rechecked as'} ${next.id}; ${
+        moved
+          ? `candidate of ${runId} moved onto ${moved.to.slice(0, 12)}`
+          : `unchanged candidate of ${runId}`
+      }`,
     )
     await startWorkerIfNeeded(durably, a)
   } finally {

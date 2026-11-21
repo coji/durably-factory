@@ -879,6 +879,8 @@ const inputSchema = z
         runId: nonBlank,
         candidateCommit: nonBlank,
         candidateBranch: nonBlank,
+        /** The candidate's changes were moved from this base onto a newer one. */
+        onto: z.object({ from: nonBlank, to: nonBlank }).optional(),
       })
       .optional(),
     /**
@@ -1904,6 +1906,9 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                     recheckOf: {
                       runId: input.recheckOf.runId,
                       candidateCommit: input.recheckOf.candidateCommit,
+                      ...(input.recheckOf.onto
+                        ? { onto: input.recheckOf.onto }
+                        : {}),
                     },
                   }
                 : {}),

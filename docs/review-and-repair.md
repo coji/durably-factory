@@ -646,6 +646,24 @@ reportには親runと再検査したcommitを記録します。
 
 元の入力から実装も含めて繰り返す場合は、`retrigger`を使います。
 
+### 新しいbaseの上で検査とレビューをやり直す
+
+```bash
+pnpm factory recheck --run <id> --onto origin/main
+```
+
+runの途中で対象リポジトリのmainに修正が入り、候補がその修正を持たないために固定検査が落ちたときに使います。
+`--onto`に渡したcommitの上に、親の候補の変更（親のbaseから候補まで）を1つのcommitとして置き、その上で固定検査と2つのレビューをやり直します。
+変更を置く処理は、親のbaseを共通の祖先とする3方向のmergeで、checkoutやworktreeには触れません。
+
+- 置いたcommitは`factory/<親のrun id>-onto-<commitの先頭12文字>`のbranchに作ります。候補commitのメッセージ、作者、日時を引き継ぐので、同じ親と同じbaseなら同じcommitになり、作成するrecheckも1件です。
+- 子runでは、渡したcommitがbaseとfeature baseになります。レビューは、そのcommitからの変更全体を読みます。
+- 変更が衝突するときは、衝突したファイルを示して断ります。自動では解決しません。手で解決するか、新しいrunを始めます。
+- 渡したcommitが親のbaseと同じときは断ります。`--onto`なしの`recheck`を使います。
+- reportには、どのbaseからどのbaseへ候補を移したかを記録します。
+
+決定の理由は[ADR-0061](adr/0061-recheck-onto-newer-base.md)にあります。
+
 ## 無人runのプロンプト方針
 
 新しいrunでは、実装担当と修正担当に、質問への返答を待てない無人実行であることを伝えます。
