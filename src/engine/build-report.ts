@@ -112,6 +112,7 @@ interface PersistedInput {
     runId: string
     candidateCommit: string
     candidateBranch: string
+    onto?: { from: string; to: string }
   }
   agentTimeoutMs?: number
   agentIdleTimeoutMs?: number

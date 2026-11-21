@@ -600,6 +600,219 @@ describe('failure recovery and scoped rechecks', { timeout: 180000 }, () => {
 })
 
 it(
+  'rechecks a candidate moved onto a newer base, once per base, and refuses a conflicting or unchanged base',
+  { timeout: 90000 },
+  async () => {
+    const b = await box()
+    const git = async (args: string[]) => {
+      const result = await runChild('git', args, {
+        cwd: b.repo,
+        timeoutMs: 10000,
+      })
+      assert.equal(result.code, 0, result.stderr)
+      return result.stdout.trim()
+    }
+    try {
+      const parent = await b.durably.jobs.agentLoop.trigger({
+        ...b.input,
+        fakeScenario: {
+          ...b.input.fakeScenario,
+          changes: { 'candidate.txt': 'candidate change\n' },
+        },
+      })
+      b.start()
+      const done = await b.settled(parent.id)
+      assert.equal(
+        (done.output as { conclusion: string }).conclusion,
+        'approved',
+        done.error ?? '',
+      )
+      // main moves on after the run started.
+      await writeFile(join(b.repo, 'upstream.txt'), 'upstream fix\n')
+      await git(['add', 'upstream.txt'])
+      await git(['commit', '-m', 'upstream fix'])
+      const newer = await git(['rev-parse', 'HEAD'])
+
+      const built = await startableRecheck(b.durably, parent.id, 'main')
+      assert.equal(built.input.target.baseRef, newer)
+      assert.equal(built.input.target.featureBase, newer)
+      assert.deepEqual(built.input.recheckOf.onto, {
+        from: b.base,
+        to: newer,
+      })
+      assert.equal(
+        built.input.recheckOf.candidateBranch,
+        `factory/${parent.id}-onto-${newer.slice(0, 12)}`,
+      )
+      assert.equal(
+        await git(['rev-parse', `${built.input.recheckOf.candidateCommit}^`]),
+        newer,
+      )
+      const recheck = await b.durably.jobs.agentLoop.trigger(built.input, {
+        idempotencyKey: built.idempotencyKey,
+        labels: built.labels,
+      })
+      const checked = await b.settled(recheck.id)
+      assert.equal(
+        (checked.output as { conclusion: string }).conclusion,
+        'approved',
+        checked.error ?? '',
+      )
+      const setup = await b.setup(recheck.id)
+      assert.equal(setup.target.kind, 'repo')
+      if (setup.target.kind !== 'repo') return
+      assert.equal(setup.target.baseCommit, newer)
+      assert.equal(setup.target.featureBase, newer)
+      const files = await git([
+        'ls-tree',
+        '--name-only',
+        built.input.recheckOf.candidateCommit,
+      ])
+      assert.match(files, /^upstream\.txt$/mu)
+      assert.match(files, /^candidate\.txt$/mu)
+      const steps = await b.durably.storage.getSteps(recheck.id)
+      assert.equal(
+        steps.some((s) => s.name.includes(':code:')),
+        false,
+      )
+      const report = await buildReport(b.durably, recheck.id)
+      assert.deepEqual(report.recheckOf?.onto, { from: b.base, to: newer })
+      assert.match(
+        reportToMarkdown(report),
+        new RegExp(`candidate moved onto ${newer} from ${b.base}`),
+      )
+
+      // The same base again builds the same commit and finds the same run.
+      const again = await startableRecheck(b.durably, parent.id, newer)
+      assert.equal(
+        again.input.recheckOf.candidateCommit,
+        built.input.recheckOf.candidateCommit,
+      )
+      assert.equal(again.idempotencyKey, built.idempotencyKey)
+      const cli = await runChild(
+        join(packageRoot, 'node_modules/.bin/tsx'),
+        [
+          join(packageRoot, 'src/cli.ts'),
+          'recheck',
+          '--run',
+          parent.id,
+          '--onto',
+          'main',
+          '--no-auto-worker',
+        ],
+        {
+          cwd: b.home,
+          env: { ...process.env, HOME: b.home },
+          timeoutMs: 10000,
+        },
+      )
+      assert.equal(cli.code, 0, cli.stderr)
+      assert.match(
+        cli.stdout,
+        new RegExp(
+          `already rechecked as ${recheck.id}; candidate of ${parent.id} moved onto ${newer.slice(0, 12)}`,
+        ),
+      )
+
+      // A base that changed the same file is refused, naming it.
+      await git(['checkout', '-q', '-b', 'conflicting', b.base])
+      await writeFile(join(b.repo, 'candidate.txt'), 'other change\n')
+      await git(['add', 'candidate.txt'])
+      await git(['commit', '-m', 'conflicting change'])
+      await git(['checkout', '-q', 'main'])
+      await assert.rejects(
+        startableRecheck(b.durably, parent.id, 'conflicting'),
+        /cannot be moved onto [0-9a-f]{12} automatically: the changes conflict in candidate\.txt/,
+      )
+      // The base it was built on is a plain recheck.
+      await assert.rejects(
+        startableRecheck(b.durably, parent.id, b.base),
+        /recheck it without --onto/,
+      )
+    } finally {
+      await b.close()
+    }
+  },
+)
+
+it(
+  'moves a repaired candidate onto a newer base from the feature base, not from the repair base',
+  { timeout: 90000 },
+  async () => {
+    const b = await box()
+    const git = async (args: string[]) => {
+      const result = await runChild('git', args, {
+        cwd: b.repo,
+        timeoutMs: 10000,
+      })
+      assert.equal(result.code, 0, result.stderr)
+      return result.stdout.trim()
+    }
+    try {
+      const parent = await b.durably.jobs.agentLoop.trigger({
+        ...b.input,
+        fakeScenario: {
+          ...b.input.fakeScenario,
+          changes: { 'candidate.txt': 'candidate change\n' },
+        },
+      })
+      b.start()
+      const done = await b.settled(parent.id)
+      assert.equal(
+        (done.output as { conclusion: string }).conclusion,
+        'approved',
+        done.error ?? '',
+      )
+      const built = buildRepairInput(
+        done,
+        await b.setup(parent.id),
+        {
+          findings: {
+            content: 'F1: add the repair file.',
+            ref: { path: '/tmp/findings.md' },
+          },
+          dispositions: null,
+        },
+        {
+          ...b.input.fakeScenario,
+          changes: { 'repair.txt': 'repair change\n' },
+        },
+      )
+      const repair = await b.durably.jobs.agentLoop.trigger(built.input, {
+        idempotencyKey: built.idempotencyKey,
+        labels: built.labels,
+      })
+      const repaired = await b.settled(repair.id)
+      assert.equal(
+        (repaired.output as { conclusion: string }).conclusion,
+        'approved',
+        repaired.error ?? '',
+      )
+      await writeFile(join(b.repo, 'upstream.txt'), 'upstream fix\n')
+      await git(['add', 'upstream.txt'])
+      await git(['commit', '-m', 'upstream fix'])
+      const newer = await git(['rev-parse', 'HEAD'])
+
+      const moved = await startableRecheck(b.durably, repair.id, newer)
+      assert.deepEqual(moved.input.recheckOf.onto, {
+        from: b.base,
+        to: newer,
+      })
+      const files = await git([
+        'ls-tree',
+        '--name-only',
+        moved.input.recheckOf.candidateCommit,
+      ])
+      assert.match(files, /^candidate\.txt$/mu)
+      assert.match(files, /^repair\.txt$/mu)
+      assert.match(files, /^upstream\.txt$/mu)
+    } finally {
+      await b.close()
+    }
+  },
+)
+
+it(
   'builds default repair findings from a failed recheck without asking for a findings file',
   { timeout: 60000 },
   async () => {
