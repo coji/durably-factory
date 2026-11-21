@@ -16,7 +16,12 @@ import {
   stageStep,
   type StoredStageStep,
 } from './engine/failure-reasons.js'
-import { repoRoot } from './engine/git.js'
+import {
+  ensureMovedBranch,
+  MoveConflictError,
+  repoRoot,
+  resolveCommit,
+} from './engine/git.js'
 import { fencedText } from './engine/markdown.js'
 import { parseProviderName } from './engine/providers/index.js'
 import {
@@ -1650,6 +1655,8 @@ export async function startableRepair(
 export async function startableRecheck(
   durably: RepairSource,
   parentId: string,
+  /** A newer base commit to move the candidate's changes onto first. */
+  onto?: string,
 ) {
   const run = await durably.getRun(parentId)
   if (!run) throw new Error(`no run ${parentId}`)
@@ -1682,30 +1689,79 @@ export async function startableRecheck(
     1,
   )
   const { repairOf, ...inherited } = built.input
+  const repo = source.setup.target.repoPath
+  const oldBase = source.setup.target.baseCommit
+  await assertCandidateUnmoved(repo, source.commit, source.branch)
+  const moved = onto
+    ? await moveCandidate(parent, repo, oldBase, source.commit, onto)
+    : null
   const input = {
     ...inherited,
     // Resolved settings are inherited, without resolving requested aliases anew.
     target: {
       ...inherited.target,
-      baseRef: source.setup.target.baseCommit,
+      baseRef: moved ? moved.onto : oldBase,
+      ...(moved ? { featureBase: moved.onto } : {}),
       baselineCheck: false,
       publish: false,
     },
     recheckOf: {
       runId: parentId,
-      candidateCommit: source.commit,
-      candidateBranch: source.branch,
+      candidateCommit: moved ? moved.commit : source.commit,
+      candidateBranch: moved ? moved.branch : source.branch,
       profiles: repairOf.profiles,
+      ...(moved ? { onto: { from: oldBase, to: moved.onto } } : {}),
     },
   }
-  await assertCandidateUnmoved(
-    source.setup.target.repoPath,
-    source.commit,
-    source.branch,
-  )
+  if (moved) await assertCandidateUnmoved(repo, moved.commit, moved.branch)
   return {
     input,
-    idempotencyKey: `recheck-of-${parentId}`,
+    idempotencyKey: moved
+      ? `recheck-of-${parentId}-onto-${moved.onto}`
+      : `recheck-of-${parentId}`,
     labels: repairLabels(input),
+  }
+}
+
+/** The branch holding a candidate moved onto a newer base. */
+export function movedBranchFor(runId: string, onto: string): string {
+  return `factory/${runId}-onto-${onto.slice(0, 12)}`
+}
+
+async function moveCandidate(
+  parent: RepairParent,
+  repo: string,
+  oldBase: string,
+  candidate: string,
+  ref: string,
+): Promise<{ onto: string; commit: string; branch: string }> {
+  let onto: string
+  try {
+    onto = await resolveCommit(repo, ref)
+  } catch {
+    throw refusal(parent, `--onto ${ref} is not a commit in ${repo}`)
+  }
+  if (onto === oldBase)
+    throw refusal(
+      parent,
+      `its candidate is already on ${onto.slice(0, 12)}; recheck it without --onto`,
+    )
+  const branch = movedBranchFor(parent.id, onto)
+  try {
+    const { commit } = await ensureMovedBranch({
+      repo,
+      branch,
+      fromBase: oldBase,
+      ontoBase: onto,
+      sourceCommit: candidate,
+    })
+    return { onto, commit, branch }
+  } catch (error) {
+    if (error instanceof MoveConflictError)
+      throw refusal(
+        parent,
+        `its candidate cannot be moved onto ${onto.slice(0, 12)} automatically: the changes conflict in ${error.paths.join(', ')}`,
+      )
+    throw error
   }
 }

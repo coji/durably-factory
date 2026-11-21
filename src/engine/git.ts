@@ -498,6 +498,143 @@ export async function ensureSquashedBranch(
   return { commit, created: true }
 }
 
+export interface MoveSpec {
+  repo: string
+  /** Branch to create; an existing one is checked, never moved. */
+  branch: string
+  /** The commit the candidate was built on. */
+  fromBase: string
+  /** The newer commit to put the candidate's changes on. */
+  ontoBase: string
+  /** The candidate commit whose changes are moved. */
+  sourceCommit: string
+  signal?: AbortSignal
+}
+
+/** The candidate's changes conflict with the newer base. */
+export class MoveConflictError extends Error {
+  constructor(
+    message: string,
+    readonly paths: string[],
+  ) {
+    super(message)
+    this.name = 'MoveConflictError'
+  }
+}
+
+/**
+ * Put the changes from `fromBase` to `sourceCommit` on `ontoBase` as one
+ * commit, without touching any checkout or worktree (a three-way merge with
+ * `fromBase` as the merge base, as a cherry-pick does).
+ *
+ * The commit carries the source commit's message, author and committer, with
+ * their dates, so building it again gives the same sha. An existing branch is
+ * kept only when it points at exactly that commit; any other is refused.
+ * A conflict throws `MoveConflictError` naming the conflicting paths.
+ */
+export async function ensureMovedBranch(
+  spec: MoveSpec,
+): Promise<{ commit: string; created: boolean }> {
+  const pass = spec.signal ? { signal: spec.signal } : {}
+  const merged = await runChild(
+    'git',
+    [
+      'merge-tree',
+      '--write-tree',
+      '-z',
+      '--name-only',
+      '--no-messages',
+      `--merge-base=${spec.fromBase}`,
+      spec.ontoBase,
+      spec.sourceCommit,
+    ],
+    {
+      cwd: spec.repo,
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+      maxOutputChars: 1_000_000,
+      ...pass,
+    },
+  )
+  // Exit 1 is a conflict: the tree, then the conflicting paths.
+  if (merged.code === 1) {
+    const [, ...rest] = merged.stdout.split('\0')
+    const paths = [...new Set(rest.filter((p) => p.length > 0))]
+    throw new MoveConflictError(
+      `the candidate's changes conflict with ${spec.ontoBase.slice(0, 12)} in ${paths.join(', ')}`,
+      paths,
+    )
+  }
+  if (merged.code !== 0)
+    throw new GitError(
+      `git merge-tree failed with code ${merged.code ?? 'null'}`,
+      merged.stderr.slice(-2000),
+    )
+  const tree = merged.stdout.split('\0')[0]?.trim()
+  if (!tree) throw new GitError('git merge-tree printed no tree', merged.stderr)
+  const meta = (
+    await git(spec.repo, [
+      'log',
+      '-1',
+      '--format=%an%x00%ae%x00%ad%x00%cn%x00%ce%x00%cd%x00%B',
+      '--date=raw',
+      spec.sourceCommit,
+    ])
+  ).split('\0')
+  const [an, ae, ad, cn, ce, cd] = meta
+  if (
+    an === undefined ||
+    ae === undefined ||
+    ad === undefined ||
+    cn === undefined ||
+    ce === undefined ||
+    cd === undefined
+  )
+    throw new GitError(
+      `could not read the identity of ${spec.sourceCommit.slice(0, 12)}`,
+      '',
+    )
+  const message = meta.slice(6).join('\0').replace(/\n+$/u, '')
+  const commit = (
+    await git(
+      spec.repo,
+      [
+        'commit-tree',
+        '--no-gpg-sign',
+        tree,
+        '-p',
+        spec.ontoBase,
+        '-m',
+        message,
+      ],
+      {
+        ...pass,
+        env: {
+          GIT_AUTHOR_NAME: an,
+          GIT_AUTHOR_EMAIL: ae,
+          GIT_AUTHOR_DATE: ad,
+          GIT_COMMITTER_NAME: cn,
+          GIT_COMMITTER_EMAIL: ce,
+          GIT_COMMITTER_DATE: cd,
+        },
+      },
+    )
+  ).trim()
+  const existing = await branchCommit(spec.repo, spec.branch)
+  if (existing) {
+    if (existing !== commit)
+      throw new Error(
+        `branch ${spec.branch} already exists at ${existing.slice(0, 12)}, not at the expected moved candidate ${commit.slice(0, 12)} on ${spec.ontoBase.slice(0, 12)}; it was left as it is`,
+      )
+    return { commit: existing, created: false }
+  }
+  await git(
+    spec.repo,
+    ['update-ref', `refs/heads/${spec.branch}`, commit, ''],
+    pass,
+  )
+  return { commit, created: true }
+}
+
 /** The commit a local branch points at, or null when there is no such branch. */
 export async function branchCommit(
   repo: string,

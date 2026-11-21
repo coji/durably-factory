@@ -79,3 +79,4 @@ What we considered and why we didn't do it.
 | [0058](0058-generate-before-seal.md)                            | Run generation commands before sealing             | accepted |
 | [0059](0059-reference-files-and-check-artifacts.md)             | Reference files and check artifacts                | accepted |
 | [0060](0060-code-review-off.md)                                 | Let the repository's own gate be the only reviewer | accepted |
+| [0061](0061-recheck-onto-newer-base.md)                         | Recheck a candidate on a newer base                | accepted |

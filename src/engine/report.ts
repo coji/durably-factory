@@ -1027,6 +1027,8 @@ export interface LoopReport {
     runId: string
     candidateCommit: string
     candidateBranch: string
+    /** Set when the candidate's changes were moved onto a newer base. */
+    onto?: { from: string; to: string }
   } | null
   /** The agent call limits; null or absent when the run stored none. */
   agentTimeouts?: ReportAgentTimeouts | null
@@ -1815,7 +1817,9 @@ export function reportToMarkdown(r: LoopReport): string {
     )
   if (r.recheckOf)
     lines.push(
-      `- recheck of: ${r.recheckOf.runId}; unchanged candidate: ${r.recheckOf.candidateCommit}`,
+      r.recheckOf.onto
+        ? `- recheck of: ${r.recheckOf.runId}; candidate moved onto ${r.recheckOf.onto.to} from ${r.recheckOf.onto.from}: ${r.recheckOf.candidateCommit}`
+        : `- recheck of: ${r.recheckOf.runId}; unchanged candidate: ${r.recheckOf.candidateCommit}`,
     )
   if (r.inputs.scope)
     lines.push(
