@@ -4,7 +4,7 @@
  * - Listens on 127.0.0.1 only. The API answers only to a loopback Host
  *   header, so a page on another origin cannot read runs through DNS
  *   rebinding.
- * - Opens the fixed state root's existing database lazily: until a worker or
+ * - Opens the selected state root's existing database lazily: until a worker or
  *   `trigger` creates it, every view is empty and nothing is created. It is
  *   migrated before the first write, as the CLI does; `init()` is never
  *   called, so no worker starts and the worker lock is never taken.
@@ -23,16 +23,15 @@
 import { execFile } from 'node:child_process'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { open, realpath } from 'node:fs/promises'
+import { open, readdir, readFile, realpath } from 'node:fs/promises'
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { dirname, join, resolve, sep } from 'node:path'
+import { extname, join, resolve, sep } from 'node:path'
 import type { Duplex } from 'node:stream'
-import { fileURLToPath } from 'node:url'
 
 import type { Run } from '@coji/durably'
 
@@ -117,6 +116,7 @@ import { TERMINAL_STATUSES } from '../engine/terminal.js'
 import { runRootOf } from '../factory/layout.js'
 import { reviewerId, reviewSlot } from '../factory/reviewers.js'
 import { BASELINE_STEP } from '../factory/types.js'
+import { isSourceCheckout, packageRoot } from '../installation.js'
 import {
   COMMON,
   PIPELINE_WORDS,
@@ -126,8 +126,6 @@ import {
   TRACE_WORDS,
 } from './glossary.js'
 import { lensName, roleName, stageName, stepPartName } from './labels.js'
-
-const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 /** A linked run by its name, for the links between repair runs. */
 export interface RunRef {
@@ -1869,8 +1867,7 @@ function idOf(raw: string): string {
 }
 
 /** The API, without a listening socket. */
-function createUiApi() {
-  const stateRoot = defaultStateRoot()
+function createUiApi(stateRoot: string) {
   let durably: AgentLoopDurably | null = null
   // Opened on first use after the file appears, then kept. Nothing is
   // created before a worker or `trigger` creates the database.
@@ -2211,6 +2208,7 @@ function createUiApi() {
 
 export interface UiServerOptions {
   port: number
+  stateRoot?: string
 }
 
 export interface UiServer {
@@ -2304,23 +2302,83 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body))
 }
 
+function withPageToken(html: string, token: string): string {
+  return html.replace(
+    TOKEN_META,
+    `<meta name="loop-ui-token" content="${token}" />`,
+  )
+}
+
+async function builtUi(token: string) {
+  const dir = join(packageRoot, 'dist', 'ui')
+  const index = withPageToken(
+    await readFile(join(dir, 'index.html'), 'utf8'),
+    token,
+  )
+  const assetsDir = join(dir, 'assets')
+  const assets = new Map(
+    (await readdir(assetsDir, { withFileTypes: true }))
+      .filter((asset) => asset.isFile())
+      .map((asset) => [
+        `/assets/${encodeURIComponent(asset.name)}`,
+        asset.name,
+      ]),
+  )
+  return async (
+    req: IncomingMessage,
+    res: ServerResponse,
+    pathname: string,
+  ) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD')
+      return sendJson(res, 405, {
+        error: 'page files answer GET and HEAD only',
+      })
+    if (pathname === '/' || pathname === '/index.html') {
+      res.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+      })
+      return res.end(req.method === 'HEAD' ? undefined : index)
+    }
+    const asset = assets.get(pathname)
+    if (!asset) return sendJson(res, 404, { error: 'page asset not found' })
+    const contentType =
+      {
+        '.js': 'text/javascript; charset=utf-8',
+        '.css': 'text/css; charset=utf-8',
+      }[extname(asset)] ?? 'application/octet-stream'
+    const content = await readFile(join(assetsDir, asset))
+    res.writeHead(200, {
+      'content-type': contentType,
+      'content-length': content.length,
+      'cache-control': 'public, max-age=31536000, immutable',
+    })
+    return res.end(req.method === 'HEAD' ? undefined : content)
+  }
+}
+
 /** Start the loopback server; resolves once it is listening. */
 export async function startUiServer(
   options: UiServerOptions,
 ): Promise<UiServer> {
   const host = '127.0.0.1'
-  const api = createUiApi()
+  const api = createUiApi(options.stateRoot ?? defaultStateRoot())
   // A fresh token per start, only ever sent inside the page. With CORS off,
   // a page of any other origin, another localhost port included, can
   // neither read it nor send this server's Origin.
   const token = randomBytes(32).toString('hex')
+  const serveBuiltUi = isSourceCheckout ? null : await builtUi(token)
   let port = options.port
   const onRequest = async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', `http://${host}`)
-    if (!url.pathname.startsWith('/api/')) return vite.middlewares(req, res)
     const hostHeader = req.headers.host ?? ''
     if (hostHeader !== `${host}:${port}` && hostHeader !== `localhost:${port}`)
       return sendJson(res, 403, { error: 'loopback host only' })
+    if (!url.pathname.startsWith('/api/')) {
+      if (serveBuiltUi) return serveBuiltUi(req, res, url.pathname)
+      vite?.middlewares(req, res)
+      return
+    }
     try {
       const write = actionPath(url.pathname)
       if (!write) {
@@ -2356,30 +2414,29 @@ export async function startUiServer(
   // such as the live-reload socket of an open tab, so those are tracked and
   // destroyed on close; otherwise Ctrl-C waits until the tab is closed.
   const upgraded = new Set<Duplex>()
-  server.on('upgrade', (_req, socket: Duplex) => {
-    upgraded.add(socket)
-    socket.once('close', () => upgraded.delete(socket))
-  })
+  if (isSourceCheckout)
+    server.on('upgrade', (_req, socket: Duplex) => {
+      upgraded.add(socket)
+      socket.once('close', () => upgraded.delete(socket))
+    })
   // Vite's live-reload socket shares this server, so it stays on loopback.
-  const vite = await (
-    await import('vite')
-  ).createServer({
-    configFile: join(packageRoot, 'vite.config.ts'),
-    appType: 'spa',
-    logLevel: 'warn',
-    // No CORS: another localhost origin must not read the page's token.
-    server: { cors: false, middlewareMode: true, hmr: { server } },
-    plugins: [
-      {
-        name: 'loop-ui-token',
-        transformIndexHtml: (html) =>
-          html.replace(
-            TOKEN_META,
-            `<meta name="loop-ui-token" content="${token}" />`,
-          ),
-      },
-    ],
-  })
+  const vite = isSourceCheckout
+    ? await (
+        await import('vite')
+      ).createServer({
+        configFile: join(packageRoot, 'vite.config.ts'),
+        appType: 'spa',
+        logLevel: 'warn',
+        // No CORS: another localhost origin must not read the page's token.
+        server: { cors: false, middlewareMode: true, hmr: { server } },
+        plugins: [
+          {
+            name: 'loop-ui-token',
+            transformIndexHtml: (html) => withPageToken(html, token),
+          },
+        ],
+      })
+    : null
   try {
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
@@ -2389,7 +2446,7 @@ export async function startUiServer(
       })
     })
   } catch (error) {
-    await vite.close()
+    await vite?.close()
     throw error
   }
   port = (server.address() as AddressInfo).port
@@ -2401,7 +2458,7 @@ export async function startUiServer(
       )
       server.closeAllConnections()
       for (const socket of upgraded) socket.destroy()
-      await vite.close()
+      await vite?.close()
       await closed
       await api.close()
     },

@@ -7,8 +7,9 @@ import {
   promptPolicyKey,
   type PromptPolicies,
 } from '../factory/prompt-policy.js'
+import { factoryVersion } from '../installation.js'
 import { runChild } from './child.js'
-import { claudeExecutable } from './providers/claude.js'
+import { claudeExecutable, claudeProviderVersion } from './providers/claude.js'
 import { codexExecutable } from './providers/codex.js'
 import { enabledSandbox, type SandboxSettings } from './sandbox.js'
 
@@ -99,11 +100,10 @@ async function resolveVersionsUncached(
   cliPath: string | null,
 ): Promise<Record<string, string | null>> {
   const base = {
+    'durably-factory': factoryVersion,
     ai: packageVersion('ai'),
     'ai-sdk-provider-codex-cli': packageVersion('ai-sdk-provider-codex-cli'),
-    'ai-sdk-provider-claude-code': packageVersion(
-      'ai-sdk-provider-claude-code',
-    ),
+    'ai-sdk-provider-claude-code': claudeProviderVersion(),
   }
   if (provider === 'codex') {
     const exe = codexExecutable(cliPath)

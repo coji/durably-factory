@@ -5,8 +5,7 @@
 
 Durably、ローカルの SQLite、AI SDK v7、ログイン済みの CLI 1 つ（Codex か
 Claude Code）を使い、実装、固定したテスト、独立したレビュー、人の承認までを
-ローカルで実行するサンプルです。新しいワークフローのフレームワーク、Docker、
-GitHub の認証、CI は使いません。
+ローカルで実行します。同梱のサンプルは、手元の端末だけで試せます。
 
 設計の中心は、工程の区切りと会話の区切りを別にすることです。
 
@@ -44,7 +43,44 @@ decision:N
 
 候補とテストの固定の詳しい仕組みは [仕組みと制約](docs/architecture.md) にあります。
 
-## セットアップ
+## npm から導入する
+
+Node.js 24.22.2 以降の 24 系を使います。使うプロジェクトのディレクトリで Factory の
+バージョンを指定してインストールします。pnpm では、SQLite のネイティブモジュールを
+用意するために `better-sqlite3` のインストールスクリプトを許可します。
+
+```bash
+pnpm add -D -E --allow-build=better-sqlite3 @coji/durably-factory@0.1.0
+pnpm factory --version
+```
+
+`package.json`、`pnpm-lock.yaml`、ビルドの許可が入った `pnpm-workspace.yaml` を
+コミットしておくと、`pnpm install --frozen-lockfile` で同じバージョンを使えます。
+npm を使う場合は `npm install -D -E @coji/durably-factory@0.1.0` で導入し、
+`npm exec -- factory --version` で確認します。
+
+### プロジェクトごとに保存先を指定する
+
+`DURABLY_FACTORY_STATE_DIR` を、Factory を使うシェルで設定します。
+
+```bash
+export DURABLY_FACTORY_STATE_DIR="$PWD/.factory-state"
+pnpm factory status
+```
+
+そのプロジェクトの `.gitignore` に `.factory-state/` を加えてください。手動で起動する
+worker や `factory ui` にも同じ環境変数を渡します。自動起動する worker は CLI が
+選んだ保存先を引き継ぎます。相対パスはコマンドを実行した場所を基準にします。
+変数を設定しなければ、従来どおり `~/.local/state/durably-factory/` を使います。既存データは元の保存先に残ります。
+
+### 別のバージョンに更新する
+
+実行中の処理が落ち着いたら、保存先を共有する旧バージョンの worker を停止します。
+導入時と同じコマンドで更新先のバージョンを指定し、`pnpm factory --version` で
+確認します。保存先を引き続き指定すれば、過去の run をそのまま読めます。
+`factory report` は、run の準備を行った worker のバージョンを表示します。
+
+## ソースからセットアップする
 
 ```bash
 pnpm install
@@ -52,7 +88,7 @@ pnpm typecheck
 pnpm test:unit
 ```
 
-使うプロバイダーだけをインストールし、ログインしておきます。
+npm 版でもソース版でも、実際のエージェントを使う場合は、使う CLI をインストールし、ログインしておきます。
 
 ```bash
 codex --version
@@ -158,9 +194,14 @@ fake の事前確認、待ち時間、使用量、`fakeScenario` は [仕組み�
   権限と制約、fake モードの詳細、ファイルの構成
 - [別のリポジトリへ移す](docs/porting.md)
 
-## 保存先の変更
+## npm リリースを作る
 
-DBとrunのデータは `~/.local/state/durably-factory/` に保存します。
-以前の保存先にあるデータは自動移行しません。
-既存のrunを続ける場合は、そのrunを開始した版を使ってください。
-環境変数は `DURABLY_FACTORY_NO_AUTO_WORKER` と `DURABLY_FACTORY_IDLE_MS` を使います。
+`package.json` の `version` を更新して main に取り込んでから、同じバージョンの
+`v<version>` タグを作ります。GitHub Actions は検証済みの tarball を npm に公開します。
+
+初回は npm でパッケージを作成し、Trusted Publisher に所有者 `coji`、リポジトリ
+`durably-factory`、ワークフロー `release.yml` を登録します。`npm publish` を許可してから
+タグを push してください。未登録なら、リリース用とは別のバージョンを
+`npm stage publish --access public` でステージングすると、登録用のパッケージが作られます。
+[初回のステージング](https://docs.npmjs.com/staged-publishing/)と
+[Trusted Publisher の登録手順](https://docs.npmjs.com/trusted-publishers/)を参照してください。

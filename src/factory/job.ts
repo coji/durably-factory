@@ -1,7 +1,6 @@
 /** Durably job: persist a decision, dispatch its stage, reduce the event. */
 import { mkdir, rm } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 
 import {
   defineJob,
@@ -50,6 +49,7 @@ import {
   configVersionOf,
   resolveVersions,
 } from '../engine/versions.js'
+import { factoryVersion, packageRoot } from '../installation.js'
 import {
   createTarget,
   prepareRepoTarget,
@@ -1065,8 +1065,6 @@ const outputSchema = z.object({
     .nullable(),
 })
 
-/** Example package root (`src/factory/` -> `src/` -> package). */
-const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const subjectDir = () => join(packageRoot, 'subject')
 
 /** Build one value per role. */
@@ -1972,6 +1970,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
           {
             metadata: {
               stage: 'setup',
+              factoryVersion,
               provider: input.provider,
               context: input.context,
               target: input.target.kind,

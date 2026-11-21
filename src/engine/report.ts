@@ -1015,6 +1015,8 @@ export interface LoopReport {
   input: unknown
   output: unknown
   fake: boolean
+  /** The Factory release that initialized this run. */
+  factoryVersion?: string | null
   /** Shared by runs with identical provider/model/effort/context settings. */
   configVersion: string | null
   retryOf?: {
@@ -1838,6 +1840,7 @@ export function reportToMarkdown(r: LoopReport): string {
     `- full loop verified: ${r.fullLoopVerified ? 'yes (real CLI, terminal success, approved)' : 'no (see notes)'}`,
   )
   lines.push(`- output: ${JSON.stringify(r.output)}`)
+  lines.push(`- factory version: ${r.factoryVersion ?? 'unknown'}`)
   lines.push(`- config version: ${fmt(r.configVersion)}`)
   if (r.featureBase) lines.push(`- feature base: ${r.featureBase}`)
   if (r.agentTimeouts)

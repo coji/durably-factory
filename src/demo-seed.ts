@@ -12,12 +12,12 @@ import { openSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { signalApproval, type ApprovalDecision } from './approval.js'
 import {
   createAgentDurably,
   defaultStateRoot,
+  STATE_DIR_ENV,
   type AgentLoopDurably,
 } from './durably.js'
 import { runChild } from './engine/child.js'
@@ -26,6 +26,7 @@ import { parseLatency, type FakeScenario } from './engine/providers/fake.js'
 import { checkpointPaths } from './engine/runner.js'
 import { shellQuote } from './engine/status.js'
 import { TERMINAL_STATUSES } from './engine/terminal.js'
+import { cliPath, packageRoot } from './installation.js'
 import { buildTriggerInput, startableRepair } from './trigger-input.js'
 
 /** A small project with a real `node --test` check that fails on the base. */
@@ -474,11 +475,14 @@ async function trigger(
   await mkdir(dirname(taskFile), { recursive: true })
   await writeFile(taskFile, `# ${task.title}\n\n${task.body}\n`)
   const manual = task.ending === 'wait' || task.ending === 'approved'
-  const input = await buildTriggerInput({
-    repo,
-    'task-file': taskFile,
-    ...(manual || task.ending === 'rejected' ? { approve: 'manual' } : {}),
-  })
+  const input = await buildTriggerInput(
+    {
+      repo,
+      'task-file': taskFile,
+      ...(manual || task.ending === 'rejected' ? { approve: 'manual' } : {}),
+    },
+    durably.stateRoot,
+  )
   return durably.jobs.agentLoop.trigger({
     ...input,
     fakeScenario: { usage: 'realistic', latencyMs, ...task.scenario },
@@ -576,13 +580,12 @@ export async function seed(options: SeedOptions): Promise<SeedResult> {
   if (options.backgroundWorker && later.length > 0) {
     workerLog = join(options.home, 'worker.log')
     const out = openSync(workerLog, 'a')
-    const cli = join(dirname(fileURLToPath(import.meta.url)), 'cli.ts')
     const child = spawn(
       process.execPath,
-      [...process.execArgv, cli, 'worker'],
+      [...process.execArgv, cliPath, 'worker'],
       {
-        cwd: dirname(dirname(cli)),
-        env: { ...process.env, HOME: options.home },
+        cwd: packageRoot,
+        env: { ...process.env, HOME: options.home, [STATE_DIR_ENV]: stateRoot },
         detached: true,
         stdio: ['ignore', out, out],
       },
@@ -626,7 +629,7 @@ export async function seedCommand(a: Record<string, string>): Promise<void> {
     backgroundWorker: true,
     log: (line) => console.log(line),
   })
-  const env = `HOME=${shellQuote(home)}`
+  const env = `HOME=${shellQuote(home)} ${STATE_DIR_ENV}=${shellQuote(defaultStateRoot())}`
   console.log('')
   console.log(`デモデータを作りました: ${home}`)
   console.log('')

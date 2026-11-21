@@ -8,8 +8,7 @@ import {
 } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, resolve } from 'node:path'
 
 import { createDurably } from '@coji/durably'
 /** Durably instance (local SQLite via better-sqlite3). */
@@ -24,6 +23,7 @@ import {
   runRootOf,
   testProbeBaseRecordOf,
 } from './factory/layout.js'
+import { factoryVersion, packageRoot } from './installation.js'
 import {
   readTestProbeBaseRecord,
   removeQuietly,
@@ -33,10 +33,20 @@ import {
 /**
  * Where the database and every run's data live: outside both the durably
  * checkout and the target repository, so every command finds the same
- * database without arguments. Deliberately not overridable by users.
+ * database without arguments.
  */
 export function defaultStateRoot(): string {
   return join(homedir(), '.local', 'state', 'durably-factory')
+}
+
+export const STATE_DIR_ENV = 'DURABLY_FACTORY_STATE_DIR'
+
+export function configuredStateRoot(): string {
+  const configured = process.env[STATE_DIR_ENV]
+  if (configured === undefined) return defaultStateRoot()
+  if (!configured.trim())
+    throw new Error(`${STATE_DIR_ENV} must name a directory`)
+  return resolve(configured)
 }
 
 export function dbPath(stateRoot: string = defaultStateRoot()): string {
@@ -46,9 +56,10 @@ export function dbPath(stateRoot: string = defaultStateRoot()): string {
 /** Who holds a state root's worker lock, as that worker recorded it. */
 export interface WorkerLockHolder {
   pid: number
-  /** The checkout the worker was started from. */
+  /** The package root the worker was started from. */
   checkout: string
   startedAt: string
+  factoryVersion?: string | null
 }
 
 export type WorkerLockResult =
@@ -87,7 +98,7 @@ const WORKER_LOCK_ACQUIRE_TIMEOUT_MS = 2000
  */
 export function acquireWorkerLock(
   stateRoot: string = defaultStateRoot(),
-  checkout: string = join(dirname(fileURLToPath(import.meta.url)), '..'),
+  checkout: string = packageRoot,
 ): WorkerLockResult {
   mkdirSync(stateRoot, { recursive: true })
   const paths = workerLockPaths(stateRoot)
@@ -104,6 +115,7 @@ export function acquireWorkerLock(
   const holder: WorkerLockHolder = {
     pid: process.pid,
     checkout,
+    factoryVersion,
     startedAt: new Date().toISOString(),
   }
   const temporary = `${paths.holder}.${process.pid}.tmp`
@@ -195,10 +207,7 @@ function readHolder(path: string): WorkerLockHolder | null {
 }
 
 export interface AgentDurablyOptions {
-  /**
-   * Test-only: put the database and all run data under another root. Not
-   * exposed as a CLI flag or environment variable.
-   */
+  /** Put the database and all run data under another root. */
   stateRoot?: string
   /**
    * Demo seeding only: runs one worker leases at once. The CLI worker keeps

@@ -29,4 +29,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Validate
-        run: pnpm validate
+        run: |
+          validation_home="$(mktemp -d)"
+          HOME="$validation_home" pnpm validate
+
+      - name: Test the npm tarball outside the checkout
+        run: |
+          pnpm pack --out "$RUNNER_TEMP/factory.tgz"
+          pnpm exec node scripts/smoke-package.mjs "$RUNNER_TEMP/factory.tgz"

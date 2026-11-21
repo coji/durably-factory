@@ -55,6 +55,7 @@ import {
 } from '../src/factory/prompts.js'
 import { REPAIR_OF_LABEL } from '../src/factory/repair.js'
 import type { FactorySetup, FactoryState } from '../src/factory/types.js'
+import { factoryVersion } from '../src/installation.js'
 import { createTarget } from '../src/targets/index.js'
 import {
   buildRepairInput,
@@ -696,6 +697,10 @@ describe('status without --run', { timeout: 180000 }, () => {
       await until(
         async () => (await status(noSetup)()) === 'failed',
         'bad base fails',
+      )
+      assert.equal(
+        (await buildReport(durably, noSetup)).factoryVersion,
+        factoryVersion,
       )
       await until(
         async () => (await status(waiting)()) === 'waiting',
