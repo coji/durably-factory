@@ -736,6 +736,83 @@ it(
 )
 
 it(
+  'moves a repaired candidate onto a newer base from the feature base, not from the repair base',
+  { timeout: 90000 },
+  async () => {
+    const b = await box()
+    const git = async (args: string[]) => {
+      const result = await runChild('git', args, {
+        cwd: b.repo,
+        timeoutMs: 10000,
+      })
+      assert.equal(result.code, 0, result.stderr)
+      return result.stdout.trim()
+    }
+    try {
+      const parent = await b.durably.jobs.agentLoop.trigger({
+        ...b.input,
+        fakeScenario: {
+          ...b.input.fakeScenario,
+          changes: { 'candidate.txt': 'candidate change\n' },
+        },
+      })
+      b.start()
+      const done = await b.settled(parent.id)
+      assert.equal(
+        (done.output as { conclusion: string }).conclusion,
+        'approved',
+        done.error ?? '',
+      )
+      const built = buildRepairInput(
+        done,
+        await b.setup(parent.id),
+        {
+          findings: {
+            content: 'F1: add the repair file.',
+            ref: { path: '/tmp/findings.md' },
+          },
+          dispositions: null,
+        },
+        {
+          ...b.input.fakeScenario,
+          changes: { 'repair.txt': 'repair change\n' },
+        },
+      )
+      const repair = await b.durably.jobs.agentLoop.trigger(built.input, {
+        idempotencyKey: built.idempotencyKey,
+        labels: built.labels,
+      })
+      const repaired = await b.settled(repair.id)
+      assert.equal(
+        (repaired.output as { conclusion: string }).conclusion,
+        'approved',
+        repaired.error ?? '',
+      )
+      await writeFile(join(b.repo, 'upstream.txt'), 'upstream fix\n')
+      await git(['add', 'upstream.txt'])
+      await git(['commit', '-m', 'upstream fix'])
+      const newer = await git(['rev-parse', 'HEAD'])
+
+      const moved = await startableRecheck(b.durably, repair.id, newer)
+      assert.deepEqual(moved.input.recheckOf.onto, {
+        from: b.base,
+        to: newer,
+      })
+      const files = await git([
+        'ls-tree',
+        '--name-only',
+        moved.input.recheckOf.candidateCommit,
+      ])
+      assert.match(files, /^candidate\.txt$/mu)
+      assert.match(files, /^repair\.txt$/mu)
+      assert.match(files, /^upstream\.txt$/mu)
+    } finally {
+      await b.close()
+    }
+  },
+)
+
+it(
   'builds default repair findings from a failed recheck without asking for a findings file',
   { timeout: 60000 },
   async () => {

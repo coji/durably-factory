@@ -1691,9 +1691,12 @@ export async function startableRecheck(
   const { repairOf, ...inherited } = built.input
   const repo = source.setup.target.repoPath
   const oldBase = source.setup.target.baseCommit
+  // The whole feature moves, not only a repair's last step: a repair run's
+  // base is its parent's candidate, so start from the feature base.
+  const featureStart = source.setup.target.featureBase ?? oldBase
   await assertCandidateUnmoved(repo, source.commit, source.branch)
   const moved = onto
-    ? await moveCandidate(parent, repo, oldBase, source.commit, onto)
+    ? await moveCandidate(parent, repo, featureStart, source.commit, onto)
     : null
   const input = {
     ...inherited,
@@ -1710,7 +1713,7 @@ export async function startableRecheck(
       candidateCommit: moved ? moved.commit : source.commit,
       candidateBranch: moved ? moved.branch : source.branch,
       profiles: repairOf.profiles,
-      ...(moved ? { onto: { from: oldBase, to: moved.onto } } : {}),
+      ...(moved ? { onto: { from: featureStart, to: moved.onto } } : {}),
     },
   }
   if (moved) await assertCandidateUnmoved(repo, moved.commit, moved.branch)
