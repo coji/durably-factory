@@ -24,6 +24,7 @@ import { z } from 'zod'
 
 import { runChild } from '../engine/child.js'
 import { SPEC_CHECK_FAILED_MESSAGE } from '../engine/failure-reasons.js'
+import { writeFileDiff } from '../engine/git.js'
 import {
   boundedDenials,
   type AgentProvider,
@@ -46,7 +47,7 @@ import {
 } from './code-response.js'
 import { SpecEventSchema, type SpecEvent } from './events.js'
 import { readInputFile } from './input-file.js'
-import { agentLogsDirBeside } from './layout.js'
+import { agentLogsDirBeside, specRevisionsDirOf } from './layout.js'
 import { specAction } from './policy.js'
 import { promptVersionOf } from './prompt-version.js'
 import {
@@ -61,6 +62,8 @@ import {
   parseReviewOutput,
   reviewLocations,
   reviewPrompt,
+  type ReviewRoundScope,
+  type SpecRoundScope,
   specAuthorPrompt,
   specBlockerText,
   specFixPrompt,
@@ -75,6 +78,7 @@ import {
   type SpecState,
 } from './reducer.js'
 import { referencePaths } from './references.js'
+import { reviewerId } from './reviewers.js'
 import {
   checkStageContextName,
   MAX_CONTEXT_BYTES,
@@ -109,6 +113,7 @@ import {
   type ReviewInvocation,
   type ReviewSlot,
   type ReviewStepResult,
+  type ReviewVerdict,
   type SealedCandidate,
   type SessionRef,
   type SpecCheckRecord,
@@ -820,6 +825,55 @@ function verifyCandidate(
 }
 
 /**
+ * The earlier round's blockers as a later round is shown them: each
+ * reviewer that asked for changes, by its neutral name, and its notes, which
+ * a findings-json review fills with its blocker lines.
+ */
+export function earlierBlockersOf(reviews: ReviewVerdict[]): string {
+  return reviews
+    .filter((review) => review.decision === 'needsChanges')
+    .map((review) => `${reviewerId(review.lens)}:\n${review.notes}`)
+    .join('\n\n')
+}
+
+/**
+ * Where a code review round on `candidate` stands (ADR-0062). Null unless
+ * the run fixed "scoped" later rounds. A later round follows the last
+ * counted round that asked for changes on another candidate, and is shown
+ * that round's blockers and the diff from its candidate to this one. The
+ * first review of a repair run whose parent stopped at its review cap is a
+ * later round of the parent's last round. Every other round is a first one,
+ * a review of the same candidate again included.
+ */
+export async function reviewRoundScopeOf(
+  state: Pick<FactoryState, 'setup' | 'blockedRound'>,
+  candidate: CandidateRef,
+  target: Pick<Target, 'repairChanges'>,
+): Promise<ReviewRoundScope | null> {
+  const { setup } = state
+  if (setup.reviewLaterRounds !== 'scoped') return null
+  const earlier = state.blockedRound
+  if (earlier && earlier.candidate.id !== candidate.id)
+    return {
+      round: 'later',
+      earlierBlockers: earlierBlockersOf(earlier.reviews),
+      earlierCandidate: earlier.candidate.id,
+      repairChanges:
+        (await target.repairChanges?.(earlier.candidate, candidate)) ?? null,
+    }
+  const parent = setup.repairOf
+  if (!earlier && parent?.parentBlockers)
+    return {
+      round: 'later',
+      earlierBlockers: parent.parentBlockers,
+      earlierCandidate: `commit ${parent.candidateCommit}, the last candidate of factory run ${parent.runId}`,
+      // The run's base is that candidate, so its own diff is the repair.
+      repairChanges: candidate.changes ?? null,
+    }
+  return { round: 'first' }
+}
+
+/**
  * One review round on `candidate`: each lens's call, and the removal of
  * what the round extracted. With `snapshotOnly`, on a target with review
  * snapshots, every reviewer reads the candidate's sealed tree and diff and
@@ -913,6 +967,13 @@ async function reviewRoundOf(args: {
     }
   }
   const round = state.reviewRounds + 1
+  // Where this round stands under "scoped" later rounds (ADR-0062), worked
+  // out once for both reviewers and only when a call is about to be made:
+  // the repair diff is written from two fixed commits, so a replay that
+  // writes it again writes the same bytes.
+  let roundScope: Promise<ReviewRoundScope | null> | null = null
+  const roundScopeFor = () =>
+    (roundScope ??= reviewRoundScopeOf(state, candidate, target))
   const reviewOnce = async (
     lens: ReviewSlot,
     signal: AbortSignal,
@@ -938,6 +999,8 @@ async function reviewRoundOf(args: {
           })
         : null
     const trees = own?.trees ?? null
+    const scope = await roundScopeFor()
+    const repairChanges = scope?.round === 'later' ? scope.repairChanges : null
     const context = reviewPrompt(
       lens,
       experimental
@@ -969,6 +1032,9 @@ async function reviewRoundOf(args: {
         blockerThreshold: setup.reviewBlockerThreshold ?? 0,
         // In the context too, so every review form gets the same notes.
         implementerNotes,
+        // In the context too, so the prompt, the input after a command and
+        // the local instructions all carry the same rule (ADR-0062).
+        roundScope: scope,
       },
     )
     // `{base}` and `{head}` are the run's base commit and this candidate's.
@@ -1001,6 +1067,7 @@ async function reviewRoundOf(args: {
                   snapshots: own.trees,
                   stageFiles: stageCopies?.files ?? [],
                   implementerNotesFile: implementerNotes?.path ?? null,
+                  repairChanges,
                 }),
           )
         : trees
@@ -1054,7 +1121,13 @@ async function reviewRoundOf(args: {
       providerName: profile.provider,
       prompt: input,
       workdir,
-      readableFiles,
+      readableFiles: repairChanges
+        ? [
+            ...readableFiles,
+            repairChanges.diffPath,
+            repairChanges.changedFilesPath,
+          ]
+        : readableFiles,
       ...(settings ? { review: settings } : {}),
       timeoutMs: setup.agentTimeoutMs,
       ...idleLimitOf(setup),
@@ -1302,7 +1375,7 @@ const specSignalSchema = z.object({
  * What a reviewer is sent: with local instructions, its command or the fixed
  * instruction; otherwise its command, if any, before the review context.
  */
-function reviewInputOf(
+export function reviewInputOf(
   local: boolean,
   command: string | null,
   context: string,
@@ -1563,15 +1636,45 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
   // round that runs a command or local instructions: extraction is not
   // safe to race, and the base commit never changes across the run.
   let specBaseTree: Promise<string> | null = null
+  // Where a round stands under "scoped" later rounds (ADR-0062). A later
+  // round's earlier version and the diff from it are written before the
+  // round, from stored content alone, so a replay writes the same bytes.
+  const revisionsDir = specRevisionsDirOf(dirname(setup.checkpointsDir))
+  const roundScopeOf = async (
+    round: number,
+  ): Promise<SpecRoundScope | null> => {
+    if (setup.reviewLaterRounds !== 'scoped') return null
+    const blockers = specBlockers(state)
+    if (round === 1 || !state.previous || blockers.length === 0)
+      return { round: 'first' }
+    await mkdir(revisionsDir, { recursive: true })
+    const previousSpecPath = join(revisionsDir, `round-${round}-previous.md`)
+    const revisionDiffPath = join(revisionsDir, `round-${round}.diff`)
+    await writeFile(previousSpecPath, state.previous.content, 'utf8')
+    await writeFileDiff(previousSpecPath, spec.specPath, revisionDiffPath)
+    return {
+      round: 'later',
+      earlierBlockers: blockers
+        .map((r) => `${r.name}:\n${specBlockerText(r)}`)
+        .join('\n\n'),
+      previousSpecPath,
+      revisionDiffPath,
+    }
+  }
   const reviewOnce = async (
     reviewer: SpecReviewer,
     round: number,
+    scope: SpecRoundScope | null,
     signal: AbortSignal,
     attempt: StepAttemptContext,
   ): Promise<SpecReviewResult> => {
     const { name, profile, invocation } = reviewer
     const output = invocation?.output ?? 'verdict'
     const commandMode = usesReviewMaterials(invocation)
+    const revisionFiles =
+      scope?.round === 'later'
+        ? [scope.previousSpecPath, scope.revisionDiffPath]
+        : []
     const context = specReviewPrompt({
       policy: setup.prompts?.['spec-review'],
       promptVersion: promptVersionOf(setup.instructionsVersion),
@@ -1582,6 +1685,7 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
       untrusted: task,
       output,
       references,
+      roundScope: scope,
     })
     // `{effort}` and `{base}` only: no candidate exists yet, and trigger
     // refuses `{head}`.
@@ -1611,6 +1715,7 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
           : specReviewLocations({
               worktree: target.workdir,
               specPath: spec.specPath,
+              roundScope: scope,
             }),
       )
     }
@@ -1620,7 +1725,12 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
           context: invocation.context,
           output,
           readableDirs: commandMode
-            ? [target.workdir, specDir, ...(references ? [references.dir] : [])]
+            ? [
+                target.workdir,
+                specDir,
+                ...(revisionFiles.length > 0 ? [revisionsDir] : []),
+                ...(references ? [references.dir] : []),
+              ]
             : [],
         }
       : null
@@ -1630,7 +1740,11 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
       providerName: profile.provider,
       prompt: input,
       workdir,
-      readableFiles: [spec.specPath, ...referencePaths(references)],
+      readableFiles: [
+        spec.specPath,
+        ...revisionFiles,
+        ...referencePaths(references),
+      ],
       ...(settings ? { review: settings } : {}),
       specReviewer: name,
       timeoutMs: setup.agentTimeoutMs,
@@ -1661,6 +1775,7 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
     const materials = spec.reviewers.some((r) =>
       usesReviewMaterials(r.invocation),
     )
+    const scope = await roundScopeOf(round)
     let results: Record<string, SpecReviewResult>
     try {
       results = await step.all(
@@ -1668,7 +1783,7 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
           spec.reviewers.map((reviewer) => [
             specReviewStep(round, reviewer.name),
             (signal: AbortSignal, attempt: StepAttemptContext) =>
-              reviewOnce(reviewer, round, signal, attempt),
+              reviewOnce(reviewer, round, scope, signal, attempt),
           ]),
         ),
       )

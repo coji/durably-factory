@@ -2873,6 +2873,8 @@ describe('review.blockerThreshold', { timeout: 240000 }, () => {
         /- review blocker threshold: 9 \(reached no review: no findings-json code review is recorded\)$/m,
       )
       assert.doesNotMatch(markdown, /is below it is a non-blocker/)
+      assert.equal(report.reviewLaterRounds, 'scoped')
+      assert.match(markdown, /^- later review rounds: scoped \(/m)
       assert.match(reportToJson(report), /"reviewBlockerThreshold": 9/)
     } finally {
       await durably.stop()
@@ -2882,6 +2884,11 @@ describe('review.blockerThreshold', { timeout: 240000 }, () => {
     assert.deepEqual(
       setups.map((s) => s.reviewBlockerThreshold),
       [5, 9],
+    )
+    // New runs review later rounds scoped by default (ADR-0062).
+    assert.deepEqual(
+      setups.map((s) => s.reviewLaterRounds),
+      ['scoped', 'scoped'],
     )
     assert.notEqual(setups[0]?.configVersion, setups[1]?.configVersion)
     // A repair run takes the parent's value, not the edited file's.
@@ -2969,6 +2976,116 @@ describe('review.blockerThreshold', { timeout: 240000 }, () => {
     // A setup from before it existed falls back to the parent's input.
     assert.equal(repair(parent(3), setup), 3)
     assert.equal(repair(parent(), setup), null)
+  })
+})
+
+describe('review.laterRounds', { timeout: 240000 }, () => {
+  const laterRoundsOf = async (box: Sandbox) =>
+    (
+      (
+        await inputOf(
+          box,
+          await trigger(box, ['--repo', box.repo, '--task', 'x']),
+        )
+      ).target as { reviewLaterRounds?: unknown }
+    ).reviewLaterRounds
+
+  it('fixes "scoped" when left out, takes "whole", and refuses anything else before the run exists', async () => {
+    assert.equal(await laterRoundsOf(await sandbox({ check: CHECK })), 'scoped')
+    assert.equal(
+      await laterRoundsOf(
+        await sandbox({ check: CHECK, review: { laterRounds: 'whole' } }),
+      ),
+      'whole',
+    )
+    for (const review of [
+      '{ "laterRounds": "all" }',
+      '{ "laterRounds": null }',
+      '{ "laterRounds": true }',
+    ]) {
+      const box = await sandbox()
+      await writeFile(
+        join(box.repo, 'factory.json'),
+        `{ "check": ${JSON.stringify(CHECK)}, "review": ${review} }`,
+      )
+      await rejected(
+        box,
+        ['--repo', box.repo, '--task', 'x'],
+        /invalid factory config[\s\S]*review/,
+      )
+    }
+  })
+
+  it('gives a repair run its parent\'s value, and "whole" to a parent set up before it existed', () => {
+    const commit = 'a'.repeat(40)
+    const profile = (role: string) => ({
+      id: `fake:provider-default:provider-default:${role}`,
+      provider: 'fake',
+      requestedModel: null,
+      requestedEffort: null,
+      effectiveModel: null,
+      effectiveEffort: null,
+    })
+    const parent = (reviewLaterRounds?: 'scoped' | 'whole') => ({
+      id: 'p',
+      status: 'completed',
+      input: {
+        provider: 'fake',
+        target: {
+          kind: 'repo',
+          ...(reviewLaterRounds === undefined ? {} : { reviewLaterRounds }),
+        },
+      },
+      output: {
+        approved: true,
+        conclusion: 'approved',
+        candidate: { commit, branch: 'factory/p' },
+        delivery: { commit },
+      },
+    })
+    const setup = {
+      contextMode: 'reuse',
+      maxIterations: 1,
+      agentTimeoutMs: 600000,
+      autoApprove: true,
+      profiles: {
+        code: profile('code'),
+        correctness: profile('correctness'),
+        'edge-cases': profile('edge-cases'),
+      },
+      target: {
+        kind: 'repo',
+        repoPath: '/repo',
+        task: 'task',
+        spec: null,
+        dispositions: null,
+        issue: null,
+        checkCommand: ['true'],
+        setupCommand: null,
+        checkTimeoutMs: 120000,
+        publish: false,
+      },
+    }
+    const files = {
+      findings: { content: 'FINDING\n', ref: { path: '/f.md' } },
+      dispositions: null,
+    }
+    const repair = (p: ReturnType<typeof parent>, s: object) =>
+      (
+        buildRepairInput(p, s, files).input.target as {
+          reviewLaterRounds?: unknown
+        }
+      ).reviewLaterRounds
+    assert.equal(
+      repair(parent('scoped'), { ...setup, reviewLaterRounds: 'scoped' }),
+      'scoped',
+    )
+    assert.equal(
+      repair(parent('whole'), { ...setup, reviewLaterRounds: 'whole' }),
+      'whole',
+    )
+    // Set up before it existed: "whole", never the trigger default.
+    assert.equal(repair(parent(), setup), 'whole')
   })
 })
 

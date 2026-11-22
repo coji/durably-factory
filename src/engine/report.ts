@@ -14,7 +14,10 @@
 import type { StepAttempt } from '@coji/durably'
 
 import type { CodeResponse } from '../factory/code-response.js'
-import type { ThresholdException } from '../factory/events.js'
+import type {
+  LaterRoundException,
+  ThresholdException,
+} from '../factory/events.js'
 import { INTERRUPTED_CHECK } from './failure-details.js'
 import { retryText, type FailureClassification } from './failure-reasons.js'
 import { formatters } from './format.js'
@@ -320,6 +323,11 @@ export interface ReportFinding {
    * checked (ADR-0040).
    */
   thresholdException?: ThresholdException
+  /**
+   * The reviewer's mark on a non-blocker the later-round rule alone kept
+   * from blocking, as it said; never checked (ADR-0062).
+   */
+  laterRoundException?: LaterRoundException
 }
 
 /**
@@ -978,6 +986,22 @@ export interface BelowThresholdBlockers {
   withoutException: number
 }
 
+/**
+ * One review's kept non-blockers its reviewer marked with
+ * `laterRoundException` (ADR-0062): problems a later round found but, under
+ * "scoped" later rounds, did not block on because they are neither an
+ * earlier blocker left unfixed nor brought by the repair. Only reviews with
+ * one or more are listed, code and spec rounds alike. Counted from the kept
+ * findings, so a review with more non-blockers than the report keeps may
+ * have more.
+ */
+export interface LaterRoundNonBlockers {
+  stage: 'code' | 'spec'
+  round: number
+  lens: string
+  count: number
+}
+
 /** Each reviewer invocation, retaining its measured values and session decision. */
 export interface ReportReviewCall {
   reviewPass?: 'iterative' | 'final'
@@ -1052,6 +1076,14 @@ export interface LoopReport {
    * Absent on a report made before it existed.
    */
   belowThresholdBlockers?: BelowThresholdBlockers[]
+  /**
+   * What a review after a repair could block on, as setup fixed it
+   * (ADR-0062); absent on a run set up before it existed, which reviewed
+   * every round whole.
+   */
+  reviewLaterRounds?: 'scoped' | 'whole'
+  /** See `LaterRoundNonBlockers`; absent on a report made before it existed. */
+  laterRoundNonBlockers?: LaterRoundNonBlockers[]
   summary: RunSummary
   triage: ReportTriage | null
   /**
@@ -1862,6 +1894,14 @@ export function reportToMarkdown(r: LoopReport): string {
   for (const b of r.belowThresholdBlockers ?? [])
     lines.push(
       `- blockers below threshold: ${b.withException + b.withoutException} (${b.lens}, round ${b.round}; ${b.withException} with an exception, ${b.withoutException} without)`,
+    )
+  if (r.reviewLaterRounds)
+    lines.push(
+      `- later review rounds: ${r.reviewLaterRounds} (${r.reviewLaterRounds === 'scoped' ? 'after a repair, a review blocks only on an earlier blocker left unfixed, a defect the repair introduced or a problem inside the repair diff' : 'every round may block on anything'})`,
+    )
+  for (const n of r.laterRoundNonBlockers ?? [])
+    lines.push(
+      `- later-round non-blockers: ${n.count} (${n.lens}, ${n.stage} round ${n.round}; outside the repair)`,
     )
   if (r.repairSession) {
     const { setup, confirmed } = r.repairSession

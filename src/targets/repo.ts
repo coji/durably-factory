@@ -559,12 +559,17 @@ export class RepoTarget implements Target {
   private async writeChanges(
     id: string,
     commit: string,
+    from: { commit: string; name: string } | null = null,
   ): Promise<CandidateChanges> {
     const dir = this.candidateDir(id)
     await mkdir(dir, { recursive: true })
-    const diffPath = join(dir, 'changes.diff')
-    const changedFilesPath = join(dir, 'changed-files.txt')
-    const { repoPath, baseCommit } = this.config
+    const diffPath = join(dir, from ? `${from.name}.diff` : 'changes.diff')
+    const changedFilesPath = join(
+      dir,
+      from ? `${from.name}-changed-files.txt` : 'changed-files.txt',
+    )
+    const { repoPath } = this.config
+    const baseCommit = from?.commit ?? this.config.baseCommit
     const [, lines, stat] = await Promise.all([
       writePatch(repoPath, baseCommit, commit, diffPath),
       describeCommitChanges(repoPath, baseCommit, commit),
@@ -576,6 +581,17 @@ export class RepoTarget implements Target {
       'utf8',
     )
     return { diffPath, changedFilesPath, ...stat }
+  }
+
+  async repairChanges(
+    from: CandidateRef,
+    to: CandidateRef,
+  ): Promise<CandidateChanges | null> {
+    if (!from.commit || !to.commit) return null
+    return this.writeChanges(to.id, to.commit, {
+      commit: from.commit,
+      name: `repair-from-${from.id}`,
+    })
   }
 
   async prepareReviewSnapshots(

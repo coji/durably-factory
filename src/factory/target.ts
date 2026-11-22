@@ -1,4 +1,5 @@
 import type {
+  CandidateChanges,
   CandidateRef,
   GeneratedChanges,
   ReviewSnapshots,
@@ -472,6 +473,16 @@ export interface Target {
   reviewCwd(candidate: CandidateRef): string
   /** Trusted change summary and originals, for reviewers who see only the candidate. */
   reviewContext(candidate: CandidateRef): Promise<string>
+  /**
+   * Write the diff and changed-file list from an earlier sealed candidate to
+   * this one, beside this candidate's own, for a later review round
+   * (ADR-0062). Both commits are fixed, so writing again gives the same
+   * bytes. Only a target whose candidates are commits implements it.
+   */
+  repairChanges?(
+    from: CandidateRef,
+    to: CandidateRef,
+  ): Promise<CandidateChanges | null>
   /**
    * Write the factory's copy of each registered stage context from its
    * stored content and return their paths, which every reviewer may read,

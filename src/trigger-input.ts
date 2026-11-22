@@ -43,6 +43,9 @@ import {
   nonBlank,
   resolveTimeouts,
   reviewBlockerThresholdSchema,
+  reviewLaterRoundsSchema,
+  DEFAULT_REVIEW_LATER_ROUNDS,
+  type ReviewLaterRounds,
   selfCheckSchema,
   generateSchema,
   specMaxRoundsSchema,
@@ -220,12 +223,16 @@ const factoryConfigSchema = z
      * a findings-json review whose likelihood × impact is below
      * `blockerThreshold` is a non-blocker, unless it is a missed requirement
      * the task, spec or confirmed context explicitly asks for; 0 adds no
-     * such rule (ADR-0040).
+     * such rule (ADR-0040). `laterRounds` decides what a code or spec
+     * review after a repair may block on: "scoped" (the default) only an
+     * earlier blocker left unfixed or a problem the repair brought, "whole"
+     * anything, as before (ADR-0062).
      */
     review: z
       .object({
         blockerThreshold: reviewBlockerThresholdSchema.optional(),
         sessionMode: z.enum(['fresh', 'reuse-experiment']).optional(),
+        laterRounds: reviewLaterRoundsSchema.optional(),
       })
       .strict()
       .optional(),
@@ -628,6 +635,8 @@ async function repoSettings(
         ? { checkArtifacts: config.checkArtifacts }
         : {}),
       reviewSessionMode: config?.review?.sessionMode ?? 'fresh',
+      reviewLaterRounds:
+        config?.review?.laterRounds ?? DEFAULT_REVIEW_LATER_ROUNDS,
       reviewBlockerThreshold:
         config?.review?.blockerThreshold ?? DEFAULT_REVIEW_BLOCKER_THRESHOLD,
       baselineCheck: config?.baselineCheck ?? false,
@@ -1092,6 +1101,7 @@ interface StoredRepairInput {
     references?: StoredReferences | null
     checkArtifacts?: string | null
     reviewSessionMode?: 'fresh' | 'reuse-experiment'
+    reviewLaterRounds?: ReviewLaterRounds
     reviewBlockerThreshold?: number | null
     baselineCheck?: boolean
     baselineReuse?: BaselineReuse | null
@@ -1483,6 +1493,13 @@ export function buildRepairInput(
           'reviewSessionMode',
           () => parentInput.target?.reviewSessionMode ?? 'fresh',
         ) ?? 'fresh',
+      // Never the default either: a parent set up before it existed
+      // reviewed every round whole (ADR-0062).
+      reviewLaterRounds: recorded(
+        stored,
+        'reviewLaterRounds',
+        () => parentInput.target?.reviewLaterRounds ?? 'whole',
+      ),
       reviewBlockerThreshold: recorded(
         stored,
         'reviewBlockerThreshold',

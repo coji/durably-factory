@@ -809,6 +809,35 @@ export async function writePatch(
 }
 
 /**
+ * Write the unified diff between two files, in or outside any repository,
+ * to a file, as `writePatch` does for two commits. `git diff --no-index`
+ * exits 1 when the files differ, so only a code above 1 is a failure.
+ */
+export async function writeFileDiff(
+  fromPath: string,
+  toPath: string,
+  outPath: string,
+): Promise<void> {
+  const args = [
+    'diff',
+    '--no-index',
+    '--no-color',
+    `--output=${outPath}`,
+    fromPath,
+    toPath,
+  ]
+  const result = await runChild('git', args, {
+    cwd: dirname(outPath),
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+  })
+  if (result.code !== 0 && result.code !== 1)
+    throw new GitError(
+      `git ${args.join(' ')} failed with code ${result.code ?? 'null'}`,
+      result.stderr.slice(-2000),
+    )
+}
+
+/**
  * Drop a worktree and its branch, ignoring every failure.
  *
  * Setup is a durable step: a worker killed part way through re-runs it, and

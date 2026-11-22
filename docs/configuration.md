@@ -116,6 +116,7 @@ pnpm factory trigger --repo . --task-file task.md --provider codex --approve man
 ### blocker のしきい値と再レビュー（review）
 
 - `review.blockerThreshold`（`0`〜`100` の整数、デフォルト `5`）: `findings-json` 形式のコードレビューにおいて、プロダクトの挙動に関する指摘のうち「発生頻度（`likelihood` 1〜10）× 深刻度（`impact` 1〜10）」がしきい値未満のものを `non-blocker` として扱わせます（`0` で無効化）。ただし、仕様・タスク・確定コンテキストで明示された要件の漏れや、テスト不足・スコープ・セキュリティ等の指摘には適用されません。最終判定はレビュアーが行い、しきい値未満でも `blocker` とされたものはレポートの `belowThresholdBlockers` に記録されます。
+- `review.laterRounds`: デフォルトは `"scoped"` です。1 回目のコードレビューと仕様レビューに、止める指摘(`blocker`)をその回で出し切るよう指示します。修正のあとの回は、変更の全体を読んだうえで、止めてよいのを「前の回の `blocker` が直っていない」「修正の差分が持ち込んだ不具合」「修正の差分の中の問題」の 3 つに限り、それ以外は `non-blocker` として報告させます。`"whole"` にすると、どの回も何でも止められる今までの動きになります。run の開始時に固定され、この設定より前に保存された run とその修正 run は `"whole"` のままです([レビューと修正](review-and-repair.md#2-回目以降のレビューで止めてよい理由laterrounds)、[ADR-0062](adr/0062-later-round-review-scope.md))。
 - `review.sessionMode`: デフォルトは `"fresh"` です。`"reuse-experiment"` にすると再レビューで同一セッションを継続し、通過後に新規セッション 2 つで最終確認を行います（[実験結果](review-and-repair.md#再レビューのセッション継続reuse-experiment)）。
 
 ## Git コミット・承認・Draft PR 出力（commit）

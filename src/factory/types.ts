@@ -100,6 +100,13 @@ export function usesReviewMaterials(
 
 export type ReviewSessionMode = 'fresh' | 'reuse-experiment'
 
+/**
+ * What a review after a repair may block on (ADR-0062): "scoped", only an
+ * earlier blocker left unfixed, a defect the repair introduced or a problem
+ * inside the repair's diff; "whole", anything.
+ */
+export type ReviewLaterRounds = 'scoped' | 'whole'
+
 export interface FactorySetup {
   reviewSessionMode?: ReviewSessionMode
   prompts?: import('./prompt-policy.js').PromptPolicies
@@ -206,6 +213,12 @@ export interface FactorySetup {
    * existed, absent on a run set up before it existed.
    */
   reviewBlockerThreshold?: number | null
+  /**
+   * What a code or spec review after a repair may block on, fixed at
+   * trigger (ADR-0062). Absent, as on a run set up before it existed:
+   * "whole", every round may block on anything.
+   */
+  reviewLaterRounds?: ReviewLaterRounds
   /**
    * The spec stages, fixed at trigger: set only on a repository run whose
    * `factory.json` configures them and that was given no `--spec-file`.
@@ -387,6 +400,13 @@ export interface RepairOrigin {
   candidateCommit: string
   /** How the parent ended; absent on a run set up before it was kept. */
   parentConclusion?: RepairParentConclusion
+  /**
+   * The blockers of the parent's last review round, as the factory copied
+   * them from its stored reviews: set only with "scoped" later rounds on a
+   * parent that stopped at its review cap, so this run's first review is a
+   * later round of that one (ADR-0062).
+   */
+  parentBlockers?: string
 }
 
 export interface VerificationResult {
@@ -545,6 +565,13 @@ export interface FactoryState {
   verification: VerificationResult | null
   reviews: ReviewVerdict[]
   reviewRounds: number
+  /**
+   * The last counted review round that asked for changes: the candidate it
+   * reviewed and its verdicts. Kept across repairs, unlike `reviews`, so a
+   * later round knows which blockers came before and which candidate the
+   * repair started from (ADR-0062). Absent until such a round.
+   */
+  blockedRound?: { candidate: SealedCandidate; reviews: ReviewVerdict[] }
   implementationSession: SessionRef | null
   /**
    * Whether a repair on its own profile continues the implementation

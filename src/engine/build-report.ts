@@ -6,7 +6,10 @@ import { dirname, join } from 'node:path'
 import type { AnyDurably, Run } from '@coji/durably'
 
 import type { CodeResponse } from '../factory/code-response.js'
-import { asThresholdException } from '../factory/events.js'
+import {
+  asLaterRoundException,
+  asThresholdException,
+} from '../factory/events.js'
 import {
   candidateArtifactsDirOf,
   checkArtifactFiles,
@@ -57,6 +60,7 @@ import {
   usageOf,
   type AttemptRow,
   type BelowThresholdBlockers,
+  type LaterRoundNonBlockers,
   type LoopReport,
   type ReportAgentTimeouts,
   type ReportBaseline,
@@ -257,6 +261,10 @@ function asFinding(value: unknown): ReportFinding | null {
   )
     return null
   const exception = asThresholdException(f.thresholdException)
+  const laterRound =
+    f.severity === 'non-blocker'
+      ? asLaterRoundException(f.laterRoundException)
+      : undefined
   return {
     severity: f.severity,
     title: f.title,
@@ -266,6 +274,7 @@ function asFinding(value: unknown): ReportFinding | null {
     ...(typeof f.likelihood === 'number' ? { likelihood: f.likelihood } : {}),
     ...(typeof f.impact === 'number' ? { impact: f.impact } : {}),
     ...(exception ? { thresholdException: exception } : {}),
+    ...(laterRound ? { laterRoundException: laterRound } : {}),
   }
 }
 
@@ -762,6 +771,29 @@ export function belowThresholdBlockersOf(
         },
       ]
     }),
+  )
+}
+
+/**
+ * The kept non-blockers each review marked as kept from blocking by the
+ * later-round rule, by stage, round and lens; see `LaterRoundNonBlockers`.
+ * The mark is counted wherever it appears: a reviewer that never had the
+ * rule never had a reason to add it.
+ */
+export function laterRoundNonBlockersOf(
+  rounds: { stage: 'code' | 'spec'; rounds: ReportReviewRound[] }[],
+): LaterRoundNonBlockers[] {
+  return rounds.flatMap(({ stage, rounds: list }) =>
+    list.flatMap((round) =>
+      round.reviews.flatMap((review) => {
+        const count = (review.findings?.nonBlocker ?? []).filter(
+          (f) => f.laterRoundException !== undefined,
+        ).length
+        return count > 0
+          ? [{ stage, round: round.round, lens: review.lens, count }]
+          : []
+      }),
+    ),
   )
 }
 
@@ -1516,6 +1548,7 @@ export async function buildReport(
     codeReview?: unknown
     review?: Partial<Record<string, { output?: string }>>
     reviewBlockerThreshold?: number | null
+    reviewLaterRounds?: 'scoped' | 'whole'
     agentTimeoutMs?: number
     agentIdleTimeoutMs?: number
   } | null
@@ -1601,6 +1634,14 @@ export async function buildReport(
       reviewBlockerThreshold,
       reviewRounds,
     ),
+    ...(setupOutput?.reviewLaterRounds === 'scoped' ||
+    setupOutput?.reviewLaterRounds === 'whole'
+      ? { reviewLaterRounds: setupOutput.reviewLaterRounds }
+      : {}),
+    laterRoundNonBlockers: laterRoundNonBlockersOf([
+      { stage: 'code', rounds: reviewRounds },
+      { stage: 'spec', rounds: specRoundsOf(steps) },
+    ]),
     summary: summarizeRun({
       status: run.status,
       output: run.output,

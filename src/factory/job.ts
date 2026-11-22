@@ -252,6 +252,19 @@ export const reviewBlockerThresholdSchema = z.number().int().min(0).max(100)
 /** The threshold a new trigger fixes when factory.json names none. */
 export const DEFAULT_REVIEW_BLOCKER_THRESHOLD = 5
 
+/**
+ * `review.laterRounds` in factory.json and a target's `reviewLaterRounds`
+ * (ADR-0062): what a code or spec review after a repair may block on.
+ * "scoped": only an earlier blocker the repair left unfixed, a defect the
+ * repair introduced, or a problem inside the repair's diff; anything else it
+ * finds is a non-blocker. "whole": anything, as every review before it.
+ */
+export const reviewLaterRoundsSchema = z.enum(['scoped', 'whole'])
+export type ReviewLaterRounds = z.infer<typeof reviewLaterRoundsSchema>
+
+/** What a new trigger fixes when factory.json names none. */
+export const DEFAULT_REVIEW_LATER_ROUNDS: ReviewLaterRounds = 'scoped'
+
 /** Where an input came from. Its hash is taken from the stored content. */
 const inputFileSchema = z.object({ path: z.string().min(1) })
 
@@ -358,6 +371,11 @@ const targetSchema = z
        * Null or absent, as on a run stored before it existed: no such rule.
        */
       reviewSessionMode: z.enum(['fresh', 'reuse-experiment']).optional(),
+      /**
+       * What a review after a repair may block on, fixed at trigger
+       * (ADR-0062). Absent, as on a run stored before it existed: "whole".
+       */
+      reviewLaterRounds: reviewLaterRoundsSchema.optional(),
       reviewBlockerThreshold: reviewBlockerThresholdSchema
         .nullable()
         .optional(),
@@ -1842,6 +1860,23 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
               input.target.kind === 'repo'
                 ? (input.target.reviewBlockerThreshold ?? null)
                 : null
+            // "whole" on the sample and on a run stored before it existed
+            // (ADR-0062).
+            const reviewLaterRounds: ReviewLaterRounds =
+              input.target.kind === 'repo'
+                ? (input.target.reviewLaterRounds ?? 'whole')
+                : 'whole'
+            // A repair run's first review continues the parent's last round
+            // only when the parent stopped at its review cap and the findings
+            // are the factory's copy of those reviews' blockers: then that
+            // round is the earlier one (ADR-0062).
+            const parentBlockers =
+              reviewLaterRounds === 'scoped' &&
+              input.repairOf &&
+              input.repairOf.parentConclusion === 'review-cap-reached' &&
+              'parentRun' in input.repairOf.findingsFile
+                ? input.repairOf.findings
+                : null
             const instructionsVersion = INSTRUCTIONS_VERSION
             // Fixed here with the CLI version just recorded, so a restarted
             // worker with another environment never changes how this run's
@@ -1888,6 +1923,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                 review,
                 reviewBlockerThreshold,
                 reviewSessionMode,
+                reviewLaterRounds,
                 codeReview: !codeReviewOff,
                 spec,
                 prompts: input.prompts,
@@ -1944,6 +1980,9 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
               codexPath,
               ...(Object.keys(review).length > 0 ? { review } : {}),
               reviewBlockerThreshold,
+              // Recorded on every run set up with it, so a repair inherits
+              // it as it is; absent: "whole" (ADR-0062).
+              reviewLaterRounds,
               ...(spec ? { spec } : {}),
               // Only when on, so a run without it keeps the setup it had.
               ...(parallelReview ? { parallelReview } : {}),
@@ -1956,6 +1995,7 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                       runId: repairOf.runId,
                       candidateCommit: repairOf.candidateCommit,
                       parentConclusion: repairOf.parentConclusion,
+                      ...(parentBlockers ? { parentBlockers } : {}),
                     },
                   }
                 : {}),

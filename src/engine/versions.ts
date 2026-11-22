@@ -233,6 +233,12 @@ export interface ConfigVersionInput {
    * existed keeps its version.
    */
   reviewSessionMode?: 'fresh' | 'reuse-experiment'
+  /**
+   * What a review after a repair may block on (ADR-0062). Only "scoped" is
+   * hashed, so a run that reviews every round whole keeps the version it
+   * would have had before the setting existed.
+   */
+  reviewLaterRounds?: 'scoped' | 'whole'
   reviewBlockerThreshold?: number | null
   /**
    * False when the run reviews no code (ADR-0060). Left out when true or
@@ -349,6 +355,9 @@ export function configVersionOf(input: ConfigVersionInput): string {
       : {}),
     ...(input.reviewBlockerThreshold != null
       ? { reviewBlockerThreshold: input.reviewBlockerThreshold }
+      : {}),
+    ...(input.reviewLaterRounds === 'scoped'
+      ? { reviewLaterRounds: 'scoped' }
       : {}),
     ...(input.codeReview === false ? { codeReview: false } : {}),
     ...(input.spec
