@@ -2202,6 +2202,7 @@ function configuredRun(
     maxIterations?: number
     fakeScenario?: Record<string, unknown>
     autoApprove?: boolean
+    reviewLaterRounds?: 'scoped' | 'whole'
   } = {},
 ) {
   return {
@@ -2218,6 +2219,9 @@ function configuredRun(
       checkCommand: ['node', '--test', 'test/**/*.test.js'],
       setupCommand: null,
       publish: false,
+      ...(extra.reviewLaterRounds
+        ? { reviewLaterRounds: extra.reviewLaterRounds }
+        : {}),
     },
     maxIterations: extra.maxIterations ?? 2,
     context: 'reuse' as const,
@@ -3377,6 +3381,112 @@ describe('configured reviewers', { timeout: 240000 }, () => {
     }
   })
 
+  it('scopes a later findings-json code round to the earlier blockers and the repair diff, in local instructions, leaves a verdict review whole, and counts the marked non-blockers (ADR-0062)', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'repo-review-later-'))
+    const repo = await seedRepo(root)
+    delete process.env.FAKE_FAIL_FIRST
+    delete process.env.FAKE_REVIEW_SEQUENCE
+    delete process.env.FAKE_REVIEW_SLOW_MS
+    recording = recordFakeReviewCalls()
+    const durably = createAgentDurably({ stateRoot: join(root, 'state') })
+    await durably.init()
+    const local = {
+      command: null,
+      context: 'local-instructions' as const,
+      output: 'findings-json' as const,
+    }
+    const blocker = { severity: 'blocker', title: 'wrong sum', body: 'fix it' }
+    const outside = {
+      severity: 'non-blocker',
+      title: 'old naming',
+      body: 'outside the repair',
+      laterRoundException: 'outside-repair',
+    }
+    try {
+      const run = await durably.jobs.agentLoop.trigger(
+        configuredRun(
+          repo,
+          // The second reviewer gives a verdict: it reviews every round
+          // whole, and its notes never become EARLIER_BLOCKERS.
+          { correctness: local, 'edge-cases': { ...local, output: 'verdict' } },
+          {
+            reviewLaterRounds: 'scoped',
+            fakeScenario: {
+              failIterations: 0,
+              reviewOutputs: [
+                findings([blocker]),
+                'PLAN: p\nDECISION: needsChanges\nNOTES: verdict concern',
+                findings([outside]),
+                'PLAN: p\nDECISION: pass\nNOTES: ok',
+              ],
+            },
+          },
+        ),
+      )
+      await waitFor(
+        async () =>
+          ['completed', 'failed'].includes(
+            (await durably.getRun(run.id))?.status ?? '',
+          ),
+        150000,
+        'the run settles',
+      )
+      const done = await durably.getRun(run.id)
+      const output = done?.output as {
+        conclusion: string
+        reviewRounds: number
+        workdir: string
+      }
+      assert.equal(output.conclusion, 'approved', done?.error ?? '')
+      assert.equal(output.reviewRounds, 2)
+      const calls = endedCalls(output.workdir)
+      const text = (round: number, role = 'review-a') =>
+        calls
+          .filter((c) => c.role === role && c.round === round)
+          .map((c) => c.localInstructionsAtStart?.content ?? '')
+      assert.equal(text(1).length, 1)
+      assert.equal(text(2).length, 1)
+      for (const content of [...text(1, 'review-b'), ...text(2, 'review-b')]) {
+        assert.ok(content.length > 0)
+        assert.doesNotMatch(content, /first review round|later review round/)
+        assert.doesNotMatch(content, /EARLIER_BLOCKERS|Repair diff/)
+      }
+      for (const content of text(1)) {
+        assert.match(content, /first review round of this change/)
+        assert.doesNotMatch(content, /EARLIER_BLOCKERS/)
+      }
+      const setup = (await durably.storage.getCompletedStep(run.id, 'setup'))
+        ?.output as FactorySetup
+      assert.equal(setup.reviewLaterRounds, 'scoped')
+      for (const content of text(2)) {
+        assert.match(
+          content,
+          /This is a later review round: this candidate repairs candidate-1-/,
+        )
+        assert.match(
+          content,
+          /<<<UNTRUSTED EARLIER_BLOCKERS [0-9a-f]{16}>>>\nreview-a:\n- wrong sum — fix it\n<<<END/,
+        )
+        assert.doesNotMatch(content, /verdict concern/)
+        const diff = /- Repair diff: (.+)$/m.exec(content)?.[1]
+        assert.ok(diff && existsSync(diff), content)
+        assert.match(diff, /repair-from-candidate-1-[0-9a-f]+\.diff$/)
+      }
+      const report = await buildReport(durably, run.id)
+      assert.equal(report.reviewLaterRounds, 'scoped')
+      assert.deepEqual(report.laterRoundNonBlockers, [
+        { stage: 'code', round: 2, lens: 'review-a', count: 1 },
+      ])
+      assert.match(
+        reportToMarkdown(report),
+        /^- later-round non-blockers: 1 \(review-a, code round 2; outside the repair\)$/m,
+      )
+    } finally {
+      await durably.stop()
+      await durably.db.destroy()
+    }
+  })
+
   it('reads findings: a blocker needs changes, advice passes, and a broken reply stops without a second call', async () => {
     const root = await mkdtemp(join(tmpdir(), 'repo-review-findings-'))
     const repo = await seedRepo(root)
@@ -4166,6 +4276,7 @@ function specRun(
       | typeof FAKE_PROFILE
       | { provider: 'fake'; requestedModel: string; requestedEffort: null }
     stages?: boolean
+    reviewLaterRounds?: 'scoped' | 'whole'
   } = {},
 ) {
   const checkFromSpec =
@@ -4188,6 +4299,9 @@ function specRun(
       setupCommand: null,
       publish: false,
       baselineCheck: extra.baselineCheck ?? true,
+      ...(extra.reviewLaterRounds
+        ? { reviewLaterRounds: extra.reviewLaterRounds }
+        : {}),
     },
     maxIterations: 2,
     context: 'reuse' as const,
@@ -4511,6 +4625,65 @@ describe('spec stages', { timeout: 240000 }, () => {
           .untrustedInputs('correctness')
           .some((input) => input.label === 'SPEC_ADVICE'),
       )
+    } finally {
+      await durably.stop()
+      await durably.db.destroy()
+    }
+  })
+
+  it('scopes a later spec round to the earlier blockers and the revision, with the earlier version and its diff (ADR-0062)', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'repo-spec-later-'))
+    const repo = await seedSpecRepo(root)
+    recording = recordFakeReviewCalls()
+    const durably = createAgentDurably({ stateRoot: join(root, 'state') })
+    await durably.init()
+    try {
+      const run = await durably.jobs.agentLoop.trigger(
+        specRun(repo, {
+          reviewLaterRounds: 'scoped',
+          fakeScenario: {
+            // product is the findings-json reviewer; tech, a verdict one,
+            // reviews every round whole (ADR-0062).
+            specReviews: {
+              product: ['blocker', 'pass'],
+              tech: ['pass', 'pass'],
+            },
+          },
+        }),
+      )
+      await waitFor(
+        async () =>
+          ['completed', 'failed', 'waiting'].includes(
+            (await durably.getRun(run.id))?.status ?? '',
+          ),
+        150000,
+        'the run gets past its spec stages',
+      )
+      const specCalls = recording.calls.filter((c) => c.role === 'spec-review')
+      assert.equal(specCalls.length, 2)
+      const [first, second] = specCalls.map(
+        (c) => c.localInstructionsAtStart?.content ?? '',
+      )
+      assert.match(first ?? '', /first review round of this spec/)
+      assert.match(
+        second ?? '',
+        /This is a later review round: the spec was revised/,
+      )
+      assert.match(
+        second ?? '',
+        /<<<UNTRUSTED EARLIER_BLOCKERS [0-9a-f]{16}>>>\nproduct:/,
+      )
+      const dir = join(root, 'state', 'runs', run.id, 'spec-revisions')
+      const previous = join(dir, 'round-2-previous.md')
+      const diff = join(dir, 'round-2.diff')
+      assert.ok((second ?? '').includes(previous))
+      assert.ok((second ?? '').includes(diff))
+      const author = (
+        await durably.storage.getCompletedStep(run.id, 'spec:author')
+      )?.output as { content: string }
+      assert.equal(await readFile(previous, 'utf8'), author.content)
+      assert.match(await readFile(diff, 'utf8'), /^\+.*revision 1/m)
+      assert.ok(Object.keys(specCalls[1]?.readable ?? {}).includes(dir))
     } finally {
       await durably.stop()
       await durably.db.destroy()

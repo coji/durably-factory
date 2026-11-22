@@ -1,4 +1,5 @@
 /** Versioned display names; persisted inputs, outputs and checkpoint keys stay intact. */
+import { promptVersionOf } from '../factory/prompt-version.js'
 import { reviewerId } from '../factory/reviewers.js'
 import type { HighlightGroup, HighlightVerdict, LoopReport } from './report.js'
 
@@ -6,7 +7,9 @@ export function wholeChangeReviewReport(
   report: LoopReport,
   instructionsVersion?: string,
 ): LoopReport {
-  if (instructionsVersion !== 'local-factory.v7') return report
+  // v7 and every later version name the reviewers neutrally (ADR-0055).
+  if (!instructionsVersion || promptVersionOf(instructionsVersion) < 3)
+    return report
   const verdict = <T extends { lens: string }>(row: T): T => ({
     ...row,
     lens: reviewerId(row.lens),
@@ -40,6 +43,9 @@ export function wholeChangeReviewReport(
       : {}),
     reviewBlockerRuleLenses: report.reviewBlockerRuleLenses?.map(reviewerId),
     belowThresholdBlockers: report.belowThresholdBlockers?.map(verdict),
+    laterRoundNonBlockers: report.laterRoundNonBlockers?.map((row) =>
+      row.stage === 'code' ? verdict(row) : row,
+    ),
     preflight: report.preflight
       ? {
           ...report.preflight,

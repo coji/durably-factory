@@ -82,3 +82,4 @@ What we considered and why we didn't do it.
 | [0059](0059-reference-files-and-check-artifacts.md)             | Reference files and check artifacts                | accepted |
 | [0060](0060-code-review-off.md)                                 | Let the repository's own gate be the only reviewer | accepted |
 | [0061](0061-recheck-onto-newer-base.md)                         | Recheck a candidate on a newer base                | accepted |
+| [0062](0062-later-round-review-scope.md)                        | Later review rounds block only on the repair       | accepted |

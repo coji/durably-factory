@@ -5,6 +5,7 @@ import { withStageContext, type StageContext } from './target.js'
 import type {
   FactorySetup,
   FactoryState,
+  ReviewVerdict,
   SpecReviewResult,
   SpecVersion,
 } from './types.js'
@@ -65,6 +66,7 @@ export function reduce(state: FactoryState, event: FactoryEvent): FactoryState {
       return {
         ...state,
         reviews: event.reviews,
+        ...blockedRoundOf(state, event.reviews),
         ...(event.sessions ? { reviewSessions: event.sessions } : {}),
         ...(event.finalReview ? { finalReviewTarget: event.targetId } : {}),
         reviewRounds: state.reviewRounds + 1,
@@ -106,6 +108,7 @@ export function reduce(state: FactoryState, event: FactoryEvent): FactoryState {
         setup,
         verification,
         reviews: event.reviews,
+        ...blockedRoundOf(state, event.reviews),
         ...(event.sessions ? { reviewSessions: event.sessions } : {}),
         reviewRounds: state.reviewRounds + 1,
         repairNotes: event.reviews
@@ -120,6 +123,20 @@ export function reduce(state: FactoryState, event: FactoryEvent): FactoryState {
     case 'factory.finished':
       return { ...state, outcome: event.outcome }
   }
+}
+
+/**
+ * The counted round that just completed, as `blockedRound`, when one of its
+ * reviews asked for changes; nothing otherwise, so the last such round stays.
+ */
+function blockedRoundOf(
+  state: FactoryState,
+  reviews: ReviewVerdict[],
+): Pick<FactoryState, 'blockedRound'> {
+  return state.candidate &&
+    reviews.some((review) => review.decision === 'needsChanges')
+    ? { blockedRound: { candidate: state.candidate, reviews } }
+    : {}
 }
 
 /**
@@ -146,6 +163,11 @@ export interface SpecState {
   reviews: SpecReviewResult[]
   /** The version as last written has not been reviewed yet. */
   unreviewed: boolean
+  /**
+   * The version the last fix started from, which the last review round
+   * reviewed; null before any fix (ADR-0062).
+   */
+  previous: SpecVersion | null
   /** The blocker notes of earlier rounds a fix already addressed. */
   settled: string[]
   /** Spec-blocked waits so far. */
@@ -163,6 +185,7 @@ export function initialSpecState(maxRounds: number): SpecState {
     allowedRounds: maxRounds,
     reviews: [],
     unreviewed: false,
+    previous: null,
     settled: [],
     waits: 0,
     decision: null,
@@ -184,6 +207,7 @@ export function reduceSpec(state: SpecState, event: SpecEvent): SpecState {
         ...state,
         version: event.version,
         unreviewed: true,
+        previous: state.version,
         // What this fix addressed is settled for the reviews that follow.
         settled: [
           ...state.settled,

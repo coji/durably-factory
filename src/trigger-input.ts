@@ -43,6 +43,9 @@ import {
   nonBlank,
   resolveTimeouts,
   reviewBlockerThresholdSchema,
+  reviewLaterRoundsSchema,
+  DEFAULT_REVIEW_LATER_ROUNDS,
+  type ReviewLaterRounds,
   selfCheckSchema,
   generateSchema,
   specMaxRoundsSchema,
@@ -56,6 +59,7 @@ import {
   promptPolicyKey,
   readPromptPolicies,
 } from './factory/prompt-policy.js'
+import { earlierBlockersOf } from './factory/prompts.js'
 import {
   checkArtifactsPathProblem,
   normalizeCheckArtifactsPath,
@@ -220,12 +224,16 @@ const factoryConfigSchema = z
      * a findings-json review whose likelihood × impact is below
      * `blockerThreshold` is a non-blocker, unless it is a missed requirement
      * the task, spec or confirmed context explicitly asks for; 0 adds no
-     * such rule (ADR-0040).
+     * such rule (ADR-0040). `laterRounds` decides what a code or spec
+     * review after a repair may block on: "scoped" (the default) only an
+     * earlier blocker left unfixed or a problem the repair brought, "whole"
+     * anything, as before (ADR-0062).
      */
     review: z
       .object({
         blockerThreshold: reviewBlockerThresholdSchema.optional(),
         sessionMode: z.enum(['fresh', 'reuse-experiment']).optional(),
+        laterRounds: reviewLaterRoundsSchema.optional(),
       })
       .strict()
       .optional(),
@@ -628,6 +636,8 @@ async function repoSettings(
         ? { checkArtifacts: config.checkArtifacts }
         : {}),
       reviewSessionMode: config?.review?.sessionMode ?? 'fresh',
+      reviewLaterRounds:
+        config?.review?.laterRounds ?? DEFAULT_REVIEW_LATER_ROUNDS,
       reviewBlockerThreshold:
         config?.review?.blockerThreshold ?? DEFAULT_REVIEW_BLOCKER_THRESHOLD,
       baselineCheck: config?.baselineCheck ?? false,
@@ -1092,6 +1102,7 @@ interface StoredRepairInput {
     references?: StoredReferences | null
     checkArtifacts?: string | null
     reviewSessionMode?: 'fresh' | 'reuse-experiment'
+    reviewLaterRounds?: ReviewLaterRounds
     reviewBlockerThreshold?: number | null
     baselineCheck?: boolean
     baselineReuse?: BaselineReuse | null
@@ -1390,6 +1401,17 @@ export function buildRepairInput(
     conclusion,
   } = repairableCandidate(parent, setup)
   const parentInput = parent.input as StoredRepairInput
+  // The blockers of the parent's last round, when this run repairs them:
+  // its first review continues that round under "scoped" later rounds
+  // (ADR-0062). Findings-json reviews only, by their neutral names.
+  const parentBlockers =
+    conclusion === 'review-cap-reached' && 'parentRun' in files.findings.ref
+      ? earlierBlockersOf(
+          (parent.output as StoredOutput | null)?.reviews ?? [],
+          (lens) =>
+            stored.review?.[lens as ReviewSlot]?.output === 'findings-json',
+        )
+      : ''
   const t = stored.target
   const storedFiles = parentInput.target?.inputFiles ?? {}
   const dispositions = files.dispositions
@@ -1483,6 +1505,10 @@ export function buildRepairInput(
           'reviewSessionMode',
           () => parentInput.target?.reviewSessionMode ?? 'fresh',
         ) ?? 'fresh',
+      // Only as the parent's setup recorded it: a parent set up without
+      // it, by a worker from before it existed, reviewed every round whole,
+      // whatever its input says (ADR-0062).
+      reviewLaterRounds: stored.reviewLaterRounds ?? 'whole',
       reviewBlockerThreshold: recorded(
         stored,
         'reviewBlockerThreshold',
@@ -1544,6 +1570,7 @@ export function buildRepairInput(
       parentConclusion: conclusion,
       findings: files.findings.content,
       findingsFile: files.findings.ref,
+      ...(parentBlockers ? { parentBlockers } : {}),
       profiles: {
         code: stored.profiles.code,
         correctness: stored.profiles.correctness,

@@ -768,7 +768,7 @@ Repository config: factory.json at the repository root, or --config <file>:
     "sandbox": { "network": ["code", "repair"] },
     "selfCheck": [["pnpm", "lint"], ["pnpm", "typecheck"]],
     "generate": [["pnpm", "screenshots:update"]],
-    "review": { "blockerThreshold": 5, "sessionMode": "fresh" },
+    "review": { "blockerThreshold": 5, "sessionMode": "fresh", "laterRounds": "scoped" },
     "checkTimeoutMs": 900000, "agentTimeoutMs": 7200000, "agentIdleTimeoutMs": 900000,
     "commit": { "authorName": "...", "authorEmail": "...",
                 "messageTemplate": "...", "publishSquashed": false },
@@ -865,6 +865,18 @@ Repository config: factory.json at the repository root, or --config <file>:
   such rule; a repair of review feedback is still told "Do not design for
   rare or future cases nobody asked for." whatever the threshold. Verdict
   reviews and spec reviews are not affected.
+  "review.laterRounds" ("scoped" by default, or "whole") is fixed at
+  trigger and applies to findings-json reviews only; a verdict review is
+  reviewed whole in every round. With "scoped", the first code review round and the first spec
+  review round are told to report every blocker at once. A later round,
+  after a repair or a spec fix, may block only on an earlier blocker that is
+  not fixed, a defect the repair introduced, or a problem inside the repair
+  diff; it still reads the whole change, and reports anything else as a
+  non-blocker, which a findings-json review marks "laterRoundException":
+  "outside-repair" and the report counts by round and reviewer. The first
+  review of a repair of a review-cap-reached run is a later round of the
+  parent's last one. "whole" reviews every round as before. A run stored
+  before the setting existed, and a repair of it, keeps "whole".
   "codexPath" names the Codex CLI to launch, relative to the config file;
   without it, codex on PATH first, then the bundled CLI.
   "name" (a non-empty string) is the repository's name on the web UI in

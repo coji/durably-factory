@@ -212,6 +212,15 @@ export function specFileOf(runRoot: string): string {
 }
 
 /**
+ * Each later spec review round's earlier version and the diff from it to
+ * the version under review (ADR-0062), outside the spec directory the spec
+ * writers may touch. Kept with the run, like the spec.
+ */
+export function specRevisionsDirOf(runRoot: string): string {
+  return join(runRoot, 'spec-revisions')
+}
+
+/**
  * The working directory of one configured spec review call: the base
  * commit's `CLAUDE.md` and `.claude/`, and the factory's `CLAUDE.local.md`,
  * one per reviewer and round. Removed with the round, like a candidate's.

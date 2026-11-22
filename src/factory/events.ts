@@ -103,6 +103,22 @@ export function asThresholdException(
   return THRESHOLD_EXCEPTIONS.find((e) => e === value)
 }
 
+/**
+ * Why a reviewer returned a non-blocker it would otherwise have blocked on:
+ * a later round may block only on an earlier blocker left unfixed or a
+ * problem the repair brought (ADR-0062). The reviewer's own claim; kept,
+ * never checked.
+ */
+const LATER_ROUND_EXCEPTIONS = ['outside-repair'] as const
+export type LaterRoundException = (typeof LATER_ROUND_EXCEPTIONS)[number]
+
+/** `value` when it is the later-round mark; else undefined, as above. */
+export function asLaterRoundException(
+  value: unknown,
+): LaterRoundException | undefined {
+  return LATER_ROUND_EXCEPTIONS.find((e) => e === value)
+}
+
 const reviewFindingSchema = z.object({
   severity: z.enum(['blocker', 'non-blocker']),
   title: z.string(),
@@ -112,6 +128,7 @@ const reviewFindingSchema = z.object({
   likelihood: z.number().optional(),
   impact: z.number().optional(),
   thresholdException: z.enum(THRESHOLD_EXCEPTIONS).optional(),
+  laterRoundException: z.enum(LATER_ROUND_EXCEPTIONS).optional(),
 })
 
 const reviewFindingsSchema = z.object({
