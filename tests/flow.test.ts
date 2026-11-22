@@ -6,6 +6,7 @@ import {
   flowOf,
   flowToMarkdown,
   laneOf,
+  runLanes,
   runTimeParts,
   type FlowRun,
 } from '../src/engine/flow.js'
@@ -349,5 +350,68 @@ describe('controlLimits', () => {
 
   it('has no limits under two values', () => {
     assert.equal(controlLimits([{ id: 'a', ms: 1 }]), null)
+  })
+})
+
+describe('runLanes', () => {
+  it('adds stages up by lane with their work and cost, and leaves empty stages out', () => {
+    const report = {
+      stageTimings: [
+        {
+          stage: 'preflight',
+          elapsedMs: 50,
+          wallElapsedMs: 50,
+          complete: true,
+        },
+        { stage: 'code', elapsedMs: 600, wallElapsedMs: 600, complete: true },
+        {
+          stage: 'review',
+          elapsedMs: 900,
+          wallElapsedMs: 500,
+          complete: false,
+        },
+        { stage: 'verify', elapsedMs: 400, wallElapsedMs: 400, complete: true },
+        { stage: 'stop', elapsedMs: 0, wallElapsedMs: 0, complete: true },
+      ],
+      stageUsage: [
+        { stage: 'code', costUsd: 1.5 },
+        { stage: 'review', costUsd: 0.5 },
+        { stage: 'review', costUsd: null },
+      ],
+    } as unknown as LoopReport
+    assert.deepEqual(runLanes(report), [
+      {
+        part: 'prepare',
+        wallMs: 50,
+        workMs: 50,
+        complete: true,
+        called: false,
+        costUsd: 0,
+      },
+      {
+        part: 'code',
+        wallMs: 600,
+        workMs: 600,
+        complete: true,
+        called: true,
+        costUsd: 1.5,
+      },
+      {
+        part: 'verify',
+        wallMs: 400,
+        workMs: 400,
+        complete: true,
+        called: false,
+        costUsd: 0,
+      },
+      {
+        part: 'review',
+        wallMs: 500,
+        workMs: 900,
+        complete: false,
+        called: true,
+        costUsd: null,
+      },
+    ])
   })
 })

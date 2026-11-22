@@ -522,6 +522,7 @@ export const COPY = {
   agentLogPath: '出力のパスをコピー',
   squashedBranch: 'まとめたブランチ名をコピー',
   branch: 'ブランチ名をコピー',
+  cleanupSummary: '作業ツリーを片付ける CLI コマンド',
   cleanupNote:
     '作業ツリーを片付けるコマンドです。ブランチは残ります。変更が残っている作業ツリーは git が削除を拒否します。',
   cleanupPruneNote:
@@ -1377,19 +1378,26 @@ export const RETRO = {
 } as const
 
 export const RUN_RETRO = {
-  title: 'この実行の時間',
+  title: '時間と費用',
   kind: '工程ごと · 直近 30 日の 1 タスク平均と比べる',
   part: '工程',
   thisRun: 'この実行',
   average: '30 日の平均',
-  leadTime: 'リードタイム',
-  mean: (t: string) => `配送したタスクの平均 ${t}`,
-  upper: (t: string) => `上限 ${t}`,
+  work: '作業時間',
+  cost: '費用',
+  total: 'リードタイム',
+  totalAverageTitle: '配送したタスクのリードタイムの平均',
+  notOver: '終わっていない',
+  upper: (t: string) => `リードタイムの上限 ${t}`,
   aboveUpper: '上限を超えています',
   longest: 'この実行で最も長い',
   reworkMost: '手戻りが最も多い',
-  open: '実行が終わると、工程ごとの時間を平均と比べて表示します。',
-  unknown: '一部の時間が記録されていないため、内訳を出せません。',
+  facts: (tokens: string, repairs: string) =>
+    `合計トークン ${tokens} · 修正 ${repairs} 回`,
+  note: '「この実行」と平均は時計の時間で、並んで動いたレビューは一度だけ数えます。作業時間は呼び出しの時間の合計なので、並んだ分だけ長くなります。',
+  noCostNote: '費用の「–」は、モデルを呼ばなかった工程です。',
+  runningNote: '実行中の工程は、終わった呼び出しの分だけを数えます。',
+  empty: 'まだ終わった工程がありません。',
 } as const
 
 /** Words inside the charts: legends, summaries for screen readers, folds. */

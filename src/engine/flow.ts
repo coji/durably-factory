@@ -348,6 +348,67 @@ export function runTimeParts(report: LoopReport): RunTimePart[] | null {
   return out.sort((x, y) => partRank(x.part) - partRank(y.part))
 }
 
+/** One lane of one run: its stages' wall time, work, and cost together. */
+export interface RunLane {
+  part: FlowLane
+  /** The stages' wall times added up (parallel calls once), as `runTimeParts` counts them. */
+  wallMs: number
+  /** The stages' measured work; parallel calls each count. */
+  workMs: number | null
+  /** False when an attempt in the lane has no measured time. */
+  complete: boolean
+  /** Whether any stage of the lane called a model. */
+  called: boolean
+  /** The calls' cost; null when one of them has no price. */
+  costUsd: number | null
+}
+
+/**
+ * A run's time and cost by lane, in pipeline order, for the lanes it
+ * entered so far: the run page's one table of where the time and money
+ * went. Known while the run is still going, unlike `runTimeParts`.
+ */
+export function runLanes(report: LoopReport): RunLane[] {
+  const lanes = new Map<FlowLane, RunLane>()
+  const laneFor = (stage: string) => {
+    const part = laneOf(stage)
+    let lane = lanes.get(part)
+    if (!lane) {
+      lane = {
+        part,
+        wallMs: 0,
+        workMs: 0,
+        complete: true,
+        called: false,
+        costUsd: 0,
+      }
+      lanes.set(part, lane)
+    }
+    return lane
+  }
+  for (const s of report.stageTimings) {
+    // A stage that took no time, like a stop, adds an empty row and nothing else.
+    const took = (s.wallElapsedMs ?? 0) > 0 || (s.elapsedMs ?? 0) > 0
+    if (!took && s.complete) continue
+    const lane = laneFor(s.stage)
+    lane.wallMs += s.wallElapsedMs ?? s.elapsedMs ?? 0
+    lane.workMs =
+      lane.workMs === null || s.elapsedMs == null
+        ? null
+        : lane.workMs + s.elapsedMs
+    if (!s.complete) lane.complete = false
+  }
+  for (const u of report.stageUsage) {
+    const lane = laneFor(u.stage)
+    lane.called = true
+    lane.costUsd =
+      lane.costUsd === null || u.costUsd === null
+        ? null
+        : lane.costUsd + u.costUsd
+  }
+  return [...lanes.values()].sort((x, y) => partRank(x.part) - partRank(y.part))
+}
+
 const PART_ORDER: string[] = [
   ...FLOW_LANES,
   'human-wait',

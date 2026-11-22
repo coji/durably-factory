@@ -126,9 +126,9 @@ import {
 import { seriesCommand } from '../src/ui/screens/list/BulkBar.js'
 import { STOP_PAGE } from '../src/ui/screens/list/StopTasks.js'
 import { TaskRuns } from '../src/ui/screens/list/TaskRuns.js'
+import { BaselineSource } from '../src/ui/screens/run/BaselineSource.js'
 import { RecordPanels } from '../src/ui/screens/run/RecordPanels.js'
 import { SpecPanel } from '../src/ui/screens/run/SpecPanel.js'
-import { BaselineSource } from '../src/ui/screens/run/StageTimings.js'
 
 /** A page's actions, for a page rendered where nothing is sent. */
 const noAct = async () => true
@@ -157,9 +157,9 @@ import {
   ReviewHighlightsPanel,
   ReviewsPanel,
 } from '../src/ui/screens/run/ReviewsPanel.js'
-import { SummaryPanel } from '../src/ui/screens/run/SummaryPanel.js'
+import { PricingNotice, RunTime } from '../src/ui/screens/run/RunTime.js'
 import { UsagePanels } from '../src/ui/screens/run/UsagePanels.js'
-import { RunScreen, PricingNotice } from '../src/ui/screens/RunScreen.js'
+import { RunScreen } from '../src/ui/screens/RunScreen.js'
 import { RunsScreen } from '../src/ui/screens/RunsScreen.js'
 import {
   derivePipeline,
@@ -5095,6 +5095,9 @@ describe('numbers on the screens', () => {
         reviewRounds: 1,
       },
       triage: null,
+      attempts: [],
+      baseline: null,
+      stageTotalMs: 0,
       stageUsage: [{ ...usage, stage: 'code' }],
       roleUsage: [
         {
@@ -5107,8 +5110,27 @@ describe('numbers on the screens', () => {
       ],
     } as unknown as LoopReport
     const detail = htmlText(
-      renderToStaticMarkup(createElement(SummaryPanel, { report })) +
-        renderToStaticMarkup(createElement(UsagePanels, { report })),
+      renderToStaticMarkup(
+        createElement(RunTime, {
+          data: {
+            report,
+            now: '2026-01-01T00:00:00.000Z',
+            diagnosis: { kind: 'finished' },
+            baselineSource: null,
+            time: null,
+            lanes: [
+              {
+                part: 'code',
+                wallMs: 1_093_000,
+                workMs: 0,
+                complete: true,
+                called: true,
+                costUsd: 6.443984,
+              },
+            ],
+          } as unknown as RunDetailResponse,
+        }),
+      ) + renderToStaticMarkup(createElement(UsagePanels, { report })),
     )
     assert.match(detail, /5\.1M/)
     assert.match(detail, /\$6\.44/)

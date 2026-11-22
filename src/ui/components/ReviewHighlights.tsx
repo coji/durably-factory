@@ -129,6 +129,17 @@ export function ReviewHighlightsBody({
     !compact &&
     (h.lastPasses.length > 0 ||
       [h.earlier, h.left, h.open].some((g) => g.verdicts.length > 0))
+  const groups = [
+    ...(passed ? [] : [{ label: REVIEW.open, group: h.open, fixed: false }]),
+    passed
+      ? { label: REVIEW.fixed, group: h.earlier, fixed: true }
+      : { label: REVIEW.earlier, group: h.earlier, fixed: false },
+    { label: REVIEW.left, group: h.left, fixed: false },
+  ]
+  const filled = groups.filter(
+    (g) => g.group.count > 0 || (!compact && g.group.verdicts.length > 0),
+  )
+  const shown = filled.length > 0 ? filled : groups.slice(-1)
   return (
     <div className="flex flex-col gap-3">
       <div className="text-fg-2 flex flex-col gap-1 text-xs">
@@ -153,23 +164,19 @@ export function ReviewHighlightsBody({
           </ul>
         ) : null}
       </div>
+      {/* A group with nothing in it is left out; with all empty, 残した指摘 says なし. */}
       <div
-        className={`grid gap-4 md:grid-cols-2 ${passed ? '' : 'lg:grid-cols-3'}`}
+        className={`grid gap-4 md:grid-cols-2 ${shown.length > 2 ? 'lg:grid-cols-3' : ''}`}
       >
-        {passed ? null : (
-          <Group label={REVIEW.open} group={h.open} compact={compact} />
-        )}
-        {passed ? (
+        {shown.map((g) => (
           <Group
-            label={REVIEW.fixed}
-            group={h.earlier}
-            fixed
+            key={g.label}
+            label={g.label}
+            group={g.group}
+            fixed={g.fixed}
             compact={compact}
           />
-        ) : (
-          <Group label={REVIEW.earlier} group={h.earlier} compact={compact} />
-        )}
-        <Group label={REVIEW.left} group={h.left} compact={compact} />
+        ))}
       </div>
       {verdicts ? (
         <p className="text-fg-2 text-xs">{REVIEW.notesInEvidence}</p>

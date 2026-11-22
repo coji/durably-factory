@@ -79,9 +79,11 @@ import {
   FLOW_LANES,
   flowOf,
   laneOf,
+  runLanes,
   runTimeParts,
   type Flow,
   type FlowLane,
+  type RunLane,
   type RunTimePart,
 } from '../engine/flow.js'
 import { formatCount } from '../engine/format.js'
@@ -328,6 +330,8 @@ export interface RunDetailResponse {
    * open or a part is unknown. See `runTimeParts`.
    */
   time: RunTimePart[] | null
+  /** The run's time and cost by lane, so far. See `runLanes`. */
+  lanes: RunLane[]
   /** Exactly what `report --run <id> --format json` prints. */
   report: LoopReport
 }
@@ -2053,6 +2057,7 @@ function createUiApi(stateRoot: string) {
       },
       lineage,
       time: runTimeParts(report),
+      lanes: runLanes(report),
       checkLogs: checkLogFiles(seen.diagnosis.failure?.details ?? []),
       baselineSource,
       trace: deriveTrace({
