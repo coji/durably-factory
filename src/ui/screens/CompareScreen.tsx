@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import type { Stat, TrendGroup, TrendWeek } from '../../engine/compare'
 import {
   formatCost,
@@ -10,7 +12,7 @@ import { segment, SEGMENTS } from '../components/button'
 import { DataTable, Td, Th } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
 import { RepoFilter } from '../components/RepoFilter'
-import { COMMON, COMPARE, TREND } from '../glossary'
+import { COMMON, COMPARE, RETRO, TREND } from '../glossary'
 import type { CompareResponse, TrendResponse } from '../server'
 import { GroupPanel } from './compare/GroupPanel'
 import { Figure, MedianCell, type Formatter } from './compare/StatTable'
@@ -213,14 +215,19 @@ function TrendGroupView({ group: g }: { group: TrendGroup }) {
 export function TrendScreen({
   data,
   onView,
+  charts,
 }: {
   data: TrendResponse
   onView: (view: CompareView) => void
+  /** The weekly charts above the tables. */
+  charts?: ReactNode
 }) {
   const days = formatCount(data.days)
   return (
     <div className="flex flex-col gap-4">
       <RepoFilter page="compare" scope={data} />
+      {charts}
+      <h2 className="text-lg font-semibold">{RETRO.details}</h2>
       <ViewSwitch view="trend" onView={onView} />
       {data.groups.length === 0 ? (
         <EmptyState>
@@ -249,14 +256,19 @@ export function TrendScreen({
 export function CompareScreen({
   data,
   onView,
+  charts,
 }: {
   data: CompareResponse
   onView: (view: CompareView) => void
+  /** The weekly charts above the tables. */
+  charts?: ReactNode
 }) {
   const groups = data.comparison.groups
   return (
     <div className="flex flex-col gap-4">
       <RepoFilter page="compare" scope={data} />
+      {charts}
+      <h2 className="text-lg font-semibold">{RETRO.details}</h2>
       <ViewSwitch view="config" onView={onView} />
       {groups.length === 0 ? (
         <EmptyState>{COMPARE.empty}</EmptyState>

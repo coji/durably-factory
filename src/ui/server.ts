@@ -75,6 +75,15 @@ import {
   FACTORY_COMMAND,
   type CheckLogFile,
 } from '../engine/failure-reasons.js'
+import {
+  FLOW_LANES,
+  flowOf,
+  laneOf,
+  runTimeParts,
+  type Flow,
+  type FlowLane,
+  type RunTimePart,
+} from '../engine/flow.js'
 import { formatCount } from '../engine/format.js'
 import {
   NOT_SENT,
@@ -199,6 +208,69 @@ export interface RepoScope {
   repo: string | null
 }
 
+/**
+ * One lane of the factory's floor: the open tasks whose shown run stands in
+ * one of its stages now. The lanes never change, so a count moves and a
+ * column does not.
+ */
+export interface FloorLane {
+  lane: FloorLaneName
+  /** A worker is on it. */
+  running: number
+  /** A person decides next. */
+  waiting: number
+  /** Neither: waiting for a worker, or between steps. */
+  queued: number
+  /** The longest a running task has been in its current step, if any. */
+  longestStepMs: number | null
+  /** The open tasks here, by their shown run's id. */
+  runIds: string[]
+}
+
+export const FLOOR_LANES = FLOW_LANES
+export type FloorLaneName = FlowLane
+
+/**
+ * The open and deciding tasks by the lane their shown run stands in, from
+ * its stepper: the stage it runs in, waits on a person in, or is at.
+ */
+export function floorOf(rows: RunRow[], tasks: Task[]): FloorLane[] {
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const lanes = new Map<FloorLaneName, FloorLane>(
+    FLOOR_LANES.map((lane) => [
+      lane,
+      {
+        lane,
+        running: 0,
+        waiting: 0,
+        queued: 0,
+        longestStepMs: null,
+        runIds: [],
+      },
+    ]),
+  )
+  for (const task of tasks) {
+    if (task.attention !== 'active' && task.attention !== 'decision') continue
+    const row = byId.get(task.representative)
+    if (!row) continue
+    const at = row.pipeline.stages.find(
+      (s) =>
+        s.state === 'running' || s.state === 'waiting' || s.state === 'current',
+    )
+    const lane = lanes.get(laneOf(at?.stage ?? 'setup'))
+    if (!lane) continue
+    lane.runIds.push(row.id)
+    if (at?.state === 'running') {
+      lane.running++
+      const ms = row.live?.stageMs ?? null
+      if (ms !== null)
+        lane.longestStepMs = Math.max(lane.longestStepMs ?? 0, ms)
+    } else if (at?.state === 'waiting') lane.waiting++
+    else lane.queued++
+  }
+  return [...lanes.values()]
+}
+
 export interface RunsResponse extends RepoScope {
   db: string
   /** False until a worker or `trigger` creates the database. */
@@ -211,6 +283,8 @@ export interface RunsResponse extends RepoScope {
    * what `factory status --format json` prints as its `tasks`.
    */
   tasks: Task[]
+  /** The open tasks by lane; see `floorOf`. */
+  floor: FloorLane[]
 }
 
 export interface RunDetailResponse {
@@ -249,6 +323,11 @@ export interface RunDetailResponse {
   baselineSource: RunRef | null
   /** The run as a span tree on one time axis, as of `now`. */
   trace: Trace
+  /**
+   * Where the run's lead time went, by lane and wait; null while it is
+   * open or a part is unknown. See `runTimeParts`.
+   */
+  time: RunTimePart[] | null
   /** Exactly what `report --run <id> --format json` prints. */
   report: LoopReport
 }
@@ -260,6 +339,14 @@ export interface RunDetailResponse {
  * repository's tasks when narrowed to it.
  */
 export type TrendResponse = Trend & RepoScope
+
+/**
+ * The finished tasks of the last 30 days as a production line reads them:
+ * weekly throughput, lead times with their control limits, where the time
+ * went and why tasks stopped; see `flowOf`. Fake tasks count only when asked
+ * for (`?fake=1`).
+ */
+export type FlowResponse = Flow & RepoScope & { now: string }
 
 export interface CompareResponse extends RepoScope {
   /** Finished runs, newest first, in the order given to `compareReports`. */
@@ -1886,7 +1973,15 @@ function createUiApi(stateRoot: string) {
       now: new Date(now).toISOString(),
     }
     const db = source()
-    if (!db) return { ...base, ...NO_SCOPE, exists: false, runs: [], tasks: [] }
+    if (!db)
+      return {
+        ...base,
+        ...NO_SCOPE,
+        exists: false,
+        runs: [],
+        tasks: [],
+        floor: floorOf([], []),
+      }
     const all = await orEmpty(allRuns(db), [])
     reports.keep(all)
     await askRepoTopLevels(
@@ -1918,6 +2013,7 @@ function createUiApi(stateRoot: string) {
       exists: true,
       runs: listRows(rows, tasks),
       tasks,
+      floor: floorOf(rows, tasks),
     }
   }
 
@@ -1956,6 +2052,7 @@ function createUiApi(stateRoot: string) {
         path: repo?.key.startsWith('/') ? repo.key : null,
       },
       lineage,
+      time: runTimeParts(report),
       checkLogs: checkLogFiles(seen.diagnosis.failure?.details ?? []),
       baselineSource,
       trace: deriveTrace({
@@ -2055,10 +2152,13 @@ function createUiApi(stateRoot: string) {
     }
   }
 
-  async function trend(wanted: string | null): Promise<TrendResponse> {
+  async function trend(
+    wanted: string | null,
+    includeFake: boolean,
+  ): Promise<TrendResponse> {
     const now = Date.now()
     const db = source()
-    if (!db) return { ...trendOf([], { now }), ...NO_SCOPE }
+    if (!db) return { ...trendOf([], { now, includeFake }), ...NO_SCOPE }
     const all = await orEmpty(allRuns(db), [])
     reports.keep(all)
     await askRepoTopLevels(
@@ -2078,9 +2178,48 @@ function createUiApi(stateRoot: string) {
     return {
       ...trendOf(
         built.map(({ run, report }) => ({ ...run, report })),
-        { now },
+        { now, includeFake },
       ),
       ...scope,
+    }
+  }
+
+  async function flow(
+    wanted: string | null,
+    includeFake: boolean,
+  ): Promise<FlowResponse> {
+    const now = Date.now()
+    const at = new Date(now).toISOString()
+    const db = source()
+    if (!db)
+      return { ...flowOf([], { now, includeFake }), ...NO_SCOPE, now: at }
+    const all = await orEmpty(allRuns(db), [])
+    reports.keep(all)
+    await askRepoTopLevels(
+      all.map((r) => r.input),
+      now,
+    )
+    const { scope, own, runs: picked } = scopeRuns(all, wanted)
+    const rows = picked.map((run) => ({
+      ...run,
+      parentId: repairParentId(run),
+    }))
+    const read = new Set(trendRunIds(rows, { now }))
+    const done = rows.filter((r) => read.has(r.id))
+    const built = await listedReports(reports, readOnce(db, done), done, all)
+    return {
+      ...flowOf(
+        built.map(({ run, report }) => ({
+          ...run,
+          parentId: repairParentId(run),
+          report,
+          name: runName(run.input),
+          repo: own.get(run.id)?.name ?? REPO.unknown,
+        })),
+        { now, includeFake },
+      ),
+      ...scope,
+      now: at,
     }
   }
 
@@ -2188,7 +2327,10 @@ function createUiApi(stateRoot: string) {
     const repo = url.searchParams.get('repo')
     if (pathname === '/api/runs') return runs(repo)
     if (pathname === '/api/compare') return compare(repo)
-    if (pathname === '/api/trend') return trend(repo)
+    if (pathname === '/api/trend')
+      return trend(repo, url.searchParams.get('fake') === '1')
+    if (pathname === '/api/flow')
+      return flow(repo, url.searchParams.get('fake') === '1')
     const match = /^\/api\/runs\/([^/]+)$/.exec(pathname)
     if (match?.[1]) return run(idOf(match[1]))
     const logs = /^\/api\/runs\/([^/]+)\/logs\/([^/]+)$/.exec(pathname)

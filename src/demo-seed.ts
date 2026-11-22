@@ -607,6 +607,12 @@ export async function seed(options: SeedOptions): Promise<SeedResult> {
   return { home: options.home, runs, workerPid, workerLog }
 }
 
+/**
+ * How long one call of the runs left to the background worker takes: long
+ * enough that the page shows them running for a while.
+ */
+const BACKGROUND_LATENCY_MS = { min: 600_000, max: 1_200_000 }
+
 /** `factory seed [--home <dir>] [--latency <min>-<max>]` */
 export async function seedCommand(a: Record<string, string>): Promise<void> {
   let home: string
@@ -625,7 +631,7 @@ export async function seedCommand(a: Record<string, string>): Promise<void> {
   const result = await seed({
     home,
     latencyMs,
-    longLatencyMs: { min: 600_000, max: 1_200_000 },
+    longLatencyMs: BACKGROUND_LATENCY_MS,
     backgroundWorker: true,
     log: (line) => console.log(line),
   })
@@ -638,7 +644,7 @@ export async function seedCommand(a: Record<string, string>): Promise<void> {
   if (result.workerPid !== null) {
     console.log('')
     console.log(
-      '実行中の run はバックグラウンドの worker が進めています。1 回の呼び出しに 10〜20 分かかります。',
+      `実行中の run はバックグラウンドの worker が進めています。1 回の呼び出しに ${BACKGROUND_LATENCY_MS.min / 60_000}〜${BACKGROUND_LATENCY_MS.max / 60_000} 分かかります(--latency は seed の間に終わる run の呼び出しに使います)。`,
     )
     console.log(`  worker の pid: ${result.workerPid}`)
     console.log(`  worker のログ: ${result.workerLog ?? ''}`)

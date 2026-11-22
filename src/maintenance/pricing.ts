@@ -88,19 +88,20 @@ export function parsePrices(provider: Provider, markdown: string) {
   }
   for (const table of tables(markdown)) {
     const { headers, rows, heading } = table
-    const column = (row: string[], name: string) => row[headers.indexOf(name)]
+    // Looked up once per table, not once per row and column.
+    const index = new Map(headers.map((h, i) => [h, i]))
+    const column = (row: string[], name: string) => {
+      const i = index.get(name)
+      return i === undefined ? undefined : row[i]
+    }
     if (provider === 'openai') {
       if (heading !== 'Standard pricing data' || headers[0] !== 'Model')
         continue
-      const short = headers.includes('Short context input')
+      const short = index.has('Short context input')
       const input = short ? 'Short context input' : 'Input'
       const output = short ? 'Short context output' : 'Output'
       const read = short ? 'Short context cached input' : 'Cached input'
-      if (
-        !headers.includes(input) ||
-        !headers.includes(output) ||
-        !headers.includes(read)
-      )
+      if (!index.has(input) || !index.has(output) || !index.has(read))
         throw new Error('OpenAI Standard pricing columns changed')
       matchedTables++
       for (const row of rows) {
@@ -127,7 +128,7 @@ export function parsePrices(provider: Provider, markdown: string) {
         'Cache hits and refreshes',
         'Output tokens',
       ])
-        if (!headers.includes(name))
+        if (!index.has(name))
           throw new Error('Anthropic pricing columns changed')
       matchedTables++
       for (const row of rows) {

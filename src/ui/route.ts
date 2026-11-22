@@ -1,9 +1,12 @@
 /**
- * The page's routes, read from the location hash. The list and the summary
- * can be narrowed to one repository by its key, as `?repo=` after the path;
- * a run's page keeps the one its list had, for its links back.
+ * The page's routes, read from the location hash: the factory at `#/`, the
+ * task list at `#/tasks`, the review at `#/review` (`#/compare` before it),
+ * one run, and the design page. Every page but the design page can be
+ * narrowed to one repository by its key, as `?repo=` after the path; a
+ * run's page keeps the one its list had, for its links back.
  */
 export type Route =
+  | { page: 'factory'; repo?: string }
   | { page: 'runs'; repo?: string }
   | { page: 'run'; id: string; repo?: string }
   | { page: 'compare'; repo?: string }
@@ -17,9 +20,11 @@ export function parseRoute(hash: string): Route {
   const scope = repo ? { repo } : {}
   const run = /^#\/runs\/(.+)$/.exec(path)
   if (run?.[1]) return { page: 'run', id: decodeURIComponent(run[1]), ...scope }
-  if (path === '#/compare') return { page: 'compare', ...scope }
+  if (path === '#/review' || path === '#/compare')
+    return { page: 'compare', ...scope }
+  if (path === '#/tasks') return { page: 'runs', ...scope }
   if (path === '#/design') return { page: 'design' }
-  return { page: 'runs', ...scope }
+  return { page: 'factory', ...scope }
 }
 
 export function routeKey(route: Route): string {
@@ -31,9 +36,22 @@ export function withRepo(path: string, repo?: string): string {
   return repo ? `${path}?repo=${encodeURIComponent(repo)}` : path
 }
 
-/** Where the list or the summary is, narrowed to `repo` when given one. */
-export function pageHref(page: 'runs' | 'compare', repo?: string): string {
-  return withRepo(page === 'runs' ? '#/' : '#/compare', repo)
+export type ListPage = 'factory' | 'runs' | 'compare'
+
+const PAGE_PATH: Record<ListPage, string> = {
+  factory: '#/',
+  runs: '#/tasks',
+  compare: '#/review',
+}
+
+/** `url` asking for fake tasks too when `fake`, after any `?repo=`. */
+export function withFake(url: string, fake: boolean): string {
+  return fake ? `${url}${url.includes('?') ? '&' : '?'}fake=1` : url
+}
+
+/** Where a page of the header is, narrowed to `repo` when given one. */
+export function pageHref(page: ListPage, repo?: string): string {
+  return withRepo(PAGE_PATH[page], repo)
 }
 
 /**
@@ -46,7 +64,12 @@ export function reconciledHref(
   route: Route,
   counted: string | null,
 ): string | null {
-  if (route.page !== 'runs' && route.page !== 'compare') return null
+  if (
+    route.page !== 'factory' &&
+    route.page !== 'runs' &&
+    route.page !== 'compare'
+  )
+    return null
   const repo = counted ?? undefined
   return route.repo === repo ? null : pageHref(route.page, repo)
 }

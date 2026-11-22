@@ -154,7 +154,7 @@ function MetaValue({ value, title }: { value: string; title?: string }) {
   return (
     <span
       title={title}
-      className={`font-code ${value === UNKNOWN ? 'text-fg-3' : ''}`}
+      className={`tabular-nums ${value === UNKNOWN ? 'text-fg-3' : ''}`}
     >
       {value}
     </span>

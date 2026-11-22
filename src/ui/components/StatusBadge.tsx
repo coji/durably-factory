@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 import { TONE_FILL, type Tone } from './status'
 
 /** A state name, always in words; color only for the three states. */
@@ -8,6 +9,8 @@ export function StatusBadge({ label, tone }: { label: string; tone: Tone }) {
     >
       {tone === 'running' ? (
         <span aria-hidden className="dot-live size-2 rounded-full bg-current" />
+      ) : tone === 'waiting' ? (
+        <Icon name="pause" />
       ) : null}
       {label}
     </span>

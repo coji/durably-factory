@@ -427,9 +427,9 @@ export function comparisonToMarkdown(c: Comparison): string {
 // ---------------------------------------------------------------- trend
 
 /** The trend's window, in days back from now, unless asked otherwise. */
-const TREND_DAYS = 30
+export const TREND_DAYS = 30
 
-const DAY_MS = 86_400_000
+export const DAY_MS = 86_400_000
 
 /**
  * `--days` as a whole number of days from 1 up to `Number.MAX_SAFE_INTEGER`;
@@ -525,12 +525,12 @@ function pad(n: number): string {
   return String(n).padStart(2, '0')
 }
 
-function localDate(d: Date): string {
+export function localDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 /** The Monday that starts the week of `ms`, local time, at midnight. */
-function mondayOf(ms: number): Date {
+export function mondayOf(ms: number): Date {
   const d = new Date(ms)
   d.setHours(0, 0, 0, 0)
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
@@ -542,7 +542,7 @@ function mondayOf(ms: number): Date {
  * repair runs, as `groupTasks` groups them, whose newest run finished with a
  * completion time in the `days` before `now`.
  */
-function finishedTasks<T extends TrendRow>(
+export function finishedTasks<T extends TrendRow>(
   runs: T[],
   options: { now: number; days: number },
 ): { root: T; runs: T[]; latest: T; at: number }[] {

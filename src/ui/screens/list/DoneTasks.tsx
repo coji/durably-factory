@@ -7,6 +7,7 @@ import { BUTTON } from '../../components/button'
 import { Section } from '../../components/Layout'
 import { LIST } from '../../glossary'
 import type { RunRow } from '../../server'
+import { MetaHead, SortSelect, sortTasks, type TaskSort } from './ListHead'
 import { SECTION_ID } from './Overview'
 import { isArchivedTask, taskName, Tasks } from './Tasks'
 
@@ -50,7 +51,7 @@ export function DoneFilters({
             className="accent-fg size-4"
           />
           {LIST.showArchived}
-          <span className="font-code text-fg-3">
+          <span className="text-fg-3 tabular-nums">
             {LIST.archivedCount(formatCount(archivedCount))}
           </span>
         </label>
@@ -81,6 +82,7 @@ export function DoneTasks({
   const [query, setQuery] = useState('')
   const [archived, setArchived] = useState(false)
   const [limit, setLimit] = useState(PAGE)
+  const [sort, setSort] = useState<TaskSort>('newest')
   const isArchived = (t: Task) => isArchivedTask(t, rows)
   const archivedCount = tasks.filter(isArchived).length
   const q = query.trim().toLowerCase()
@@ -90,7 +92,7 @@ export function DoneTasks({
   const matches = archived ? named : named.filter((t) => !isArchived(t))
   // Said when the list is empty only because archived tasks are hidden.
   const onlyArchived = matches.length === 0 && named.length > 0
-  const shown = matches.slice(0, limit)
+  const shown = sortTasks(matches, sort).slice(0, limit)
   const rest = matches.length - shown.length
   return (
     <Section
@@ -104,19 +106,23 @@ export function DoneTasks({
       }
       tools={
         tasks.length > 0 ? (
-          <DoneFilters
-            query={query}
-            onQuery={(q) => {
-              setQuery(q)
-              setLimit(PAGE)
-            }}
-            archived={archived}
-            onArchived={setArchived}
-            archivedCount={archivedCount}
-          />
+          <>
+            <SortSelect sort={sort} onSort={setSort} />
+            <DoneFilters
+              query={query}
+              onQuery={(q) => {
+                setQuery(q)
+                setLimit(PAGE)
+              }}
+              archived={archived}
+              onArchived={setArchived}
+              archivedCount={archivedCount}
+            />
+          </>
         ) : null
       }
     >
+      {shown.length > 0 ? <MetaHead /> : null}
       <Tasks
         tasks={shown}
         rows={rows}

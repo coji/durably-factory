@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from 'react'
 
 import { EmptyState } from '../components/EmptyState'
+import { Icon } from '../components/Icon'
 import { PageTitle } from '../components/Layout'
 import { RepoContext } from '../components/RunLink'
 import { RefreshStatus, Shell } from '../components/Shell'
@@ -56,8 +57,9 @@ export function PolledPage<T>({
           {back ? (
             <a
               href={pageHref('runs', repo)}
-              className="text-fg-2 hover:text-fg inline-flex min-h-8 items-center self-start text-sm"
+              className="text-fg-2 hover:text-fg inline-flex min-h-8 items-center gap-1 self-start text-sm"
             >
+              <Icon name="left" />
               {SHELL.back}
             </a>
           ) : null}

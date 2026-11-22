@@ -1,7 +1,13 @@
+import { useContext } from 'react'
+
+import { formatDuration } from '../../engine/format'
 import { unpricedModelsOf } from '../../engine/pricing-status'
 import type { Act } from '../components/ActionNotice'
+import { Card } from '../components/Card'
+import { RunTimeCompare } from '../components/charts/RunTimeCompare'
 import { CopyAnnouncer, CopyButton, useCopy } from '../components/copy'
 import { Collapsible, Panel } from '../components/Layout'
+import { RepoContext } from '../components/RunLink'
 import { StageTrack } from '../components/StageTrack'
 import { StatusBadge } from '../components/StatusBadge'
 import {
@@ -13,8 +19,10 @@ import { TaskLineage } from '../components/TaskLineage'
 import { runState } from '../components/TaskRow'
 import { Ago } from '../components/Time'
 import { TraceView } from '../components/trace/TraceView'
-import { COMMON, COPY, DETAIL } from '../glossary'
-import type { RunDetailResponse } from '../server'
+import { COMMON, COPY, DETAIL, RUN_RETRO } from '../glossary'
+import { withRepo } from '../route'
+import type { FlowResponse, RunDetailResponse } from '../server'
+import { usePolled } from '../usePolled'
 import { RecordPanels } from './run/RecordPanels'
 import { ReviewHighlightsPanel, ReviewsPanel } from './run/ReviewsPanel'
 import { SpecPanel } from './run/SpecPanel'
@@ -75,6 +83,56 @@ function RunHeader({ data }: { data: RunDetailResponse }) {
 }
 
 /**
+ * The run against the factory: its lead time beside the delivered tasks'
+ * mean and upper limit, and each lane's time beside a task's 30-day
+ * average, so what made this run slow or quick is one look.
+ */
+function RunRetro({ data }: { data: RunDetailResponse }) {
+  const repo = useContext(RepoContext)
+  const flow = usePolled<FlowResponse>(withRepo('/api/flow', repo), 60_000).data
+  const lead = data.report.summary.leadTimeMs
+  const control = flow?.control ?? null
+  const above = lead !== null && control !== null && lead > control.upperMs
+  return (
+    <Card
+      title={RUN_RETRO.title}
+      kind={RUN_RETRO.kind}
+      tools={
+        lead !== null ? (
+          <p className="flex flex-wrap items-baseline gap-x-3 text-sm">
+            <span className="text-fg-2">{RUN_RETRO.leadTime}</span>
+            <span
+              className={`font-figure text-xl font-bold tabular-nums ${above ? 'text-failed' : ''}`}
+            >
+              {formatDuration(lead)}
+            </span>
+            {control ? (
+              <span className="text-fg-2 text-xs tabular-nums">
+                {RUN_RETRO.mean(formatDuration(control.meanMs))} ·{' '}
+                {RUN_RETRO.upper(formatDuration(control.upperMs))}
+              </span>
+            ) : null}
+            {above ? (
+              <span className="bg-failed-bg text-failed rounded-sm px-1.5 py-0.5 text-xs font-semibold">
+                {RUN_RETRO.aboveUpper}
+              </span>
+            ) : null}
+          </p>
+        ) : null
+      }
+    >
+      {data.time ? (
+        <RunTimeCompare time={data.time} average={flow?.time ?? null} />
+      ) : (
+        <p className="text-fg-2 text-sm">
+          {lead === null ? RUN_RETRO.open : RUN_RETRO.unknown}
+        </p>
+      )}
+    </Card>
+  )
+}
+
+/**
  * Everything under the run's name, which the polled page renders as the h1,
  * in the order a person reads it and stops: the conclusion and next step,
  * what the reviews fixed and left, the stages over time with their time and
@@ -100,6 +158,7 @@ export function RunScreen({
       <RunHeader data={data} />
       <StatusPanel data={data} act={act} />
       <ReviewHighlightsPanel h={r.reviewHighlights} />
+      <RunRetro data={data} />
       <Panel title={DETAIL.trace}>
         <div className="flex flex-col gap-6">
           <TraceView

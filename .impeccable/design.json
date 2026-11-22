@@ -1,0 +1,698 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-22T09:01:07+00:00",
+  "title": "Design System: durably-factory",
+  "extensions": {
+    "colorMeta": {
+      "highlight": {
+        "role": "primary",
+        "displayName": "Agency Deep Blue",
+        "canonical": "light-dark(var(--blue-900), #1d2d8f)",
+        "tonalRamp": [
+          "#000060",
+          "#0017c1",
+          "#3460fb",
+          "#4979f5",
+          "#7096f8",
+          "#c5d7fb",
+          "#d9e6ff",
+          "#e8f1fe"
+        ]
+      },
+      "brand": {
+        "role": "primary",
+        "displayName": "Agency Deep Blue (text and marks)",
+        "canonical": "light-dark(var(--blue-900), var(--blue-400))",
+        "tonalRamp": [
+          "#000060",
+          "#0017c1",
+          "#3460fb",
+          "#4979f5",
+          "#7096f8",
+          "#c5d7fb",
+          "#d9e6ff",
+          "#e8f1fe"
+        ]
+      },
+      "brand-soft": {
+        "role": "primary",
+        "displayName": "Agency Blue Wash",
+        "canonical": "light-dark(var(--blue-50), #1a2456)",
+        "tonalRamp": [
+          "#000060",
+          "#0017c1",
+          "#3460fb",
+          "#4979f5",
+          "#7096f8",
+          "#c5d7fb",
+          "#d9e6ff",
+          "#e8f1fe"
+        ]
+      },
+      "chart-1": {
+        "role": "primary",
+        "displayName": "Agency Series Blue",
+        "canonical": "light-dark(var(--blue-600), var(--blue-400))",
+        "tonalRamp": [
+          "#000060",
+          "#0017c1",
+          "#3460fb",
+          "#4979f5",
+          "#7096f8",
+          "#c5d7fb",
+          "#d9e6ff",
+          "#e8f1fe"
+        ]
+      },
+      "chart-3": {
+        "role": "primary",
+        "displayName": "Agency Pale Blue",
+        "canonical": "light-dark(var(--blue-200), #2b3a73)",
+        "tonalRamp": [
+          "#000060",
+          "#0017c1",
+          "#3460fb",
+          "#4979f5",
+          "#7096f8",
+          "#c5d7fb",
+          "#d9e6ff",
+          "#e8f1fe"
+        ]
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "Focus Blue",
+        "canonical": "light-dark(var(--blue-600), var(--blue-400))",
+        "tonalRamp": [
+          "#000060",
+          "#0017c1",
+          "#3460fb",
+          "#4979f5",
+          "#7096f8",
+          "#c5d7fb",
+          "#d9e6ff",
+          "#e8f1fe"
+        ]
+      },
+      "running": {
+        "role": "primary",
+        "displayName": "Running Blue",
+        "canonical": "light-dark(var(--blue-900), var(--blue-200))",
+        "tonalRamp": [
+          "#000060",
+          "#0017c1",
+          "#3460fb",
+          "#4979f5",
+          "#7096f8",
+          "#c5d7fb",
+          "#d9e6ff",
+          "#e8f1fe"
+        ]
+      },
+      "running-bg": {
+        "role": "primary",
+        "displayName": "Running Blue Wash",
+        "canonical": "light-dark(var(--blue-50), #1a2456)",
+        "tonalRamp": [
+          "#000060",
+          "#0017c1",
+          "#3460fb",
+          "#4979f5",
+          "#7096f8",
+          "#c5d7fb",
+          "#d9e6ff",
+          "#e8f1fe"
+        ]
+      },
+      "on-highlight": {
+        "role": "neutral",
+        "displayName": "White on Blue",
+        "canonical": "var(--white)",
+        "tonalRamp": [
+          "#1a1a1a",
+          "#333333",
+          "#626264",
+          "#6b6b6d",
+          "#999999",
+          "#cccccc",
+          "#e6e6ea",
+          "#f8f8fb"
+        ]
+      },
+      "on-highlight-2": {
+        "role": "primary",
+        "displayName": "Quiet White on Blue",
+        "canonical": "light-dark(#d9e6ff, #c5d7fb)",
+        "tonalRamp": [
+          "#000060",
+          "#0017c1",
+          "#3460fb",
+          "#4979f5",
+          "#7096f8",
+          "#c5d7fb",
+          "#d9e6ff",
+          "#e8f1fe"
+        ]
+      },
+      "limit": {
+        "role": "secondary",
+        "displayName": "Limit Orange",
+        "canonical": "light-dark(var(--orange-600), var(--orange-400))",
+        "tonalRamp": [
+          "#5a2100",
+          "#ac3e00",
+          "#fb5b01",
+          "#ff8d44",
+          "#ffc199",
+          "#ffd9bf",
+          "#ffeee2",
+          "#fff7f1"
+        ]
+      },
+      "limit-text": {
+        "role": "secondary",
+        "displayName": "Limit Orange (text)",
+        "canonical": "light-dark(var(--orange-900), var(--orange-200))",
+        "tonalRamp": [
+          "#5a2100",
+          "#ac3e00",
+          "#fb5b01",
+          "#ff8d44",
+          "#ffc199",
+          "#ffd9bf",
+          "#ffeee2",
+          "#fff7f1"
+        ]
+      },
+      "limit-bg": {
+        "role": "secondary",
+        "displayName": "Constraint Tint",
+        "canonical": "light-dark(var(--orange-50), #3a2416)",
+        "tonalRamp": [
+          "#5a2100",
+          "#ac3e00",
+          "#fb5b01",
+          "#ff8d44",
+          "#ffc199",
+          "#ffd9bf",
+          "#ffeee2",
+          "#fff7f1"
+        ]
+      },
+      "stop": {
+        "role": "tertiary",
+        "displayName": "Stop Red",
+        "canonical": "light-dark(var(--red-600), var(--red-400))",
+        "tonalRamp": [
+          "#6b0000",
+          "#ce0000",
+          "#fe3939",
+          "#ff7171",
+          "#ffbbbb",
+          "#ffd6d6",
+          "#fdeeee",
+          "#fff7f7"
+        ]
+      },
+      "failed": {
+        "role": "tertiary",
+        "displayName": "Stop Red (text)",
+        "canonical": "light-dark(var(--red-900), var(--red-200))",
+        "tonalRamp": [
+          "#6b0000",
+          "#ce0000",
+          "#fe3939",
+          "#ff7171",
+          "#ffbbbb",
+          "#ffd6d6",
+          "#fdeeee",
+          "#fff7f7"
+        ]
+      },
+      "failed-bg": {
+        "role": "tertiary",
+        "displayName": "Stop Red Wash",
+        "canonical": "light-dark(var(--red-50), #3b1a1c)",
+        "tonalRamp": [
+          "#6b0000",
+          "#ce0000",
+          "#fe3939",
+          "#ff7171",
+          "#ffbbbb",
+          "#ffd6d6",
+          "#fdeeee",
+          "#fff7f7"
+        ]
+      },
+      "waiting": {
+        "role": "tertiary",
+        "displayName": "Waiting Yellow (text)",
+        "canonical": "light-dark(var(--yellow-900), var(--yellow-200))",
+        "tonalRamp": [
+          "#3a2d00",
+          "#6e5600",
+          "#a88400",
+          "#d9b000",
+          "#ffe380",
+          "#ffeda6",
+          "#fff7cc",
+          "#fffbe6"
+        ]
+      },
+      "waiting-bg": {
+        "role": "tertiary",
+        "displayName": "Waiting Yellow Wash",
+        "canonical": "light-dark(var(--yellow-50), #352c0c)",
+        "tonalRamp": [
+          "#3a2d00",
+          "#6e5600",
+          "#a88400",
+          "#d9b000",
+          "#ffe380",
+          "#ffeda6",
+          "#fff7cc",
+          "#fffbe6"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Canvas",
+        "canonical": "light-dark(var(--gray-50), var(--ink-950))",
+        "tonalRamp": [
+          "#1a1a1a",
+          "#333333",
+          "#626264",
+          "#6b6b6d",
+          "#999999",
+          "#cccccc",
+          "#e6e6ea",
+          "#f8f8fb"
+        ]
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Raised White",
+        "canonical": "light-dark(var(--white), var(--ink-900))",
+        "tonalRamp": [
+          "#1a1a1a",
+          "#333333",
+          "#626264",
+          "#6b6b6d",
+          "#999999",
+          "#cccccc",
+          "#e6e6ea",
+          "#f8f8fb"
+        ]
+      },
+      "sunken": {
+        "role": "neutral",
+        "displayName": "Sunken Gray",
+        "canonical": "light-dark(var(--gray-100), var(--ink-800))",
+        "tonalRamp": [
+          "#1a1a1a",
+          "#333333",
+          "#626264",
+          "#6b6b6d",
+          "#999999",
+          "#cccccc",
+          "#e6e6ea",
+          "#f8f8fb"
+        ]
+      },
+      "fg": {
+        "role": "neutral",
+        "displayName": "Solid Gray Ink",
+        "canonical": "light-dark(var(--gray-900), #f2f2f4)",
+        "tonalRamp": [
+          "#1a1a1a",
+          "#333333",
+          "#626264",
+          "#6b6b6d",
+          "#999999",
+          "#cccccc",
+          "#e6e6ea",
+          "#f8f8fb"
+        ]
+      },
+      "fg-2": {
+        "role": "neutral",
+        "displayName": "Solid Gray Secondary",
+        "canonical": "light-dark(var(--gray-600), #b4b6bd)",
+        "tonalRamp": [
+          "#1a1a1a",
+          "#333333",
+          "#626264",
+          "#6b6b6d",
+          "#999999",
+          "#cccccc",
+          "#e6e6ea",
+          "#f8f8fb"
+        ]
+      },
+      "fg-3": {
+        "role": "neutral",
+        "displayName": "Solid Gray Tertiary",
+        "canonical": "light-dark(#6b6b6d, #9a9ca3)",
+        "tonalRamp": [
+          "#1a1a1a",
+          "#333333",
+          "#626264",
+          "#6b6b6d",
+          "#999999",
+          "#cccccc",
+          "#e6e6ea",
+          "#f8f8fb"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "light-dark(var(--gray-200), #2a2d35)",
+        "tonalRamp": [
+          "#1a1a1a",
+          "#333333",
+          "#626264",
+          "#6b6b6d",
+          "#999999",
+          "#cccccc",
+          "#e6e6ea",
+          "#f8f8fb"
+        ]
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Control Line",
+        "canonical": "light-dark(var(--gray-300), #3a3e48)",
+        "tonalRamp": [
+          "#1a1a1a",
+          "#333333",
+          "#626264",
+          "#6b6b6d",
+          "#999999",
+          "#cccccc",
+          "#e6e6ea",
+          "#f8f8fb"
+        ]
+      },
+      "chart-grid": {
+        "role": "neutral",
+        "displayName": "Gridline",
+        "canonical": "light-dark(var(--gray-200), #2a2d35)",
+        "tonalRamp": [
+          "#0c0d10",
+          "#121318",
+          "#17191e",
+          "#1c1e24",
+          "#2a2d35",
+          "#3a3e48",
+          "#5a5e68",
+          "#9a9ca3"
+        ]
+      },
+      "chart-axis": {
+        "role": "neutral",
+        "displayName": "Zero Axis",
+        "canonical": "light-dark(var(--gray-400), #5a5e68)",
+        "tonalRamp": [
+          "#0c0d10",
+          "#121318",
+          "#17191e",
+          "#1c1e24",
+          "#2a2d35",
+          "#3a3e48",
+          "#5a5e68",
+          "#9a9ca3"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The two headline figures in the blue block, in the figure face (bundled Noto Sans JP Latin 700); units at 14px medium on the system sans beside the digits."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Lane counts on the floor and the decision / stopped counts; figure face."
+      },
+      "figure": {
+        "displayName": "Figure",
+        "purpose": "Metric card values, review table figures, a run's lead time; figure face."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "The page's one h1."
+      },
+      "section": {
+        "displayName": "Section",
+        "purpose": "A section heading inside a page, with its count beside it."
+      },
+      "card-title": {
+        "displayName": "Card title",
+        "purpose": "A card's title, with its data kind beside it at 12px."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text and table cells."
+      },
+      "body-sm": {
+        "displayName": "Body small",
+        "purpose": "Nav links, segments, dense rows."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Axis ticks, chart labels, notes, badges, buttons, card feet."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "IDs, paths, commands and logs only."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-pop",
+        "value": "0 4px 12px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.06)",
+        "purpose": "Floating elements only: the bulk-action bar, the copy confirmation, the skip link."
+      }
+    ],
+    "motion": [
+      {
+        "name": "duration-fast",
+        "value": "150ms",
+        "purpose": "Hover and focus colour changes."
+      },
+      {
+        "name": "duration-pulse",
+        "value": "1.2s",
+        "purpose": "One cycle of the running dot's pulse, the only ambient motion; off under reduced motion."
+      },
+      {
+        "name": "duration-sheen",
+        "value": "2.4s",
+        "purpose": "The sheen across a running bar in the trace; off under reduced motion."
+      },
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Default easing for state transitions and the pulse."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "stage-row",
+        "value": "40rem"
+      },
+      {
+        "name": "task-meta",
+        "value": "48rem"
+      },
+      {
+        "name": "factory-grid",
+        "value": "64rem"
+      },
+      {
+        "name": "trace-cols (container)",
+        "value": "40rem"
+      },
+      {
+        "name": "trace-layout (container)",
+        "value": "56rem"
+      },
+      {
+        "name": "touch",
+        "value": "(pointer: coarse) -> 44px controls"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one lead action, such as approve; the factory's blue, as the Digital Agency primary button.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">いまの仕様で承認</button>",
+      "css": ".ds-btn { font-family: var(--font-sans); display: inline-flex; align-items: center; gap: var(--space-2); min-height: 32px; padding: 0 var(--space-3); border-radius: var(--radius-md); border: 1px solid; font-size: var(--text-xs); cursor: pointer; transition: color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out); } .ds-btn-primary { background: var(--highlight); color: var(--highlight-fg); border-color: transparent; font-weight: 500; } .ds-btn-primary:hover { background: color-mix(in srgb, var(--highlight) 85%, transparent); } .ds-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Any other action: raised surface, a line around it.",
+      "html": "<button class=\"ds-btn2\">再実行</button>",
+      "css": ".ds-btn2 { font-family: var(--font-sans); display: inline-flex; align-items: center; gap: var(--space-2); min-height: 32px; padding: 0 var(--space-3); border-radius: var(--radius-md); border: 1px solid; font-size: var(--text-xs); cursor: pointer; transition: color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out); background: var(--surface-raised); color: var(--text-secondary); border-color: var(--border-default); } .ds-btn2:hover { color: var(--text-primary); } .ds-btn2:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "An action that takes something away (reject, archive): plain text until hovered, set apart from approve.",
+      "html": "<button class=\"ds-btn3\">アーカイブ</button>",
+      "css": ".ds-btn3 { font-family: var(--font-sans); display: inline-flex; align-items: center; gap: var(--space-2); min-height: 32px; padding: 0 var(--space-3); border-radius: var(--radius-md); border: 1px solid; font-size: var(--text-xs); cursor: pointer; transition: color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out); background: transparent; color: var(--text-secondary); border-color: transparent; } .ds-btn3:hover { color: var(--text-primary); border-color: var(--border-default); } .ds-btn3:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }"
+    },
+    {
+      "name": "Repository Segments",
+      "kind": "chip",
+      "refersTo": "segments",
+      "description": "A row of choices on a sunken strip, one current.",
+      "html": "<div class=\"ds-seg\"><button class=\"ds-seg-i ds-seg-on\" aria-pressed=\"true\">すべて</button><button class=\"ds-seg-i\">durably-factory</button><button class=\"ds-seg-i\">public</button></div>",
+      "css": ".ds-seg { display: inline-flex; background: var(--surface-sunken); border-radius: var(--radius-md); padding: var(--space-1); } .ds-seg-i { font-family: var(--font-sans); display: inline-flex; align-items: center; min-height: 32px; padding: 0 var(--space-3); border-radius: var(--radius-sm); border: 1px solid transparent; background: transparent; color: var(--text-secondary); font-size: var(--text-sm); cursor: pointer; } .ds-seg-i:hover { color: var(--text-primary); } .ds-seg-on { background: var(--surface-raised); color: var(--text-primary); border-color: var(--border-default); font-weight: 500; } .ds-seg-i:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }"
+    },
+    {
+      "name": "Navigation",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "The sticky header with the three screens; current page in brand on its wash.",
+      "html": "<header class=\"ds-nav\"><span class=\"ds-nav-p\">durably-factory</span><a class=\"ds-nav-a ds-nav-on\" href=\"#\" aria-current=\"page\">工場</a><a class=\"ds-nav-a\" href=\"#\">タスク</a><a class=\"ds-nav-a\" href=\"#\">振り返り</a><span class=\"ds-nav-t\">16:21:40 時点 · 3 秒ごとに更新</span></header>",
+      "css": ".ds-nav { font-family: var(--font-sans); display: flex; align-items: center; gap: var(--space-1); padding: var(--space-2) var(--space-8); background: var(--surface-raised); border-bottom: 1px solid var(--border-subtle); } .ds-nav-p { font-weight: 700; font-size: var(--text-base); color: var(--text-primary); margin-right: var(--space-8); } .ds-nav-a { display: inline-flex; align-items: center; min-height: 36px; padding: 0 var(--space-3); border-radius: var(--radius-md); font-size: var(--text-sm); color: var(--text-secondary); text-decoration: none; } .ds-nav-a:hover { background: var(--surface-sunken); color: var(--text-primary); } .ds-nav-on, .ds-nav-on:hover { background: var(--brand-soft); color: var(--brand); font-weight: 600; } .ds-nav-a:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; } .ds-nav-t { margin-left: auto; font-size: var(--text-xs); color: var(--text-secondary); font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge-waiting",
+      "description": "A state always in words; colour only for waiting, failed, running; waiting adds a pause mark, running a pulsing dot.",
+      "html": "<span class=\"ds-badge ds-b-wait\"><svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" width=\"12\" height=\"12\"><path d=\"M6 4v8M10 4v8\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\"/></svg>仕様の判断待ち</span> <span class=\"ds-badge ds-b-fail\">レビュー上限</span> <span class=\"ds-badge ds-b-run\"><span class=\"ds-dot\"></span>実行中</span> <span class=\"ds-badge ds-b-done\">承認済み</span>",
+      "css": ".ds-badge { font-family: var(--font-sans); display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-xs); line-height: 16px; font-weight: 500; white-space: nowrap; } .ds-b-wait { background: var(--state-waiting-bg); color: var(--state-waiting); } .ds-b-fail { background: var(--state-failed-bg); color: var(--state-failed); } .ds-b-run { background: var(--state-running-bg); color: var(--state-running); } .ds-b-done { background: var(--state-done-bg); color: var(--state-done); } .ds-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: ds-blink var(--duration-pulse) var(--ease-out) infinite; } @keyframes ds-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } } @media (prefers-reduced-motion: reduce) { .ds-dot { animation: none; } }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "A titled dashboard region: title, its data kind beside it, content, and a foot with the source or definition.",
+      "html": "<section class=\"ds-card\"><div class=\"ds-card-h\"><h2>止まった理由</h2><p>タスク数 · 多い順 · 30 日</p></div><div class=\"ds-card-b\">…</div><div class=\"ds-card-f\">上限は「平均 + 2.66 × 隣り合うタスクの差の平均」です。</div></section>",
+      "css": ".ds-card { font-family: var(--font-sans); background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-4) var(--space-5) var(--space-5); color: var(--text-primary); } .ds-card-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); margin-bottom: var(--space-3); } .ds-card-h h2 { margin: 0; font-size: var(--text-base); font-weight: 600; } .ds-card-h p { margin: 0; font-size: var(--text-xs); color: var(--text-secondary); } .ds-card-b { font-size: var(--text-base); } .ds-card-f { margin-top: var(--space-3); font-size: var(--text-xs); color: var(--text-secondary); }"
+    },
+    {
+      "name": "Headline Block",
+      "kind": "custom",
+      "refersTo": "highlight-block",
+      "description": "The page's one filled region: the week's delivered count and lead time, each with a change chip and comparisons.",
+      "html": "<section class=\"ds-hl\"><p class=\"ds-hl-l\">今週配送したタスク</p><p class=\"ds-hl-n\">16<span>件</span></p><span class=\"ds-chg ds-chg-worse\"><svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" width=\"12\" height=\"12\"><path d=\"M8 13V3M4 7l4-4 4 4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>4.8 倍に悪化</span><p class=\"ds-hl-c\">前週 20 件<br>前 4 週の平均 13.8 件</p><a class=\"ds-hl-a\" href=\"#\"><span>判断待ち <b>1</b></span><span>止まったまま <b>143</b></span><span class=\"ds-hl-go\">タスクを開く <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" width=\"12\" height=\"12\"><path d=\"M3 8h10M9 4l4 4-4 4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></span></a></section>",
+      "css": ".ds-hl { font-family: var(--font-sans); background: var(--highlight); color: var(--highlight-fg); border-radius: var(--radius-lg); padding: var(--space-5) var(--space-6) var(--space-6); max-width: 22rem; } .ds-hl p { margin: 0; } .ds-hl-l { font-size: var(--text-sm); color: var(--highlight-fg-2); } .ds-hl-n { margin-top: var(--space-1) !important; font-family: var(--font-numeral); font-size: var(--text-3xl); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; } .ds-hl-n span { font-family: var(--font-sans); font-size: var(--text-base); font-weight: 500; margin: 0 2px; } .ds-chg { display: inline-flex; align-items: center; gap: var(--space-1); margin-top: var(--space-2); padding: 2px 6px; border-radius: var(--radius-sm); background: var(--surface-raised); font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; } .ds-chg-worse { color: var(--state-failed); } .ds-hl-c { margin-top: var(--space-2) !important; font-size: var(--text-xs); color: var(--highlight-fg-2); font-variant-numeric: tabular-nums; } .ds-hl-a { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-6); margin-top: var(--space-5); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--highlight-inset); color: inherit; text-decoration: none; font-size: var(--text-sm); } .ds-hl-a b { font-family: var(--font-numeral); font-size: var(--text-2xl); font-variant-numeric: tabular-nums; } .ds-hl-a:hover { background: var(--highlight-inset-hover); } .ds-hl-a:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; } .ds-hl-go { margin-left: auto; display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--text-xs); }"
+    },
+    {
+      "name": "Constraint Lane",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Factory-floor lanes; the constraint lane tinted orange and named in words.",
+      "html": "<ol class=\"ds-lanes\"><li><span class=\"ds-ln\">実装</span><span class=\"ds-lc\">0</span><span class=\"ds-la\">1 タスク平均<b>29分36秒</b></span></li><li class=\"ds-hot\"><span class=\"ds-ln\">検証</span><span class=\"ds-lc\">0</span><span class=\"ds-lh\">最も長い工程</span><span class=\"ds-la\">1 タスク平均<b>31分44秒</b></span></li><li><span class=\"ds-ln\">仕様</span><span class=\"ds-lc ds-lw\">1</span><span class=\"ds-lx\">人待ち 1</span><span class=\"ds-la\">1 タスク平均<b>8分12秒</b></span></li></ol>",
+      "css": ".ds-lanes { font-family: var(--font-sans); display: grid; grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); margin: 0; padding: 0; list-style: none; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; background: var(--surface-raised); } .ds-lanes li { display: flex; flex-direction: column; min-height: 8rem; padding: var(--space-3); border-left: 1px solid var(--border-subtle); } .ds-lanes li:first-child { border-left: 0; } .ds-ln { font-size: var(--text-sm); color: var(--text-secondary); } .ds-lc { margin-top: var(--space-1); font-family: var(--font-numeral); font-size: var(--text-2xl); font-weight: 700; line-height: 1.25; color: var(--text-tertiary); font-variant-numeric: tabular-nums; } .ds-lw { color: var(--state-waiting); } .ds-lx { font-size: var(--text-xs); color: var(--text-secondary); } .ds-lh { font-size: var(--text-xs); font-weight: 600; color: var(--chart-limit-text); } .ds-la { margin-top: auto; padding-top: var(--space-2); border-top: 1px solid var(--border-subtle); font-size: var(--text-xs); color: var(--text-secondary); font-variant-numeric: tabular-nums; } .ds-la b { display: block; font-size: var(--text-sm); font-weight: 400; } .ds-hot { background: var(--chart-limit-bg); } .ds-hot .ds-ln, .ds-hot .ds-la { color: var(--chart-limit-text); font-weight: 600; }"
+    },
+    {
+      "name": "Time Breakdown Row",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Per-stage time per task: work in series blue, waits hatched, the longest stage orange with its chip.",
+      "html": "<table class=\"ds-tb\"><tr><th>実装</th><td><div class=\"ds-bar\" style=\"width:82%\"></div></td><td class=\"ds-v\">29分36秒</td><td class=\"ds-p\">34%</td></tr><tr class=\"ds-tb-hot\"><th>検証<span class=\"ds-tchip\">最も長い工程</span></th><td><div class=\"ds-bar ds-bar-hot\" style=\"width:88%\"></div></td><td class=\"ds-v\">31分44秒</td><td class=\"ds-p\">36%</td></tr><tr><th>人の判断待ち</th><td><div class=\"ds-bar ds-bar-wait\" style=\"width:10%\"></div></td><td class=\"ds-v\">51秒</td><td class=\"ds-p\">1%</td></tr></table>",
+      "css": ".ds-tb { font-family: var(--font-sans); width: 100%; border-collapse: collapse; font-size: var(--text-sm); color: var(--text-primary); } .ds-tb th { padding: var(--space-1) var(--space-3) var(--space-1) 0; text-align: left; font-weight: 400; white-space: nowrap; } .ds-tb td { padding: var(--space-1) 0; } .ds-tb td:nth-child(2) { width: 100%; } .ds-bar { height: 14px; border-radius: 2px; background: var(--chart-1); } .ds-bar-hot { background: var(--chart-limit); } .ds-bar-wait { background: repeating-linear-gradient(135deg, var(--chart-3) 0 var(--size-hatch), transparent var(--size-hatch) calc(var(--size-hatch) * 2)); box-shadow: inset 0 0 0 1px var(--chart-1); } .ds-tb-hot th { color: var(--chart-limit-text); font-weight: 600; } .ds-tchip { margin-left: var(--space-2); padding: 2px 6px; border-radius: var(--radius-sm); background: var(--chart-limit-bg); color: var(--chart-limit-text); font-size: var(--text-xs); font-weight: 600; } .ds-v { padding-left: var(--space-3) !important; text-align: right; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; } .ds-p { padding-left: var(--space-3) !important; text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The QC Factory Report",
+    "overview": "**Creative North Star: \"The QC Factory Report\"**\n\nThe UI reads like a quality-control report on a running factory, drawn on the Digital Agency design system. The pinned reference is デジタル庁「ダッシュボードデザインの実践ガイドブック」(2026-03-31); its palette, its six-column dashboard grid and its chart rules are the system's own materials, and its checklist (pp. 53-55) is the acceptance list. The page leads with the whole flow (pace, the stage strip, the control chart, the stop-reason Pareto) and every mark leads down to a task, a run, a call.\n\nThe ground is white cards on a near-white canvas, ruled by one-pixel hairlines. A page has at most one filled region; on 工場 it is the deep blue block that carries the week's headline figures. Colour is assigned by meaning, not by decoration. Blue is the factory itself, Orange is a limit or the constraint, Yellow is a person being waited on, Red is a stop. Everything else is Solid Gray. The density is a laptop dashboard: 12-14px text, tabular figures in fixed columns, controls 32px tall, growing to 44px on touch screens.\n\nLight and dark schemes are both first-class: every semantic token holds its pair in `light-dark()` and follows the OS; the design page shows the other scheme by setting `color-scheme` on a pane. The direction contract named Noto Sans JP for everything and light values only; the build bundles only Noto Sans JP's Latin 700 subset (about 13 KB) for headline numbers, keeps words on the system faces so the page still works offline, and ships both schemes. This file records the build.",
+    "keyCharacteristics": [
+      "Digital Agency palette; Blue, Orange, Yellow, Red each mean one thing.",
+      "At most one filled blue block on a page (shipped on 工場); everything else is white cards on hairlines.",
+      "Every chart starts at 0, uses at most five colours, and never tells series or states apart by colour alone.",
+      "Numbers are tabular and sit in fixed, right-aligned columns that never move between polls.",
+      "All wording comes from `src/ui/glossary.ts`; all values come from `src/ui/app.css`."
+    ],
+    "rules": [
+      {
+        "name": "The One Meaning Rule",
+        "body": "Blue is the factory and its series, Orange is a limit or the constraint, Yellow is a person being waited on, Red is a stop or a worse result. A colour never takes another colour's meaning, and waiting is never Orange.",
+        "section": "colors"
+      },
+      {
+        "name": "The Outlined Pale Rule",
+        "body": "Every `chart-3` fill, band or hatch, in a chart and in its legend swatch, carries a 1px `chart-1` outline or centre line. The outline holds 3:1 against the card; the pale fill alone does not.",
+        "section": "colors"
+      },
+      {
+        "name": "The Five Colours Rule",
+        "body": "One chart carries at most five colours: `chart-1`, `chart-3`, `limit`, `stop`, and gray. Each is also told apart by shape (circle against triangle), pattern (hatch), line style (solid against dashed), or a word beside it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Neutral Done Rule",
+        "body": "Colour is for the three states that ask for attention: waiting, failed, running. A finished run, and any state that asks for nothing, is gray (`done`).",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Every number is set with tabular figures: times, table cells, definition values, IDs, costs, durations, counts.",
+        "section": "typography"
+      },
+      {
+        "name": "The Figure Face Rule",
+        "body": "Display, headline and figure numbers use the figure face (`--font-numeral`, utility `font-figure`); words never do. Only the Latin 700 subset is bundled.",
+        "section": "typography"
+      },
+      {
+        "name": "The Mono Is Code Rule",
+        "body": "Monospace is for IDs, paths, commands and logs only, never for a number or a label because it looks technical.",
+        "section": "typography"
+      },
+      {
+        "name": "The Glossary Rule",
+        "body": "No fixed word is written in a component or screen; every word comes from `src/ui/glossary.ts`. A test fails on any Japanese text found in a drawing file.",
+        "section": "typography"
+      },
+      {
+        "name": "The Still Columns Rule",
+        "body": "Columns never move on refresh; only values change.",
+        "section": "layout"
+      },
+      {
+        "name": "The No Raw Values Rule",
+        "body": "Components carry no hex, `rgb()`/`oklch()`, `px` value, or arbitrary type or spacing size; a test enforces it. Values live in `app.css` tokens and the Tailwind utilities named after them. Client files stay within 300 lines.",
+        "section": "layout"
+      },
+      {
+        "name": "The Hairline Rule",
+        "body": "Cards and rows are separated by 1px `line` rules; a card is never lifted with a shadow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** give every display figure a comparison beside it: last week, the 4-week mean, a median.",
+      "**Do** start every chart's value axis at 0, with the zero line in `chart-axis` and gridlines in `chart-grid`.",
+      "**Do** tell series and states apart by shape, hatch, line style or a word as well as colour.",
+      "**Do** write states in words; the waiting badge adds the pause mark, the running badge the pulsing dot.",
+      "**Do** mark the constraint with Orange and its name (最も長い工程), never with Orange alone.",
+      "**Do** take every value from an `app.css` token and every word from `glossary.ts`.",
+      "**Do** keep text at 4.5:1 and chart marks at 3:1 against their ground, in both schemes (PRODUCT.md's accessibility commitment)."
+    ],
+    "donts": [
+      "**Don't** use Orange for a waiting state; waiting is Yellow.",
+      "**Don't** put more than five colours on one chart.",
+      "**Don't** use the `highlight` fill for anything but the headline block and the primary button.",
+      "**Don't** lift a card with a shadow; the pop shadow is for floating elements.",
+      "**Don't** set numbers, labels or headings in monospace.",
+      "**Don't** write a hex, `rgb()`, `px` value or arbitrary text or spacing size in a component or screen file.",
+      "**Don't** let a refresh move a column."
+    ]
+  }
+}

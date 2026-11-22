@@ -39,7 +39,7 @@ function Fact({
     <div className="flex min-w-0 flex-col" title={title}>
       <dt className="text-fg-2 text-xs">{label}</dt>
       <dd
-        className={`font-code text-base font-semibold whitespace-nowrap ${value === UNKNOWN ? 'text-fg-3' : 'text-fg'}`}
+        className={`text-base font-semibold whitespace-nowrap tabular-nums ${value === UNKNOWN ? 'text-fg-3' : 'text-fg'}`}
       >
         {value}
         {children}

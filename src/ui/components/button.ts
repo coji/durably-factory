@@ -1,6 +1,6 @@
 /**
- * The three button looks. None carries a color: the primary one is set in
- * ink, the secondary one in the page's own surface with a line around it,
+ * The three button looks. Only the primary one carries a color, the
+ * factory's blue, as the Digital Agency design system's primary button does; the secondary one in the page's own surface with a line around it,
  * and the quiet one, for an action that takes something away, in plain
  * text until hovered.
  */
@@ -9,7 +9,7 @@ const BASE =
 
 export const BUTTON = `${BASE} border-line-strong bg-raised text-fg-2 enabled:hover:text-fg`
 
-export const BUTTON_PRIMARY = `${BASE} border-transparent bg-fg text-inverse font-medium enabled:hover:bg-fg/85`
+export const BUTTON_PRIMARY = `${BASE} border-transparent bg-highlight text-on-highlight font-medium enabled:hover:bg-highlight/85`
 
 export const BUTTON_QUIET = `${BASE} border-transparent bg-transparent text-fg-2 enabled:hover:border-line-strong enabled:hover:text-fg`
 

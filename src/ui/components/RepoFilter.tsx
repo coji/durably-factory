@@ -1,7 +1,7 @@
 import { REPO } from '../glossary'
-import { pageHref } from '../route'
+import { pageHref, type ListPage } from '../route'
 import type { RepoScope } from '../server'
-import { segment, SEGMENTS } from './button'
+import { segment } from './button'
 
 /**
  * Which repository the page counts, as links, so the choice lives in the
@@ -13,7 +13,7 @@ export function RepoFilter({
   page,
   scope,
 }: {
-  page: 'runs' | 'compare'
+  page: ListPage
   scope: RepoScope
 }) {
   if (scope.repos.length < 2) return null
@@ -33,7 +33,23 @@ export function RepoFilter({
   return (
     <nav aria-label={REPO.label} className="mb-4 flex flex-col gap-1">
       <span className="text-fg-2 text-xs">{REPO.label}</span>
-      <ul className={`${SEGMENTS} flex-wrap`}>
+      {/* A phone has no room for every repository side by side. */}
+      <select
+        aria-label={REPO.label}
+        value={scope.repo ?? ''}
+        onChange={(e) => {
+          window.location.hash = pageHref(page, e.target.value || undefined)
+        }}
+        className="border-line-strong bg-raised text-fg min-h-11 rounded-md border px-3 text-sm sm:hidden"
+      >
+        <option value="">{REPO.all}</option>
+        {scope.repos.map((r) => (
+          <option key={r.key} value={r.key}>
+            {r.name}
+          </option>
+        ))}
+      </select>
+      <ul className="bg-sunken hidden flex-wrap self-start rounded-md p-1 sm:inline-flex">
         {option(null, REPO.all)}
         {scope.repos.map((r) => option(r.key, r.name))}
       </ul>

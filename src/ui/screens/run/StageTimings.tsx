@@ -82,9 +82,9 @@ function StageLine({
           />
         ) : null}
       </span>
-      <span className="font-code text-right">{work}</span>
-      <span className="font-code text-fg-2 text-right">{wall}</span>
-      <span className="font-code text-right">{cost}</span>
+      <span className="text-right tabular-nums">{work}</span>
+      <span className="text-fg-2 text-right tabular-nums">{wall}</span>
+      <span className="text-right tabular-nums">{cost}</span>
     </li>
   )
 }

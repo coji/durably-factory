@@ -18,6 +18,13 @@ import {
   WorktreeStates,
 } from './design/BasicSpecimens'
 import {
+  ControlStates,
+  FloorStates,
+  ParetoStates,
+  TimeStates,
+  WeeklyStates,
+} from './design/ChartSpecimens'
+import {
   CollapsibleStates,
   KeyValueStates,
   MetricStates,
@@ -31,6 +38,11 @@ import { HighlightStates } from './design/ReviewSpecimens'
 import { Specimen } from './design/Specimen'
 
 const PARTS: [keyof typeof DESIGN.part, () => ReactNode][] = [
+  ['floor', FloorStates],
+  ['controlChart', ControlStates],
+  ['pareto', ParetoStates],
+  ['timeBreakdown', TimeStates],
+  ['weekly', WeeklyStates],
   ['badge', BadgeStates],
   ['overview', OverviewStates],
   ['taskRow', TaskRowStates],
@@ -55,7 +67,13 @@ const PARTS: [keyof typeof DESIGN.part, () => ReactNode][] = [
 ]
 
 /** Parts wider than half the page: they get the full width per scheme. */
-const WIDE = new Set<keyof typeof DESIGN.part>(['table', 'trace'])
+const WIDE = new Set<keyof typeof DESIGN.part>([
+  'table',
+  'trace',
+  'floor',
+  'controlChart',
+  'weekly',
+])
 
 /**
  * Every component in each of its states, in light and dark side by side,

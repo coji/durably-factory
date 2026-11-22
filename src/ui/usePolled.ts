@@ -14,10 +14,14 @@ export interface PollState<T> {
 }
 
 /**
- * Fetch `url` now and every 3 seconds, one request at a time. Leaving the
+ * Fetch `url` now and every `intervalMs` (3 seconds unless given), one
+ * request at a time. Leaving the
  * page aborts the request in flight and stops the timer.
  */
-export function usePolled<T>(url: string): PollState<T> {
+export function usePolled<T>(
+  url: string,
+  intervalMs: number = REFRESH_MS,
+): PollState<T> {
   const [state, setState] = useState<PollState<T>>({
     data: null,
     error: null,
@@ -28,7 +32,7 @@ export function usePolled<T>(url: string): PollState<T> {
     () =>
       pollJson<T>(
         url,
-        REFRESH_MS,
+        intervalMs,
         (data) =>
           setState((s) => ({
             data,
@@ -38,7 +42,7 @@ export function usePolled<T>(url: string): PollState<T> {
           })),
         (error) => setState((s) => ({ ...s, error, recovered: false })),
       ),
-    [url],
+    [url, intervalMs],
   )
   return state
 }

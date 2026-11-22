@@ -82,7 +82,7 @@ export function Figure({
       <dt className="text-fg-2 text-xs">{label}</dt>
       <dd className="flex flex-wrap items-baseline gap-x-2">
         <span
-          className={`font-code text-xl leading-tight font-semibold ${value === UNKNOWN ? 'text-fg-3' : 'text-fg'}`}
+          className={`font-figure text-xl leading-tight font-bold tabular-nums ${value === UNKNOWN ? 'text-fg-3' : 'text-fg'}`}
         >
           {value}
         </span>

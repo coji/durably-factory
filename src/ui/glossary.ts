@@ -607,9 +607,10 @@ export const SHELL = {
   product: 'durably-factory',
   skipToContent: '本文へ移動',
   nav: '画面',
-  runs: 'タスク一覧',
-  compare: '集計',
-  back: '← タスク一覧',
+  factory: '工場',
+  runs: 'タスク',
+  compare: '振り返り',
+  back: 'タスク',
   runFallback: '実行の詳細',
 } as const
 
@@ -618,7 +619,8 @@ export const REFRESH = {
   failedAlert: '更新に失敗しました。直近の表示のままです。',
   failed: '更新に失敗しました。',
   staleAt: (at: string) => `${at} 時点の表示のままです。`,
-  freshAt: (at: string) => `${at} 時点 · 3 秒ごとに更新`,
+  freshAt: (at: string) => `${at} 時点`,
+  every: ' · 3 秒ごとに更新',
   recovered: '更新が再開しました',
   loadFailed: (error: string) => `読み込めませんでした: ${error}`,
 } as const
@@ -1063,7 +1065,45 @@ export const DESIGN = {
   contents: '部品',
   light: 'ライト',
   dark: 'ダーク',
+  chart: {
+    floorBusy: '工程にタスクがある(最も多い工程を示す)',
+    floorIdle: '動いているタスクがない',
+    controlAbove: '上限を超えたタスクがある',
+    controlRun: '平均の片側に 9 点以上続く(水準が変わった)',
+    controlFew: '配送したタスクが 2 件未満',
+    paretoMany: '止まった理由がある',
+    paretoNone: '止まったタスクがない',
+    timeLongest: '最も長い工程を示す',
+    throughput: '週ごとの配送数',
+    leadTime: '週ごとのリードタイム',
+    tokens: '週ごとのトークン(不明を含む週がある)',
+    rework: '工程の手戻り',
+  },
   part: {
+    floor: {
+      name: 'いま工程にあるタスク',
+      about:
+        '工程の列は動かさず、件数だけが変わります。最も多い工程だけをオレンジにし、言葉でも示します。',
+    },
+    controlChart: {
+      name: '管理図',
+      about:
+        '配送したタスクのリードタイムを終わった順に打ちます。上限を超えた点は赤い三角にし、新しいものから名前を添えます。',
+    },
+    pareto: {
+      name: 'パレート図',
+      about: '止まった理由を多い順に並べ、累積の割合を四角の印の線で重ねます。',
+    },
+    timeBreakdown: {
+      name: '時間の内訳',
+      about:
+        '工程ごとの時間を同じ尺度で並べます。最も長い工程をオレンジにし、待ちは斜線で区別します。',
+    },
+    weekly: {
+      name: '週ごとの図',
+      about:
+        '原点は 0 です。色は 5 色までにし、停止や不明は模様や点線でも区別します。',
+    },
     badge: {
       name: '状態バッジ',
       about: '色が付くのは人待ち、失敗、実行中の三つだけです。',
@@ -1226,5 +1266,170 @@ export const DESIGN = {
     empty: '終わった実行はまだありません。',
     metricNote: '直近 10 件の中央値',
     section: 'レビュー',
+  },
+} as const
+
+// ---------------------------------------------------------------- factory
+
+/** The factory's floor: lanes of the pipeline, in order. */
+export const LANE_NAME = {
+  prepare: '準備',
+  spec: '仕様',
+  code: '実装',
+  verify: '検証',
+  review: 'レビュー',
+  approve: '承認',
+  finish: '配送',
+} as const
+
+/** Where a task's lead time went, beside the stage names. */
+export const TIME_PART_NAME: Record<string, string> = {
+  'human-wait': '人の判断待ち',
+  'slot-wait': 'ワーカー待ち',
+  between: '工程の間',
+}
+
+export const FACTORY = {
+  delivered: '今週配送したタスク',
+  deliveredUnit: '件',
+  vsLastWeek: (n: string) => `前週 ${n} 件`,
+  vsAverage: (n: string) => `前 4 週の平均 ${n} 件`,
+  leadTime: 'リードタイム(中央値)',
+  leadTimeNote: '今週配送したタスク',
+  vsLastWeekTime: (t: string) => `前週 ${t}`,
+  noDeliveredYet: '今週はまだありません',
+  decision: '判断待ち',
+  stopped: '止まったまま',
+  openList: 'タスクを開く',
+  floor: 'いま工程にあるタスク',
+  floorNote: '実行中・人待ち・順番待ちを含む',
+  floorRunning: (n: string) => `実行中 ${n}`,
+  floorWaiting: (n: string) => `人待ち ${n}`,
+  floorQueued: (n: string) => `順番待ち ${n}`,
+  floorLongest: (t: string) => `最長 ${t}`,
+  floorHot: '最も長い工程',
+  floorAverage: '1 タスク平均',
+  floorConstraint: (lane: string, share: string) =>
+    `直近 30 日、1 タスクの時間の ${share} を「${lane}」が占めています。ここを短くすると全体が速くなります。`,
+  sameAsLastWeek: '前週と同じくらい',
+  bothZero: '前週も 0 件',
+  moreThanLastWeek: (n: string) => `前週比 +${n} 件`,
+  fewerThanLastWeek: (n: string) => `前週比 −${n} 件`,
+  slowerThanLastWeek: (x: string) => `${x} 倍に悪化`,
+  fasterThanLastWeek: (x: string) => `${x} 倍に改善`,
+  floorEmpty: '動いているタスクはありません',
+  control: 'タスクごとのリードタイム',
+  controlKind: '管理図 · 終わった順',
+  controlNote: (n: string, days: string) => `直近 ${days} 日に配送した ${n} 件`,
+  controlMean: (t: string) => `平均 ${t}`,
+  controlUpper: (t: string) => `上限 ${t}`,
+  controlAbove: (n: string) => `上限を超えたタスク ${n} 件`,
+  controlNone: '上限を超えたタスクはありません',
+  controlHelp:
+    '上限は「平均 + 2.66 × 隣り合うタスクの差の平均」です。上限を超えたタスクは、ふだんと違う理由で時間がかかっています。下の図は隣り合うタスクの差で、上限(差の平均 × 3.267)を超えたところは、そこで時間のかかり方が急に変わりました。平均の同じ側に 9 点以上続いたところはオレンジの帯で示します。上限の中でも、時間のかかり方の水準が変わっています。',
+  controlTooFew: '配送したタスクが 2 件以上になると表示します。',
+  stops: '止まった理由',
+  stopsKind: 'タスク数 · 多い順',
+  days: (n: string) => `${n} 日`,
+  stopsCumulative: '累積の割合',
+  stopsPareto: '80% の線',
+  controlOthers: (n: string) => `ほか ${n} 件も上限を超えています`,
+  controlRun: (side: string, n: string) => `平均より${side}に ${n} 点続く`,
+  above: '上',
+  below: '下',
+  aboveWeek: (week: string, n: string) =>
+    `${week.replace(/〜$/, '')} の週に ${n} 件が上限超え`,
+  rangeTitle: '前のタスクとの差(移動範囲)',
+  rangeAbove: (n: string) => `急に変わったところ ${n} か所`,
+  stopsEmpty: 'この期間に止まったタスクはありません',
+  time: '1 タスクあたりの時間の内訳',
+  timeNote: (n: string) => `直近 30 日に終わった ${n} 件の平均`,
+  timeLongest: '最も長い工程',
+  timeEmpty: 'この期間に終わったタスクはありません',
+  flowLoading: '集計しています…',
+  fakeOnly: (n: string) =>
+    `直近 30 日に終わったタスクは模擬のタスク ${n} 件だけです。`,
+  includeFake: '模擬のタスクも含めて表示',
+  excludeFake: '模擬のタスクを除く',
+  includesFake: '模擬のタスクを含めて表示しています。',
+  dataAsOf: (at: string) => `${at} 時点のデータ`,
+  definition: '数え方',
+  definitionBody:
+    'スループットは承認して配送したタスクの数です。修正の実行は最初のタスクにまとめます。マージは工場の外の出来事で、記録していません。リードタイムはタスクの実行それぞれの登録から終了までの合計で、実行の間の空き時間は含みません。',
+} as const
+
+export const RETRO = {
+  throughput: '週ごとの配送数',
+  throughputNote: '承認して配送したタスク · 却下と停止を積み上げ',
+  leadTime: '週ごとのリードタイム',
+  leadTimeNote: '配送したタスクの中央値 · 縦線は最小〜最大',
+  usage: '週ごとのトークン',
+  usageNote: 'プロバイダー別 · 不明を含む週は印を付けます',
+  cost: '週ごとの費用(API 換算)',
+  costNote: 'サブスクリプションの請求額ではありません',
+  rework: '工程の手戻り',
+  reworkNote: '2 回以上入ったタスクの割合',
+  legendDelivered: '配送',
+  legendRejected: '却下',
+  legendStopped: '停止',
+  legendUnknown: '不明を含む',
+  details: '設定ごとの詳しい数字',
+} as const
+
+export const RUN_RETRO = {
+  title: 'この実行の時間',
+  kind: '工程ごと · 直近 30 日の 1 タスク平均と比べる',
+  part: '工程',
+  thisRun: 'この実行',
+  average: '30 日の平均',
+  leadTime: 'リードタイム',
+  mean: (t: string) => `配送したタスクの平均 ${t}`,
+  upper: (t: string) => `上限 ${t}`,
+  aboveUpper: '上限を超えています',
+  longest: 'この実行で最も長い',
+  reworkMost: '手戻りが最も多い',
+  open: '実行が終わると、工程ごとの時間を平均と比べて表示します。',
+  unknown: '一部の時間が記録されていないため、内訳を出せません。',
+} as const
+
+/** Words inside the charts: legends, summaries for screen readers, folds. */
+export const CHART = {
+  restReasons: (n: string) => `その他 ${n} 種`,
+  restParts: (n: string) => `その他 ${n} 件`,
+  tasks: (n: string) => `${n} 件`,
+  ofTasks: (part: string, all: string) => `${part}/${all} 件`,
+  reasonCount: (label: string, n: string) => `${label} ${n} 件`,
+  part: '工程',
+  time: '時間',
+  share: '割合',
+  total: '合計',
+  median: '中央値',
+  range: '最小〜最大',
+  unknownProvider: '不明',
+  unknownTokens: '不明を含む',
+  noData: 'データがありません',
+  thisWeek: '今週',
+  weekCounts: (week: string, d: string, r: string, s: string) =>
+    `${week} 配送 ${d} 件、却下 ${r} 件、停止 ${s} 件`,
+  weekMedian: (week: string, t: string) => `${week} 中央値 ${t}`,
+  pace: '今週の流れ',
+  attention: '判断が要るタスク',
+  attentionKind: (n: string) => `${n} 件 · 判断待ちが先`,
+  attentionMore: (n: string) => `ほか ${n} 件をタスクで見る`,
+  sentence: (...parts: string[]) => parts.join('。'),
+  list: (...parts: string[]) => parts.join('、'),
+} as const
+
+/** The heads over a task list's number columns, and its orders. */
+export const LIST_HEAD = {
+  runs: '実行',
+  leadTime: 'リードタイム',
+  cost: '費用',
+  ago: '最後の実行',
+  sort: '並び順',
+  order: {
+    newest: '新しい順',
+    leadTime: 'リードタイムの長い順',
+    cost: '費用の多い順',
   },
 } as const

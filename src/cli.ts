@@ -749,6 +749,7 @@ Commands:
   ${FACTORY_COMMAND} report --run <id> [--format json|md] [--out <file>]
   ${FACTORY_COMMAND} compare --runs <id,id,...> [--format json|md] [--out <file>]
   ${FACTORY_COMMAND} compare --trend [--days 30] [--include-fake] [--format json|md] [--out <file>]
+  ${FACTORY_COMMAND} compare --flow [--days 30] [--include-fake] [--format json|md] [--out <file>]
                                             tasks whose newest run finished in the last --days days,
                                             by that week (Monday, local time) and the first run's
                                             code model/effort: first-pass and final approval, and
@@ -1674,6 +1675,44 @@ if (cmd === 'worker') {
   const text =
     format === 'json' ? reportToJson(report) : reportToMarkdown(report)
   await emit(text, a['out'])
+  await durably.db.destroy()
+} else if (cmd === 'compare' && args()['flow'] === 'true') {
+  const a = args()
+  // Every flag is checked before the database is opened.
+  if (a['runs'] !== undefined || a['trend'] !== undefined)
+    throw new Error(
+      '--flow reads every finished run; leave out --runs and --trend',
+    )
+  const days = parseTrendDays(a['days'])
+  const includeFake = a['include-fake'] === 'true'
+  const format = a['format'] ?? 'md'
+  if (format !== 'md' && format !== 'json')
+    throw new Error('--format must be md or json')
+  const { flowOf, flowToMarkdown } = await import('./engine/flow.js')
+  const { runName, scopeRuns } = await import('./ui/server.js')
+  const durably = createAgentDurably({ stateRoot })
+  await durably.migrate()
+  const now = Date.now()
+  const runs = await durably.getRuns({ jobName: durably.jobs.agentLoop.name })
+  const { own } = scopeRuns(runs, null)
+  const rows = runs.map((run) => ({ ...run, parentId: repairParentId(run) }))
+  const read = new Set(trendRunIds(rows, { now, days }))
+  const children = repairChildrenByParent(runs)
+  const entries = []
+  for (const row of rows.filter((r) => read.has(r.id)))
+    entries.push({
+      ...row,
+      name: runName(row.input),
+      repo: own.get(row.id)?.name ?? '',
+      report: await buildReport(durably, row.id, {
+        children: children.get(row.id) ?? [],
+      }),
+    })
+  const flow = flowOf(entries, { now, days, includeFake })
+  await emit(
+    format === 'json' ? JSON.stringify(flow, null, 2) : flowToMarkdown(flow),
+    a['out'],
+  )
   await durably.db.destroy()
 } else if (cmd === 'compare' && args()['trend'] === 'true') {
   const a = args()

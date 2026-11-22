@@ -30,6 +30,9 @@ export function RefreshStatus({ polled }: { polled: PollState<unknown> }) {
       ) : (
         <p className="tabular-nums">
           {at ? REFRESH.freshAt(at) : REFRESH.loading}
+          {at ? (
+            <span className="hidden sm:inline">{REFRESH.every}</span>
+          ) : null}
         </p>
       )}
       <p role="status" className="sr-only">
@@ -52,7 +55,7 @@ function NavLink({
     <a
       href={href}
       aria-current={current ? 'page' : undefined}
-      className={`inline-flex min-h-8 items-center rounded-md px-2 text-sm ${current ? 'bg-sunken text-fg font-medium' : 'text-fg-2 hover:text-fg'}`}
+      className={`inline-flex min-h-9 items-center rounded-md px-3 text-sm no-underline ${current ? 'bg-brand-soft text-brand font-semibold' : 'text-fg-2 hover:bg-sunken hover:text-fg'}`}
     >
       {children}
     </a>
@@ -60,8 +63,8 @@ function NavLink({
 }
 
 /**
- * The sticky header with the two screens, and the page below it. Both
- * screens open narrowed to `repo`, the repository last chosen.
+ * The sticky header with the three screens, and the page below it. Every
+ * screen opens narrowed to `repo`, the repository last chosen.
  */
 export function Shell({
   route,
@@ -84,10 +87,25 @@ export function Shell({
       >
         {SHELL.skipToContent}
       </button>
-      <header className="border-line bg-canvas sticky top-0 z-(--z-sticky) border-b">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2 sm:px-6">
-          <span className="text-sm font-semibold">{SHELL.product}</span>
+      {/* On a phone the header scrolls away, so the page gets the screen. */}
+      <header className="border-line bg-raised top-0 z-(--z-sticky) border-b sm:sticky">
+        <div className="mx-auto flex max-w-(--size-page) flex-wrap items-center gap-x-8 gap-y-1 px-4 py-2 sm:px-8">
+          <a
+            href={pageHref('factory', repo)}
+            className="text-fg flex basis-full items-center gap-2 text-base font-bold no-underline sm:basis-auto"
+          >
+            <svg aria-hidden viewBox="0 0 16 16" className="text-brand size-4">
+              <path d="M1 15V6l4 3V6l4 3V6l4 3V1h2v14z" fill="currentColor" />
+            </svg>
+            {SHELL.product}
+          </a>
           <nav aria-label={SHELL.nav} className="flex gap-1">
+            <NavLink
+              href={pageHref('factory', repo)}
+              current={route.page === 'factory'}
+            >
+              {SHELL.factory}
+            </NavLink>
             <NavLink
               href={pageHref('runs', repo)}
               current={route.page === 'runs' || route.page === 'run'}
@@ -104,7 +122,9 @@ export function Shell({
           {status ? <div className="ml-auto">{status}</div> : null}
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">{children}</main>
+      <main className="mx-auto max-w-(--size-page) px-4 py-6 sm:px-8">
+        {children}
+      </main>
     </div>
   )
 }
