@@ -130,7 +130,7 @@ export function TraceRow({
       </span>
       <span
         role="gridcell"
-        className="font-code text-fg-2 px-2 text-right text-xs whitespace-nowrap"
+        className="text-fg-2 px-2 text-right text-xs whitespace-nowrap tabular-nums"
       >
         {formatDuration(t.duration)}
         <span className="sr-only">

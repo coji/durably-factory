@@ -24,7 +24,7 @@ export function MetricCard({
     <div className="border-line bg-raised flex min-w-0 flex-col gap-1 rounded-lg border px-4 py-3">
       <dt className="text-fg-2 text-xs">{label}</dt>
       <dd
-        className={`font-code text-xl leading-tight font-semibold whitespace-nowrap ${value === UNKNOWN ? 'text-fg-3' : 'text-fg'}`}
+        className={`font-figure text-xl leading-tight font-bold whitespace-nowrap tabular-nums ${value === UNKNOWN ? 'text-fg-3' : 'text-fg'}`}
       >
         {value}
         {partial ? <PartialTag title={partial} /> : null}

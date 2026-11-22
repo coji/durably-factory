@@ -9,6 +9,7 @@ import { Section } from '../../components/Layout'
 import { BULK, LIST } from '../../glossary'
 import type { RunRow } from '../../server'
 import { BulkBar } from './BulkBar'
+import { MetaHead, SortSelect, sortTasks, type TaskSort } from './ListHead'
 import { SECTION_ID } from './Overview'
 import { taskName, Tasks, type Selection } from './Tasks'
 
@@ -66,8 +67,10 @@ export function StopTasks({
   actMany?: BulkAct
 }) {
   const [all, setAll] = useState(false)
+  const [sort, setSort] = useState<TaskSort>('newest')
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set())
-  const shown = all ? tasks : tasks.slice(0, STOP_PAGE)
+  const ordered = sortTasks(tasks, sort)
+  const shown = all ? ordered : ordered.slice(0, STOP_PAGE)
   const rest = tasks.length - shown.length
   const chosen = tasks.filter((t) => picked.has(t.id))
   const selection: Selection = {
@@ -90,17 +93,21 @@ export function StopTasks({
       title={LIST.stopped}
       count={tasks.length}
       tools={
-        actMany ? (
-          <SelectAll
-            chosen={chosen.length}
-            total={tasks.length}
-            onChange={(on) =>
-              setPicked(on ? new Set(tasks.map((t) => t.id)) : new Set())
-            }
-          />
-        ) : null
+        <>
+          <SortSelect sort={sort} onSort={setSort} />
+          {actMany ? (
+            <SelectAll
+              chosen={chosen.length}
+              total={tasks.length}
+              onChange={(on) =>
+                setPicked(on ? new Set(tasks.map((t) => t.id)) : new Set())
+              }
+            />
+          ) : null}
+        </>
       }
     >
+      <MetaHead />
       <Tasks
         tasks={shown}
         rows={rows}

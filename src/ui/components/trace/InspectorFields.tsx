@@ -15,7 +15,7 @@ import {
 import { stageName } from '../../labels'
 import type { TraceNode, TraceProfile } from '../../server'
 import { InlineField, PartialTag } from '../KeyValue'
-import { exactTime, Num } from '../Time'
+import { exactTime, Code, Num } from '../Time'
 import { liveTimes } from './model'
 
 export function UsageFields({
@@ -61,7 +61,7 @@ export function UsageFields({
 /** A time from the run's start; the exact time on hover. */
 function Offset({ ms, iso }: { ms: number | null; iso: string | null }) {
   return (
-    <span title={exactTime(iso)} className="font-code">
+    <span title={exactTime(iso)} className="tabular-nums">
       {ms === null ? UNKNOWN : `+${formatDuration(ms)}`}
     </span>
   )
@@ -130,14 +130,14 @@ export function ProfileFields({ profile: p }: { profile: TraceProfile }) {
     <>
       <InlineField label={TRACE.provider}>{p.provider ?? UNKNOWN}</InlineField>
       <InlineField label={TRACE.model}>
-        <Num>{p.model ?? COMMON.defaultSetting}</Num>
+        <Code>{p.model ?? COMMON.defaultSetting}</Code>
       </InlineField>
       <InlineField label={TRACE.effort}>
-        <Num>{p.effort ?? COMMON.defaultSetting}</Num>
+        <Code>{p.effort ?? COMMON.defaultSetting}</Code>
       </InlineField>
       {p.reportedModel && p.reportedModel !== p.model ? (
         <InlineField label={TRACE.reportedModel}>
-          <Num>{p.reportedModel}</Num>
+          <Code>{p.reportedModel}</Code>
         </InlineField>
       ) : null}
     </>
@@ -157,10 +157,10 @@ export function CandidateFields({
         </InlineField>
       ) : null}
       <InlineField label={TRACE.branch}>
-        <Num>{c.branch ?? COMMON.none}</Num>
+        <Code>{c.branch ?? COMMON.none}</Code>
       </InlineField>
       <InlineField label={TRACE.commit}>
-        <Num>{c.commit?.slice(0, 12) ?? COMMON.none}</Num>
+        <Code>{c.commit?.slice(0, 12) ?? COMMON.none}</Code>
       </InlineField>
       {c.changes ? (
         <>

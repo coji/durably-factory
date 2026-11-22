@@ -1,39 +1,68 @@
 @import 'tailwindcss';
+/*
+ * The figure face: Noto Sans JP's Latin glyphs at 700, bundled with the
+ * page (13 KB), so headline numbers have the face the direction names and
+ * the page still needs no network. Kana and kanji beside them fall back
+ * glyph by glyph to the system Japanese face.
+ */
+@import '@fontsource/noto-sans-jp/latin-700.css';
 
 /*
- * Design tokens, as .ui-craft/tokens.md defines them. Each semantic token
- * holds its light and dark value in `light-dark()`, so the scheme follows
- * the OS and a box with its own `color-scheme` (the design page's light and
- * dark panes) shows the other one without a second set of rules.
+ * Design tokens. The palette is the Digital Agency design system's, as its
+ * dashboard guidebook (2026-03-31) sets it for charts: Blue for the factory
+ * and its series, Orange for a limit or the constraint, Red for a stop,
+ * Solid Gray for text and rules. Each semantic token holds its light and
+ * dark value in `light-dark()`, so the scheme follows the OS and a box with
+ * its own `color-scheme` (the design page's panes) shows the other one.
  */
 :root {
   color-scheme: light dark;
 
-  /* primitives */
-  --gray-50: oklch(98.5% 0.004 250);
-  --gray-100: oklch(96% 0.005 250);
-  --gray-200: oklch(91% 0.006 250);
-  --gray-300: oklch(84% 0.007 250);
-  --gray-400: oklch(70% 0.008 250);
-  --gray-500: oklch(56% 0.008 250);
-  --gray-600: oklch(45% 0.008 250);
-  --gray-700: oklch(35% 0.007 250);
-  --gray-800: oklch(25% 0.006 250);
-  --gray-900: oklch(19% 0.005 250);
-  --gray-950: oklch(14% 0.005 250);
-  --gray-1000: oklch(11% 0.005 250);
-  --white: oklch(100% 0 0);
-  --amber-500: oklch(72% 0.15 70);
-  --amber-700: oklch(52% 0.13 70);
-  --red-500: oklch(60% 0.19 25);
-  --red-700: oklch(48% 0.18 25);
-  --blue-500: oklch(62% 0.14 250);
-  --blue-700: oklch(48% 0.14 250);
+  /* primitives: Digital Agency palette */
+  --blue-50: #e8f1fe;
+  --blue-100: #d9e6ff;
+  --blue-200: #c5d7fb;
+  --blue-400: #7096f8;
+  --blue-500: #4979f5;
+  --blue-600: #3460fb;
+  --blue-900: #0017c1;
+  --blue-1200: #000060;
+  --orange-50: #ffeee2;
+  --orange-200: #ffc199;
+  --orange-400: #ff8d44;
+  --orange-600: #fb5b01;
+  --orange-900: #ac3e00;
+  --red-50: #fdeeee;
+  --red-200: #ffbbbb;
+  --red-400: #ff7171;
+  --red-600: #fe3939;
+  --red-900: #ce0000;
+  --yellow-50: #fff7cc;
+  --yellow-200: #ffe380;
+  --yellow-900: #6e5600;
+  --green-600: #259d63;
+  --green-900: #197a4b;
+  --gray-50: #f8f8fb;
+  --gray-100: #f1f1f4;
+  --gray-200: #e6e6ea;
+  --gray-300: #cccccc;
+  --gray-400: #999999;
+  --gray-536: #767676;
+  --gray-600: #626264;
+  --gray-700: #4d4d4d;
+  --gray-800: #333333;
+  --gray-900: #1a1a1a;
+  --ink-800: #1c1e24;
+  --ink-850: #17191e;
+  --ink-900: #121318;
+  --ink-950: #0c0d10;
+  --white: #ffffff;
 
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
   --space-12: 48px;
@@ -42,19 +71,24 @@
   --text-base: 14px;
   --text-lg: 16px;
   --text-xl: 20px;
+  --text-2xl: 28px;
+  --text-3xl: 40px;
   /*
-   * System fonts only. The Japanese faces come right after the Latin UI
-   * fonts, so kana and kanji never fall to a Chinese default.
+   * System fonts for text, so the page works offline; only the figure
+   * face below is bundled. The Japanese faces come
+   * right after the Latin UI fonts, so kana and kanji never fall to a
+   * Chinese default.
    */
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans',
     'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo', 'Noto Sans JP',
     system-ui, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --font-numeral: 'Noto Sans JP', var(--font-sans);
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 10px;
-  --shadow-pop: 0 4px 12px oklch(0% 0 0 / 0.08), 0 1px 3px oklch(0% 0 0 / 0.06);
+  --radius-lg: 8px;
+  --shadow-pop: 0 4px 12px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.06);
   --duration-fast: 150ms;
   /*
    * One full cycle of the running dot's slow pulse. It is the UI's only
@@ -68,6 +102,7 @@
   --z-toast: 50;
 
   /* layout: the few fixed widths the dense tables and the trace need */
+  --size-page: 88rem;
   --size-trace-max: 32rem;
   --size-inspector: 20rem;
   --size-label: 6.5rem;
@@ -81,30 +116,67 @@
   --size-touch: 44px;
   --size-scroll-margin: calc(var(--space-12) + var(--space-6));
   --size-hatch: 4px;
+  /* A dense hatch: a stop, a second provider; line and gap. */
+  --size-hatch-line: 2px;
+  --size-hatch-gap: 5px;
 
   /* semantics */
-  --surface-canvas: light-dark(var(--gray-50), var(--gray-950));
-  --surface-raised: light-dark(var(--white), var(--gray-900));
-  --surface-sunken: light-dark(var(--gray-100), var(--gray-1000));
-  --text-primary: light-dark(var(--gray-900), var(--gray-50));
-  --text-secondary: light-dark(var(--gray-600), var(--gray-400));
-  --text-tertiary: light-dark(oklch(52% 0.008 250), var(--gray-400));
-  --text-inverse: light-dark(var(--white), var(--gray-950));
-  --border-subtle: light-dark(oklch(0% 0 0 / 0.07), oklch(100% 0 0 / 0.07));
-  --border-default: light-dark(oklch(0% 0 0 / 0.13), oklch(100% 0 0 / 0.13));
-  --focus-ring: var(--blue-500);
-  --sheen: light-dark(oklch(100% 0 0 / 0.35), oklch(100% 0 0 / 0.18));
+  --surface-canvas: light-dark(var(--gray-50), var(--ink-950));
+  --surface-raised: light-dark(var(--white), var(--ink-900));
+  --surface-sunken: light-dark(var(--gray-100), var(--ink-800));
+  --text-primary: light-dark(var(--gray-900), #f2f2f4);
+  --text-secondary: light-dark(var(--gray-600), #b4b6bd);
+  --text-tertiary: light-dark(#6b6b6d, #9a9ca3);
+  --text-inverse: light-dark(var(--white), var(--ink-950));
+  --border-subtle: light-dark(var(--gray-200), #2a2d35);
+  --border-default: light-dark(var(--gray-300), #3a3e48);
+  --focus-ring: light-dark(var(--blue-600), var(--blue-400));
+  --sheen: light-dark(rgb(255 255 255 / 0.35), rgb(255 255 255 / 0.18));
+
+  /*
+   * The factory's own colour. The highlight block is the one place a
+   * region is filled with it; on it, text is white.
+   */
+  --brand: light-dark(var(--blue-900), var(--blue-400));
+  --brand-soft: light-dark(var(--blue-50), #1a2456);
+  --highlight: light-dark(var(--blue-900), #1d2d8f);
+  --highlight-fg: var(--white);
+  --highlight-fg-2: light-dark(#d9e6ff, #c5d7fb);
+  --highlight-inset: rgb(255 255 255 / 0.12);
+  --highlight-inset-hover: rgb(255 255 255 / 0.2);
+
+  /*
+   * Chart marks, at most five colours on one chart: the main series, a
+   * pale second (always outlined), the limit or constraint, a stop, gray.
+   * Each also differs by shape, pattern or a label beside it.
+   */
+  --chart-1: light-dark(var(--blue-600), var(--blue-400));
+  /*
+   * Too pale to stand on its own (1.45:1 on white): every fill in it also
+   * carries a 1px `chart-1` outline, which holds 3:1.
+   */
+  --chart-3: light-dark(var(--blue-200), #2b3a73);
+  --chart-limit: light-dark(var(--orange-600), var(--orange-400));
+  --chart-limit-text: light-dark(var(--orange-900), var(--orange-200));
+  --chart-limit-bg: light-dark(var(--orange-50), #3a2416);
+  --chart-stop: light-dark(var(--red-600), var(--red-400));
+  --chart-grid: light-dark(var(--gray-200), #2a2d35);
+  --chart-axis: light-dark(var(--gray-400), #5a5e68);
 
   /*
    * Four states. Color is for the three that ask for attention; a finished
    * run, and any state that asks for none, is the neutral `done`.
    */
-  --state-waiting: light-dark(var(--amber-700), oklch(78% 0.13 70));
-  --state-waiting-bg: light-dark(oklch(97% 0.04 70), oklch(24% 0.04 70));
-  --state-failed: light-dark(var(--red-700), oklch(70% 0.16 25));
-  --state-failed-bg: light-dark(oklch(97% 0.03 25), oklch(23% 0.04 25));
-  --state-running: light-dark(var(--blue-700), oklch(72% 0.12 250));
-  --state-running-bg: light-dark(oklch(97% 0.03 250), oklch(23% 0.04 250));
+  /*
+   * Waiting on a person is yellow, never the orange of a limit or the
+   * constraint; its badge also carries a pause mark.
+   */
+  --state-waiting: light-dark(var(--yellow-900), var(--yellow-200));
+  --state-waiting-bg: light-dark(var(--yellow-50), #352c0c);
+  --state-failed: light-dark(var(--red-900), var(--red-200));
+  --state-failed-bg: light-dark(var(--red-50), #3b1a1c);
+  --state-running: light-dark(var(--blue-900), var(--blue-200));
+  --state-running-bg: light-dark(var(--blue-50), #1a2456);
   --state-done: var(--text-secondary);
   --state-done-bg: var(--surface-sunken);
 }
@@ -132,8 +204,20 @@
   --color-running-bg: var(--state-running-bg);
   --color-done: var(--state-done);
   --color-done-bg: var(--state-done-bg);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-highlight: var(--highlight);
+  --color-on-highlight: var(--highlight-fg);
+  --color-on-highlight-2: var(--highlight-fg-2);
+  --color-chart-1: var(--chart-1);
+  --color-chart-3: var(--chart-3);
+  --color-limit: var(--chart-limit);
+  --color-limit-text: var(--chart-limit-text);
+  --color-limit-bg: var(--chart-limit-bg);
+  --color-stop: var(--chart-stop);
   --font-ui: var(--font-sans);
   --font-code: var(--font-mono);
+  --font-figure: var(--font-numeral);
   --spacing: var(--space-1);
 }
 @theme {
@@ -142,9 +226,11 @@
   --text-base: 14px;
   --text-lg: 16px;
   --text-xl: 20px;
+  --text-2xl: 28px;
+  --text-3xl: 40px;
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 10px;
+  --radius-lg: 8px;
 }
 
 body {
@@ -156,10 +242,23 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
-:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
+::selection {
+  background: var(--blue-200);
+  color: var(--gray-900);
+}
+html {
+  scrollbar-color: var(--border-default) transparent;
+  accent-color: var(--brand);
+}
+a {
+  text-underline-offset: 0.2em;
+}
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
 }
 /* Every number sits in a column: IDs, costs, durations, counts. */
 .font-code,
@@ -395,4 +494,99 @@ body:has(.bulk-bar) main {
 /* A heading the design page's contents jump to clears the sticky header. */
 .scroll-target {
   scroll-margin-top: var(--size-scroll-margin);
+}
+
+/* A wait in a time breakdown: hatched, so it reads as time nothing moved. */
+.bar-hatch-wait {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--chart-3) 0 var(--size-hatch),
+    transparent var(--size-hatch) calc(var(--size-hatch) * 2)
+  );
+  box-shadow: inset 0 0 0 1px var(--chart-1);
+}
+/* A chart mark is a link: focus and hover ring it in the brand colour. */
+.chart-mark {
+  cursor: pointer;
+  outline: none;
+}
+.chart-mark:hover > :first-of-type,
+.chart-mark:focus-visible > :first-of-type {
+  stroke: var(--text-primary);
+  stroke-width: 2;
+}
+/* The factory page: six columns, the guidebook's grid, one under 64rem. */
+.factory-grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (width >= 64rem) {
+  .factory-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .span-2 {
+    grid-column: span 2;
+  }
+  .span-3 {
+    grid-column: span 3;
+  }
+  .span-4 {
+    grid-column: span 4;
+  }
+  .span-6 {
+    grid-column: span 6;
+  }
+}
+/*
+ * Below the pace and the floor, two columns that stack on their own, so a
+ * short card never leaves a hole beside a tall one: the charts at 4/6, the
+ * stops and the decisions at 2/6.
+ */
+.factory-columns {
+  display: grid;
+  gap: var(--space-4);
+  align-items: start;
+}
+.factory-stack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+@media (width >= 64rem) {
+  .factory-columns {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+  .factory-columns.even {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+/* The floor's lanes: seven on a wide screen, wrapping to fewer. */
+.floor-lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+}
+.bar-hatch-stop {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--chart-stop) 0 var(--size-hatch-line),
+    transparent var(--size-hatch-line) var(--size-hatch-gap)
+  );
+  box-shadow: inset 0 0 0 1px var(--chart-stop);
+}
+/* A label drawn over marks keeps a halo of the card's ground behind it. */
+.chart-label {
+  paint-order: stroke;
+  stroke: var(--surface-raised);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.bar-hatch-provider {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--chart-1) 0 var(--size-hatch-line),
+    transparent var(--size-hatch-line) var(--size-hatch-gap)
+  );
+  box-shadow: inset 0 0 0 1px var(--chart-1);
 }

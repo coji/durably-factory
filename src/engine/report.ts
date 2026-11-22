@@ -1265,7 +1265,7 @@ export const SPEC_STAGES: readonly string[] = [
   'spec-check',
 ]
 
-const STAGE_ORDER = [
+export const STAGE_ORDER = [
   'setup',
   'baseline',
   'preflight',

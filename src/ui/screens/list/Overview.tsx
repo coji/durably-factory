@@ -81,7 +81,7 @@ export function Overview({
                 />
               ) : null}
               {c.label}
-              <span className="font-code font-semibold">
+              <span className="font-semibold tabular-nums">
                 {formatCount(c.n)}
               </span>
             </button>

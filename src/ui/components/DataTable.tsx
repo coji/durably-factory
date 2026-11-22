@@ -53,7 +53,9 @@ export function Th({
 
 export function Td({ children, num }: { children: ReactNode; num?: boolean }) {
   return (
-    <td className={`px-3 py-2 align-top ${num ? 'font-code text-right' : ''}`}>
+    <td
+      className={`px-3 py-2 align-top ${num ? 'text-right tabular-nums' : ''}`}
+    >
       {children}
     </td>
   )

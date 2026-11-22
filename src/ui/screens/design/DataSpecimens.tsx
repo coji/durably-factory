@@ -201,7 +201,7 @@ export function KeyValueStates() {
             <span className="font-code">{COMMON.defaultSetting}</span>
           </InlineField>
           <InlineField label={TRACE.cost}>
-            <span className="font-code">{formatCost(0.0004)}</span>
+            <span className="tabular-nums">{formatCost(0.0004)}</span>
           </InlineField>
         </InlineFields>
       </State>

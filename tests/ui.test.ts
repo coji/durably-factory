@@ -657,12 +657,12 @@ describe('repositories', () => {
       }),
     )
     assert.match(html, new RegExp(`aria-label="${REPO.label}"`))
-    assert.match(html, /href="#\/compare"[^>]*>すべて</)
+    assert.match(html, /href="#\/review"[^>]*>すべて</)
     assert.match(
       html,
-      /href="#\/compare\?repo=%2Fa%2Fpublic" title="\/a\/public" aria-current="true"[^>]*>public</,
+      /href="#\/review\?repo=%2Fa%2Fpublic" title="\/a\/public" aria-current="true"[^>]*>public</,
     )
-    assert.match(html, /href="#\/compare\?repo=subject"[^>]*>同梱題材</)
+    assert.match(html, /href="#\/review\?repo=subject"[^>]*>同梱題材</)
     // All is current when the server counted every repository.
     assert.match(
       renderToStaticMarkup(
@@ -671,7 +671,7 @@ describe('repositories', () => {
           scope: { repos, repo: null },
         }),
       ),
-      /href="#\/" aria-current="true"[^>]*>すべて</,
+      /href="#\/tasks" aria-current="true"[^>]*>すべて</,
     )
   })
 })
@@ -4046,8 +4046,11 @@ const htmlText = (html: string) => html.replace(/<[^>]+>/g, '\n')
 
 describe('routes', () => {
   it('reads each page from the hash', () => {
-    assert.deepEqual(parseRoute(''), { page: 'runs' })
-    assert.deepEqual(parseRoute('#/'), { page: 'runs' })
+    assert.deepEqual(parseRoute(''), { page: 'factory' })
+    assert.deepEqual(parseRoute('#/'), { page: 'factory' })
+    assert.deepEqual(parseRoute('#/tasks'), { page: 'runs' })
+    assert.deepEqual(parseRoute('#/review'), { page: 'compare' })
+    // The summary's old address still opens it.
     assert.deepEqual(parseRoute('#/compare'), { page: 'compare' })
     assert.deepEqual(parseRoute('#/design'), { page: 'design' })
     assert.deepEqual(parseRoute('#/runs/a%2Fb'), { page: 'run', id: 'a/b' })
@@ -4063,9 +4066,15 @@ describe('routes', () => {
       page: 'compare',
       repo: path,
     })
-    assert.equal(pageHref('runs'), '#/')
-    assert.equal(pageHref('compare'), '#/compare')
-    assert.deepEqual(parseRoute('#/?repo='), { page: 'runs' })
+    assert.deepEqual(parseRoute(pageHref('factory', path)), {
+      page: 'factory',
+      repo: path,
+    })
+    assert.equal(pageHref('factory'), '#/')
+    assert.equal(pageHref('runs'), '#/tasks')
+    assert.equal(pageHref('compare'), '#/review')
+    assert.deepEqual(parseRoute('#/?repo='), { page: 'factory' })
+    assert.deepEqual(parseRoute('#/tasks?repo='), { page: 'runs' })
     assert.deepEqual(parseRoute('#/runs/a%3Fb'), { page: 'run', id: 'a?b' })
     // A run's link keeps the page's repository, also opened in a new tab.
     assert.ok(
@@ -4092,7 +4101,7 @@ describe('routes', () => {
   it('sets the URL to the repository the server counted', () => {
     const runs = parseRoute(pageHref('runs', '/gone'))
     // A key no run has any more leaves the URL.
-    assert.equal(reconciledHref(runs, null), '#/')
+    assert.equal(reconciledHref(runs, null), '#/tasks')
     assert.equal(
       reconciledHref(parseRoute(pageHref('compare', '/w/a/')), '/w/a'),
       pageHref('compare', '/w/a'),
@@ -4102,6 +4111,10 @@ describe('routes', () => {
       null,
     )
     assert.equal(reconciledHref(parseRoute('#/'), null), null)
+    assert.equal(
+      reconciledHref(parseRoute(pageHref('factory', '/gone')), null),
+      '#/',
+    )
     assert.equal(
       reconciledHref(parseRoute('#/runs/x?repo=%2Fgone'), null),
       null,

@@ -31,7 +31,12 @@ export const clockFormat = new Intl.DateTimeFormat('ja-JP', {
   second: '2-digit',
 })
 
-/** A number or an identifier in the monospace face. */
+/** A number in the UI face with tabular figures, so columns line up. */
 export function Num({ children }: { children: ReactNode }) {
+  return <span className="tabular-nums">{children}</span>
+}
+
+/** An identifier, such as a model, branch or commit, in the monospace face. */
+export function Code({ children }: { children: ReactNode }) {
   return <span className="font-code">{children}</span>
 }
