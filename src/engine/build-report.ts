@@ -823,6 +823,8 @@ export function blockingRuleNonBlockersOf(
         const aboveThreshold = kept.filter(
           (f) =>
             f.laterRoundException === undefined &&
+            // A test or check finding is counted apart, scored or not.
+            f.testException === undefined &&
             f.likelihood !== undefined &&
             f.impact !== undefined &&
             f.likelihood * f.impact >= threshold,

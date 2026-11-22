@@ -91,7 +91,7 @@ describe('the shared blocking rule (ADR-0063)', () => {
     const lines = blockerThresholdRules('findings-json', 5, 5).join('\n')
     assert.match(
       lines,
-      /Both reviewers are given this same rule, word for word/,
+      /Every findings-json code reviewer of this run is given this same rule, word for word/,
     )
     assert.match(
       lines,
@@ -208,6 +208,8 @@ describe('the shared blocking rule (ADR-0063)', () => {
             nb({ likelihood: 2, impact: 2 }),
             nb({ likelihood: 1, impact: 4 }),
             nb({ testException: 'unnamed-failure' }),
+            // Scored and marked: counted as a test finding only.
+            nb({ likelihood: 4, impact: 4, testException: 'unnamed-failure' }),
             // Demoted by the later-round rule: not under-blocking.
             nb({
               likelihood: 5,
@@ -227,10 +229,10 @@ describe('the shared blocking rule (ADR-0063)', () => {
       },
     ] as Parameters<typeof blockingRuleNonBlockersOf>[1]
     assert.deepEqual(blockingRuleNonBlockersOf(5, rounds), [
-      { round: 1, lens: 'correctness', aboveThreshold: 1, testException: 1 },
+      { round: 1, lens: 'correctness', aboveThreshold: 1, testException: 2 },
     ])
     assert.deepEqual(blockingRuleNonBlockersOf(4, rounds), [
-      { round: 1, lens: 'correctness', aboveThreshold: 3, testException: 1 },
+      { round: 1, lens: 'correctness', aboveThreshold: 3, testException: 2 },
     ])
     assert.deepEqual(blockingRuleNonBlockersOf(null, rounds), [])
     assert.deepEqual(blockingRuleNonBlockersOf(0, rounds), [])

@@ -1014,7 +1014,7 @@ export interface LaterRoundNonBlockers {
  * a look (ADR-0063), in a round that counted, when the run fixed a
  * threshold of 1 or more. `aboveThreshold`: non-blockers whose likelihood ×
  * impact is at or above the threshold, the later-round rule's marked ones
- * left out; from prompt version 5 the rule says such a finding blocks, so a
+ * and the marked test or check findings left out; from prompt version 5 the rule says such a finding blocks, so a
  * count shows a reviewer that under-blocks. `testException`: test or check
  * findings the reviewer made non-blockers because the failure they miss is
  * not named. Only reviews with one or more are listed. Counted from the

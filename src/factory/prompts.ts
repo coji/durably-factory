@@ -716,7 +716,7 @@ export const TEST_EXCEPTION = 'unnamed-failure'
  */
 function sharedBlockingRules(threshold: number): string[] {
   return [
-    '- BLOCKING RULE. Both reviewers are given this same rule, word for word. Decide whether each finding is a blocker by this rule and the other rules in CHECK alone: do not make a finding a blocker, or a non-blocker, for a reason they do not give.',
+    '- BLOCKING RULE. Every findings-json code reviewer of this run is given this same rule, word for word. Decide whether each finding is a blocker by this rule and the other rules in CHECK alone: do not make a finding a blocker, or a non-blocker, for a reason they do not give.',
     `- A finding about how the product behaves: score how likely it is to actually happen in real use (likelihood) and how severe it is when it does (impact), each as an integer from 1 to 10, and add both to the finding as "likelihood" and "impact": the reply format marks them optional, but a finding this rule covers must carry both. If likelihood × impact is below ${threshold}, the finding is a non-blocker. If it is ${threshold} or more, it is a blocker.`,
     "- A finding that the change does not do something the task, the spec or the owner's confirmed context explicitly asks for is a blocker, however rarely the case it asks about happens.",
     '- A finding about whether the tests or checks are sufficient, such as a test, check or verification script that could pass when it should fail, or a case no test covers: it is a blocker only when that test or check would let through a failure that the task, the spec\'s acceptance criteria or the owner\'s confirmed context names. Otherwise it is a non-blocker: report it all the same, and add "testException": "' +

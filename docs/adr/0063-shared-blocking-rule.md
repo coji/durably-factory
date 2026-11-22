@@ -10,7 +10,7 @@ Issue #56 counts 24 runs in one repository at threshold 5. Of 53 blockers, 38 ha
 
 ## Decision
 
-- **One explicit blocking rule, word for word for both reviewers.** From `local-factory.v9` (prompt version 5), a findings-json code review with a threshold of 1 or more gets a BLOCKING RULE in CHECK instead of the ADR-0040 lines:
+- **One explicit blocking rule, word for word for every findings-json code reviewer.** From `local-factory.v9` (prompt version 5), a findings-json code review with a threshold of 1 or more gets a BLOCKING RULE in CHECK instead of the ADR-0040 lines:
   - a product finding whose likelihood × impact is at or above the threshold is a blocker, and below it a non-blocker;
   - a missed requirement the task, the spec or the owner's confirmed context explicitly asks for is a blocker, however rare its case;
   - a finding about whether tests or checks are sufficient (a test, check or verification script that could pass when it should fail, or an uncovered case) is a blocker only when that test or check would let through a failure that the task, the spec's acceptance criteria or the owner's confirmed context names. Otherwise it is a non-blocker, reported all the same and marked `"testException": "unnamed-failure"`;
@@ -20,7 +20,7 @@ Issue #56 counts 24 runs in one repository at threshold 5. Of 53 blockers, 38 ha
 - **Scope.** The rule is in CHECK, so the prompt, the input after a `command`, and `local-instructions` carry it, and a `replace` work policy does not remove it. Verdict reviews, spec reviews and a threshold of 0 get no rule, as before.
 - **Mark.** The parser keeps `testException` on non-blockers only and drops any other value without failing the reply. As with the other marks, it is the reviewer's claim and is never checked.
 - **Report.** `blockingRuleNonBlockers` lists, per counted code round and reviewer, two counts:
-  - `aboveThreshold`: kept non-blockers whose product is at or above the threshold, leaving out those the later-round rule marked. From v9 the rule says such findings block, so a count shows a reviewer that under-blocks.
+  - `aboveThreshold`: kept non-blockers whose product is at or above the threshold, leaving out those the later-round rule marked and the marked test and check findings. From v9 the rule says such findings block, so a count shows a reviewer that under-blocks.
   - `testException`: demoted test and check findings.
 
   The Markdown header prints one line per entry. Runs before v9 are counted the same way, but their reviewers were allowed to keep such findings as non-blockers, so their counts are not rule breaks. Only kept findings are counted (the first 20 non-blockers of a review).
