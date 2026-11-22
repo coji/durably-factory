@@ -59,6 +59,7 @@ import {
   promptPolicyKey,
   readPromptPolicies,
 } from './factory/prompt-policy.js'
+import { earlierBlockersOf } from './factory/prompts.js'
 import {
   checkArtifactsPathProblem,
   normalizeCheckArtifactsPath,
@@ -1400,6 +1401,17 @@ export function buildRepairInput(
     conclusion,
   } = repairableCandidate(parent, setup)
   const parentInput = parent.input as StoredRepairInput
+  // The blockers of the parent's last round, when this run repairs them:
+  // its first review continues that round under "scoped" later rounds
+  // (ADR-0062). Findings-json reviews only, by their neutral names.
+  const parentBlockers =
+    conclusion === 'review-cap-reached' && 'parentRun' in files.findings.ref
+      ? earlierBlockersOf(
+          (parent.output as StoredOutput | null)?.reviews ?? [],
+          (lens) =>
+            stored.review?.[lens as ReviewSlot]?.output === 'findings-json',
+        )
+      : ''
   const t = stored.target
   const storedFiles = parentInput.target?.inputFiles ?? {}
   const dispositions = files.dispositions
@@ -1493,13 +1505,10 @@ export function buildRepairInput(
           'reviewSessionMode',
           () => parentInput.target?.reviewSessionMode ?? 'fresh',
         ) ?? 'fresh',
-      // Never the default either: a parent set up before it existed
-      // reviewed every round whole (ADR-0062).
-      reviewLaterRounds: recorded(
-        stored,
-        'reviewLaterRounds',
-        () => parentInput.target?.reviewLaterRounds ?? 'whole',
-      ),
+      // Only as the parent's setup recorded it: a parent set up without
+      // it, by a worker from before it existed, reviewed every round whole,
+      // whatever its input says (ADR-0062).
+      reviewLaterRounds: stored.reviewLaterRounds ?? 'whole',
       reviewBlockerThreshold: recorded(
         stored,
         'reviewBlockerThreshold',
@@ -1561,6 +1570,7 @@ export function buildRepairInput(
       parentConclusion: conclusion,
       findings: files.findings.content,
       findingsFile: files.findings.ref,
+      ...(parentBlockers ? { parentBlockers } : {}),
       profiles: {
         code: stored.profiles.code,
         correctness: stored.profiles.correctness,

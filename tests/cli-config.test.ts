@@ -3084,8 +3084,94 @@ describe('review.laterRounds', { timeout: 240000 }, () => {
       repair(parent('whole'), { ...setup, reviewLaterRounds: 'whole' }),
       'whole',
     )
-    // Set up before it existed: "whole", never the trigger default.
+    // Set up before it existed: "whole", never the trigger default, even
+    // when the parent's input asked for "scoped" (an older worker).
     assert.equal(repair(parent(), setup), 'whole')
+    assert.equal(repair(parent('scoped'), setup), 'whole')
+  })
+
+  it('hands a repair of a review-cap-reached parent its findings-json blockers, by neutral name, and nothing else', () => {
+    const commit = 'a'.repeat(40)
+    const profile = (role: string) => ({
+      id: `fake:provider-default:provider-default:${role}`,
+      provider: 'fake',
+      requestedModel: null,
+      requestedEffort: null,
+      effectiveModel: null,
+      effectiveEffort: null,
+    })
+    const parent = {
+      id: 'p',
+      status: 'completed',
+      input: { provider: 'fake', target: { kind: 'repo' } },
+      output: {
+        approved: false,
+        conclusion: 'review-cap-reached',
+        candidate: { commit, branch: 'factory/p' },
+        reviews: [
+          {
+            lens: 'correctness',
+            decision: 'needsChanges',
+            notes: '- [a.js:1] totals — fix',
+          },
+          {
+            lens: 'edge-cases',
+            decision: 'needsChanges',
+            notes: 'verdict notes with advice',
+          },
+        ],
+      },
+    }
+    const setup = (review: Record<string, unknown>) => ({
+      contextMode: 'reuse',
+      maxIterations: 1,
+      agentTimeoutMs: 600000,
+      autoApprove: true,
+      reviewLaterRounds: 'scoped',
+      review,
+      profiles: {
+        code: profile('code'),
+        correctness: profile('correctness'),
+        'edge-cases': profile('edge-cases'),
+      },
+      target: {
+        kind: 'repo',
+        repoPath: '/repo',
+        task: 'task',
+        spec: null,
+        dispositions: null,
+        issue: null,
+        checkCommand: ['true'],
+        setupCommand: null,
+        checkTimeoutMs: 120000,
+        publish: false,
+      },
+    })
+    const findingsJson = {
+      command: null,
+      context: 'prompt',
+      output: 'findings-json',
+    }
+    const built = (review: Record<string, unknown>, ref: object) =>
+      (
+        buildRepairInput(parent, setup(review), {
+          findings: { content: 'FINDING\n', ref },
+          dispositions: null,
+        } as Parameters<typeof buildRepairInput>[2]).input.repairOf as {
+          parentBlockers?: string
+        }
+      ).parentBlockers
+    assert.equal(
+      built({ correctness: findingsJson }, { parentRun: 'p' }),
+      'review-a:\n- [a.js:1] totals — fix',
+    )
+    // Verdict reviews only: no list of blockers to continue from.
+    assert.equal(built({}, { parentRun: 'p' }), undefined)
+    // Findings given in a file: the repair is not of the parent's blockers.
+    assert.equal(
+      built({ correctness: findingsJson }, { path: '/f.md' }),
+      undefined,
+    )
   })
 })
 

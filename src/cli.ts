@@ -866,7 +866,8 @@ Repository config: factory.json at the repository root, or --config <file>:
   rare or future cases nobody asked for." whatever the threshold. Verdict
   reviews and spec reviews are not affected.
   "review.laterRounds" ("scoped" by default, or "whole") is fixed at
-  trigger. With "scoped", the first code review round and the first spec
+  trigger and applies to findings-json reviews only; a verdict review is
+  reviewed whole in every round. With "scoped", the first code review round and the first spec
   review round are told to report every blocker at once. A later round,
   after a repair or a spec fix, may block only on an earlier blocker that is
   not fixed, a defect the repair introduced, or a problem inside the repair

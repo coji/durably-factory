@@ -736,6 +736,12 @@ const repairOfSchema = z
       inputFileSchema,
       z.object({ parentRun: z.string().min(1) }),
     ]),
+    /**
+     * The findings-json blockers of a review-cap-reached parent's last
+     * round, by neutral reviewer name, when the findings were built from
+     * them (ADR-0062). Absent otherwise.
+     */
+    parentBlockers: z.string().min(1).optional(),
     /** The effective profiles the parent recorded at setup. */
     profiles: z
       .object({
@@ -1872,10 +1878,8 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
             // round is the earlier one (ADR-0062).
             const parentBlockers =
               reviewLaterRounds === 'scoped' &&
-              input.repairOf &&
-              input.repairOf.parentConclusion === 'review-cap-reached' &&
-              'parentRun' in input.repairOf.findingsFile
-                ? input.repairOf.findings
+              input.repairOf?.parentConclusion === 'review-cap-reached'
+                ? (input.repairOf.parentBlockers ?? null)
                 : null
             const instructionsVersion = INSTRUCTIONS_VERSION
             // Fixed here with the CLI version just recorded, so a restarted

@@ -777,23 +777,26 @@ export function belowThresholdBlockersOf(
 /**
  * The kept non-blockers each review marked as kept from blocking by the
  * later-round rule, by stage, round and lens; see `LaterRoundNonBlockers`.
- * The mark is counted wherever it appears: a reviewer that never had the
- * rule never had a reason to add it.
+ * Only rounds whose verdicts counted: a code round discarded, cancelled or
+ * pending beside a failed check is not a round the state knows. A spec
+ * round has no status and always counted.
  */
 export function laterRoundNonBlockersOf(
   rounds: { stage: 'code' | 'spec'; rounds: ReportReviewRound[] }[],
 ): LaterRoundNonBlockers[] {
   return rounds.flatMap(({ stage, rounds: list }) =>
-    list.flatMap((round) =>
-      round.reviews.flatMap((review) => {
-        const count = (review.findings?.nonBlocker ?? []).filter(
-          (f) => f.laterRoundException !== undefined,
-        ).length
-        return count > 0
-          ? [{ stage, round: round.round, lens: review.lens, count }]
-          : []
-      }),
-    ),
+    list
+      .filter((round) => (round.status ?? 'completed') === 'completed')
+      .flatMap((round) =>
+        round.reviews.flatMap((review) => {
+          const count = (review.findings?.nonBlocker ?? []).filter(
+            (f) => f.laterRoundException !== undefined,
+          ).length
+          return count > 0
+            ? [{ stage, round: round.round, lens: review.lens, count }]
+            : []
+        }),
+      ),
   )
 }
 

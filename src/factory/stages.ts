@@ -62,6 +62,8 @@ import {
   parseReviewOutput,
   reviewLocations,
   reviewPrompt,
+  earlierBlockersOf,
+  NO_EARLIER_FINDINGS_BLOCKERS,
   type ReviewRoundScope,
   type SpecRoundScope,
   specAuthorPrompt,
@@ -78,7 +80,6 @@ import {
   type SpecState,
 } from './reducer.js'
 import { referencePaths } from './references.js'
-import { reviewerId } from './reviewers.js'
 import {
   checkStageContextName,
   MAX_CONTEXT_BYTES,
@@ -113,7 +114,6 @@ import {
   type ReviewInvocation,
   type ReviewSlot,
   type ReviewStepResult,
-  type ReviewVerdict,
   type SealedCandidate,
   type SessionRef,
   type SpecCheckRecord,
@@ -825,25 +825,14 @@ function verifyCandidate(
 }
 
 /**
- * The earlier round's blockers as a later round is shown them: each
- * reviewer that asked for changes, by its neutral name, and its notes, which
- * a findings-json review fills with its blocker lines.
- */
-export function earlierBlockersOf(reviews: ReviewVerdict[]): string {
-  return reviews
-    .filter((review) => review.decision === 'needsChanges')
-    .map((review) => `${reviewerId(review.lens)}:\n${review.notes}`)
-    .join('\n\n')
-}
-
-/**
  * Where a code review round on `candidate` stands (ADR-0062). Null unless
  * the run fixed "scoped" later rounds. A later round follows the last
  * counted round that asked for changes on another candidate, and is shown
  * that round's blockers and the diff from its candidate to this one. The
  * first review of a repair run whose parent stopped at its review cap is a
  * later round of the parent's last round. Every other round is a first one,
- * a review of the same candidate again included.
+ * a review of the same candidate again included. Only a findings-json
+ * reviewer is given the scope; a verdict reviewer reviews every round whole.
  */
 export async function reviewRoundScopeOf(
   state: Pick<FactoryState, 'setup' | 'blockedRound'>,
@@ -856,7 +845,13 @@ export async function reviewRoundScopeOf(
   if (earlier && earlier.candidate.id !== candidate.id)
     return {
       round: 'later',
-      earlierBlockers: earlierBlockersOf(earlier.reviews),
+      earlierBlockers:
+        earlierBlockersOf(
+          earlier.reviews,
+          (lens) =>
+            reviewInvocationOf(setup, lens as ReviewSlot)?.output ===
+            'findings-json',
+        ) || NO_EARLIER_FINDINGS_BLOCKERS,
       earlierCandidate: earlier.candidate.id,
       repairChanges:
         (await target.repairChanges?.(earlier.candidate, candidate)) ?? null,
@@ -999,7 +994,9 @@ async function reviewRoundOf(args: {
           })
         : null
     const trees = own?.trees ?? null
-    const scope = await roundScopeFor()
+    // A verdict review has no list of blockers to hold a later round to,
+    // so it reviews every round whole (ADR-0062).
+    const scope = output === 'findings-json' ? await roundScopeFor() : null
     const repairChanges = scope?.round === 'later' ? scope.repairChanges : null
     const context = reviewPrompt(
       lens,
@@ -1654,9 +1651,16 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
     await writeFileDiff(previousSpecPath, spec.specPath, revisionDiffPath)
     return {
       round: 'later',
-      earlierBlockers: blockers
-        .map((r) => `${r.name}:\n${specBlockerText(r)}`)
-        .join('\n\n'),
+      // A verdict reviewer's notes are not a list of blockers (ADR-0062).
+      earlierBlockers:
+        blockers
+          .filter(
+            (r) =>
+              spec.reviewers.find((x) => x.name === r.name)?.invocation
+                ?.output === 'findings-json',
+          )
+          .map((r) => `${r.name}:\n${specBlockerText(r)}`)
+          .join('\n\n') || NO_EARLIER_FINDINGS_BLOCKERS,
       previousSpecPath,
       revisionDiffPath,
     }
@@ -1664,13 +1668,15 @@ export async function runSpecStages(args: SpecStageArgs): Promise<SpecOutcome> {
   const reviewOnce = async (
     reviewer: SpecReviewer,
     round: number,
-    scope: SpecRoundScope | null,
+    roundScope: SpecRoundScope | null,
     signal: AbortSignal,
     attempt: StepAttemptContext,
   ): Promise<SpecReviewResult> => {
     const { name, profile, invocation } = reviewer
     const output = invocation?.output ?? 'verdict'
     const commandMode = usesReviewMaterials(invocation)
+    // A verdict reviewer reviews every round whole (ADR-0062).
+    const scope = output === 'findings-json' ? roundScope : null
     const revisionFiles =
       scope?.round === 'later'
         ? [scope.previousSpecPath, scope.revisionDiffPath]

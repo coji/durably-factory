@@ -20,6 +20,8 @@ import {
 import {
   LOCAL_INSTRUCTIONS_INPUT,
   localInstructions,
+  earlierBlockersOf,
+  NO_EARLIER_FINDINGS_BLOCKERS,
   parseFindingsOutput,
   reviewLocations,
   reviewPrompt,
@@ -395,6 +397,9 @@ const setup: FactorySetup = {
   agentTimeoutMs: 1,
   autoApprove: false,
   reviewLaterRounds: 'scoped',
+  review: {
+    correctness: { command: null, context: 'prompt', output: 'findings-json' },
+  },
 }
 const cand = (n: number) => ({
   id: `candidate-${n}`,
@@ -493,6 +498,58 @@ describe('which round a code review is (ADR-0062)', () => {
     assert.equal(state.blockedRound?.candidate.id, 'candidate-1')
   })
 
+  it("leaves a verdict review's notes out of EARLIER_BLOCKERS", async () => {
+    let state = initialState(setup)
+    state = reduce(state, {
+      type: 'code.completed',
+      role: 'implement',
+      candidate: cand(1),
+      session: null,
+    })
+    state = reduce(state, {
+      type: 'verify.completed',
+      targetId: 'candidate-1',
+      passed: true,
+      stdout: 'ok',
+      exitCode: 0,
+    })
+    state = reduce(state, {
+      type: 'review.completed',
+      targetId: 'candidate-1',
+      reviews: [
+        { lens: 'correctness', decision: 'pass', notes: 'ok' },
+        {
+          lens: 'edge-cases',
+          decision: 'needsChanges',
+          notes: 'one capped line, advice included',
+        },
+      ],
+    })
+    state = reduce(state, {
+      type: 'code.completed',
+      role: 'repair',
+      candidate: cand(2),
+      session: null,
+    })
+    const scope = await reviewRoundScopeOf(state, cand(2), target([]))
+    assert.equal(scope?.round, 'later')
+    assert.equal(
+      scope?.round === 'later' ? scope.earlierBlockers : null,
+      NO_EARLIER_FINDINGS_BLOCKERS,
+    )
+    assert.equal(
+      earlierBlockersOf(
+        [
+          { lens: 'correctness', decision: 'needsChanges', notes: '- a' },
+          { lens: 'edge-cases', decision: 'needsChanges', notes: 'b' },
+          { lens: 'correctness', decision: 'pass', notes: 'c' },
+        ],
+        (lens) => lens === 'correctness',
+      ),
+      'review-a:\n- a',
+    )
+  })
+
   it('is null for "whole" and a run set up before the setting', async () => {
     const { reviewLaterRounds: _, ...before } = setup
     for (const s of [
@@ -565,6 +622,14 @@ describe('later-round report and version (ADR-0062)', () => {
             sequence: 1,
             candidate: null,
             reviews: [review('correctness', [finding()])],
+          },
+          // Discarded beside a failed check: not a round the state counts.
+          {
+            round: 2,
+            sequence: 2,
+            candidate: null,
+            status: 'discarded',
+            reviews: [review('correctness', [finding('outside-repair')])],
           },
           {
             round: 2,

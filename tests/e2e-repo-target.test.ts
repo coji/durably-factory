@@ -3381,7 +3381,7 @@ describe('configured reviewers', { timeout: 240000 }, () => {
     }
   })
 
-  it('scopes a later code round to the earlier blockers and the repair diff, in local instructions, and counts the marked non-blockers (ADR-0062)', async () => {
+  it('scopes a later findings-json code round to the earlier blockers and the repair diff, in local instructions, leaves a verdict review whole, and counts the marked non-blockers (ADR-0062)', async () => {
     const root = await mkdtemp(join(tmpdir(), 'repo-review-later-'))
     const repo = await seedRepo(root)
     delete process.env.FAKE_FAIL_FIRST
@@ -3406,16 +3406,18 @@ describe('configured reviewers', { timeout: 240000 }, () => {
       const run = await durably.jobs.agentLoop.trigger(
         configuredRun(
           repo,
-          { correctness: local, 'edge-cases': local },
+          // The second reviewer gives a verdict: it reviews every round
+          // whole, and its notes never become EARLIER_BLOCKERS.
+          { correctness: local, 'edge-cases': { ...local, output: 'verdict' } },
           {
             reviewLaterRounds: 'scoped',
             fakeScenario: {
               failIterations: 0,
               reviewOutputs: [
                 findings([blocker]),
-                findings([]),
+                'PLAN: p\nDECISION: needsChanges\nNOTES: verdict concern',
                 findings([outside]),
-                findings([]),
+                'PLAN: p\nDECISION: pass\nNOTES: ok',
               ],
             },
           },
@@ -3438,12 +3440,17 @@ describe('configured reviewers', { timeout: 240000 }, () => {
       assert.equal(output.conclusion, 'approved', done?.error ?? '')
       assert.equal(output.reviewRounds, 2)
       const calls = endedCalls(output.workdir)
-      const text = (round: number) =>
+      const text = (round: number, role = 'review-a') =>
         calls
-          .filter((c) => c.role.startsWith('review-') && c.round === round)
+          .filter((c) => c.role === role && c.round === round)
           .map((c) => c.localInstructionsAtStart?.content ?? '')
-      assert.equal(text(1).length, 2)
-      assert.equal(text(2).length, 2)
+      assert.equal(text(1).length, 1)
+      assert.equal(text(2).length, 1)
+      for (const content of [...text(1, 'review-b'), ...text(2, 'review-b')]) {
+        assert.ok(content.length > 0)
+        assert.doesNotMatch(content, /first review round|later review round/)
+        assert.doesNotMatch(content, /EARLIER_BLOCKERS|Repair diff/)
+      }
       for (const content of text(1)) {
         assert.match(content, /first review round of this change/)
         assert.doesNotMatch(content, /EARLIER_BLOCKERS/)
@@ -3458,8 +3465,9 @@ describe('configured reviewers', { timeout: 240000 }, () => {
         )
         assert.match(
           content,
-          /<<<UNTRUSTED EARLIER_BLOCKERS [0-9a-f]{16}>>>\nreview-a:\n- wrong sum — fix it\n/,
+          /<<<UNTRUSTED EARLIER_BLOCKERS [0-9a-f]{16}>>>\nreview-a:\n- wrong sum — fix it\n<<<END/,
         )
+        assert.doesNotMatch(content, /verdict concern/)
         const diff = /- Repair diff: (.+)$/m.exec(content)?.[1]
         assert.ok(diff && existsSync(diff), content)
         assert.match(diff, /repair-from-candidate-1-[0-9a-f]+\.diff$/)
@@ -4634,9 +4642,11 @@ describe('spec stages', { timeout: 240000 }, () => {
         specRun(repo, {
           reviewLaterRounds: 'scoped',
           fakeScenario: {
+            // product is the findings-json reviewer; tech, a verdict one,
+            // reviews every round whole (ADR-0062).
             specReviews: {
-              tech: ['blocker', 'pass'],
-              product: ['pass', 'pass'],
+              product: ['blocker', 'pass'],
+              tech: ['pass', 'pass'],
             },
           },
         }),
@@ -4661,7 +4671,7 @@ describe('spec stages', { timeout: 240000 }, () => {
       )
       assert.match(
         second ?? '',
-        /<<<UNTRUSTED EARLIER_BLOCKERS [0-9a-f]{16}>>>\ntech:/,
+        /<<<UNTRUSTED EARLIER_BLOCKERS [0-9a-f]{16}>>>\nproduct:/,
       )
       const dir = join(root, 'state', 'runs', run.id, 'spec-revisions')
       const previous = join(dir, 'round-2-previous.md')

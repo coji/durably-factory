@@ -731,6 +731,32 @@ export type SpecRoundScope =
 /** The block that carries an earlier round's blockers to a later round. */
 export const EARLIER_BLOCKERS_LABEL = 'EARLIER_BLOCKERS'
 
+/** What EARLIER_BLOCKERS says when no findings-json review blocked. */
+export const NO_EARLIER_FINDINGS_BLOCKERS =
+  'None: no findings-json review blocked in the earlier round.'
+
+/**
+ * The earlier round's blockers as a later round is shown them (ADR-0062):
+ * each findings-json review that asked for changes, by its neutral name,
+ * and its notes, which are its blocker lines. A verdict review's notes are
+ * one capped line that can mix blockers with advice, so they are left out;
+ * a verdict review is never scoped either. Empty when none is left.
+ */
+export function earlierBlockersOf(
+  reviews: { lens?: string; decision?: string; notes?: string }[],
+  findingsJson: (lens: string) => boolean,
+): string {
+  return reviews
+    .filter(
+      (review) =>
+        review.decision === 'needsChanges' &&
+        review.lens !== undefined &&
+        findingsJson(review.lens),
+    )
+    .map((review) => `${reviewerId(review.lens ?? '')}:\n${review.notes ?? ''}`)
+    .join('\n\n')
+}
+
 /**
  * The mark a findings-json reviewer adds to a non-blocker that the later
  * round rule alone kept from blocking (ADR-0062). The reviewer's own claim;

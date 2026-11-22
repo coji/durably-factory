@@ -991,7 +991,8 @@ export interface BelowThresholdBlockers {
  * `laterRoundException` (ADR-0062): problems a later round found but, under
  * "scoped" later rounds, did not block on because they are neither an
  * earlier blocker left unfixed nor brought by the repair. Only reviews with
- * one or more are listed, code and spec rounds alike. Counted from the kept
+ * one or more are listed, code and spec rounds alike, and only rounds that
+ * counted. Counted from the kept
  * findings, so a review with more non-blockers than the report keeps may
  * have more.
  */
