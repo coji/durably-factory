@@ -1,8 +1,8 @@
-# 実際のリポジトリで動かす
+# リポジトリの設定（factory.json / trigger）
 
 [README](../README.md) に戻る。
 
-対象リポジトリの直下に `factory.json` を置きます。まず、ベースのブランチ名と、そのリポジトリで合否を判定できるコマンドを決めます。
+対象リポジトリのルートに `factory.json` を配置します。最小構成で必須なのは `check`（または後述の `spec.checkFromSpec`）のみです。
 
 ```json
 {
@@ -12,27 +12,38 @@
 }
 ```
 
-`check` は必須です。仕様から決める場合は [`spec.checkFromSpec`](review-and-repair.md#仕様から採点コマンドを決めるcheckfromspec) を使えます。`setup` は任意、`base` の既定値は `HEAD` です。`name` を指定すると UI にその名前が出ます。コマンドの配列はシェルを介さず、先頭を実行ファイル、残りを引数として扱います。
+- `check`: 合否を判定するコマンド配列（シェルを介さず先頭を実行ファイル、残りを引数として実行）。
+- `setup`: worktree 作成直後に実行する準備コマンド配列（任意）。
+- `base`: 作業ブランチを切る基準コミット・ブランチ（デフォルト: `HEAD`）。
+- `name`: Web UI 上での表示名（省略時はディレクトリ名）。
+
+CLI フラグで実行時に上書きしたり、挙動を調整したりできます。
 
 ```bash
 pnpm factory trigger --repo . --task-file task.md --provider codex --approve manual
 ```
 
-`--check "pnpm validate"`、`--setup "pnpm install"`、`--base origin/main` のように指定すると、設定ファイルより優先します。`--config` で別の設定ファイルを選べます。その相対パスは CLI のカレントディレクトリから解決します。`--max-iterations` で実装と修正の合計回数を 1〜5 回に設定できます。既定は 2 回です。
+- `--check "pnpm validate"` / `--setup "pnpm install"` / `--base origin/main`: `factory.json` より優先されます。
+- `--config <path>`: リポジトリルート以外の設定ファイルを使います（CLI のカレントディレクトリからの相対パス）。
+- `--max-iterations <1..5>`: 1 回の run における実装と修正の合計上限回数（デフォルト: `2`）。
 
-## 作業の内容と資料を渡す
+## タスクと入力資料の渡し方
 
-| 入力                               | 用途                                                                            |
-| ---------------------------------- | ------------------------------------------------------------------------------- |
-| `--task-file`、`--task`、`--issue` | 作業そのもの。三つから一つを選ぶ。`--issue` は `gh issue view` で本文を取得する |
-| `--spec-file`                      | すでに決めた仕様。実装とレビューに渡す                                          |
-| `--dispositions-file`              | 過去に出た指摘と、その扱いをレビューに伝える                                    |
-| `--context-file`                   | 依頼者が確定した判断や検査結果。空でない UTF-8 テキストで 32 KiB まで           |
-| `--reference`                      | モック、画面写真など。ファイルやディレクトリを複数指定できる                    |
+| フラグ                | 用途                                      | 制約・補足                                                  |
+| --------------------- | ----------------------------------------- | ----------------------------------------------------------- |
+| `--task-file`         | タスク本文のファイル                      | `--task` / `--issue` と排他（UTF-8、256 KiB まで）          |
+| `--task`              | タスク本文のインライン文字列              | 同上                                                        |
+| `--issue`             | GitHub Issue 番号（`gh issue view` 取得） | 同上                                                        |
+| `--spec-file`         | 確定済みの仕様書                          | UTF-8、256 KiB まで。指定時は `spec` 生成ステージをスキップ |
+| `--dispositions-file` | 過去の指摘に対する方針メモ                | レビュアーのみに参照させる（UTF-8、256 KiB まで）           |
+| `--context-file`      | オーナーが確定した判断や前提              | **信頼済みコンテキスト**として全ロールに渡す（32 KiB まで） |
+| `--reference`         | モック HTML やスクリーンショット等        | 複数回指定可（合計 20 MiB まで、シンボリックリンク不可）    |
 
-タスク、仕様、指摘の扱いをファイルで渡す場合は、それぞれ UTF-8 で 256 KiB までです。確定した判断は `--context-file` に書くと、実装とレビューで信頼できる情報として扱います。
+タスク本文や過去の指摘はエージェントの指示とは分離したデータ（untrusted input）として渡され、`--context-file` と `--reference` はリポジトリ側の確定事項（trusted context）として渡されます。
 
-## 役割ごとにエージェントを選ぶ
+## ロール別のモデル・プロバイダー設定（profiles）
+
+実装（`code`）、レビュー（`review-a` / `review-b`）、修正（`repair`）、事前トリアージ（`triage`）ごとに、プロバイダー・モデル・推論レベル（`effort`）を分けられます。
 
 ```json
 {
@@ -47,51 +58,43 @@ pnpm factory trigger --repo . --task-file task.md --provider codex --approve man
 }
 ```
 
-指定した値が優先されます。省いた項目には CLI のフラグかプロバイダーの既定値を使います。別のプロバイダーを指定した役割は、CLI の `--model` と `--effort` を引き継ぎません。`fake` を使うときは全役割を fake にそろえます。見立てを追加する場合は [`profiles.triage`](review-and-repair.md#タスクの見立てshadow-mode) を指定します。
+- 省略した項目は CLI の `--provider` / `--model` / `--effort` または各プロバイダーのデフォルト値で補われます。ただし、`--provider` と異なるプロバイダーを指定したロールは CLI の `--model` / `--effort` を引き継ぎません。
+- `fake` プロバイダーを使う場合は、すべてのロールを `fake` に揃える必要があります。
+- `profiles.triage` を指定すると、実装前のトリアージが有効になります（詳細は [トリアージ・仕様・レビュー・修正](review-and-repair.md#事前トリアージprofilestriage)）。
+- レビュアー枠は `review-a` と `review-b` です（旧名称 `correctness` / `edge-cases` も互換エイリアスとして使えますが、同一枠で新旧を混在させることはできません）。
 
-### レビュアー名の移行（v7）
+### 修正専用プロファイル（profiles.repair）とセッション継続
 
-`review-a` と `review-b` は、それぞれ変更全体を独立に確認します。旧名 `correctness` と `edge-cases` も別名として使えます。設定と `prompts` では、同じ枠の新旧の名前を同時に指定できません。すでに準備を終えた run は、記録した指示と役割名で再開します。
+`profiles.repair` を設定すると、2 回目以降の修正（repair）を `code` とは別のモデルや `effort` で実行できます。省略したフィールドは `code` の解決済み設定を引き継ぎます。実質的に `code` と同じ設定になった場合は、`code` と同一扱いになります。
 
-### 再レビューのセッション（実験）
+- デフォルトの `--context reuse` では、`code` と同じプロファイルであれば同一セッションを継続し、`--context fresh` では毎回新規セッションになります。
+- `repair` プロファイルが別設定のときは原則新規セッションになりますが、**Claude Code かつ `code` と `repair` の違いが `effort` のみ**の場合（対象: Opus 5.5 / Fable 5.1 / Fable 5.2）、事前確認で同一モデルが使われると判定されればキャッシュを維持したままセッションを継続します（Bedrock / Vertex や無効化環境変数がある場合は新規セッション）。判定結果はレポートの `repairSession` に記録されます（[ADR-0024](adr/0024-local-agent-loop-claude-effort-session-reuse.md)）。
+- 外部指摘から起動する `factory repair` の初回は、親のセッションを引き継がず新規セッションで開始します。
 
-既定値は `review.sessionMode: "fresh"` です。`"reuse-experiment"` を選ぶと再レビューのセッションを継続し、合格後に新規セッション二つで最終確認します。 [実験モードの詳細](review-and-repair.md#再レビューのセッション継続実験)
+## 品質ゲートと実行速度のチューニング
 
-## 修正だけのプロファイル（profiles.repair）
+### ベースコミットの事前検証（baselineCheck / baselineReuse）
 
-`profiles.repair` を指定すると、修正に別のモデルや推論量を使えます。省いた項目は `code` から補います。実際の設定が同じなら `code` として扱います。`--context reuse`（既定）では条件が合う場合に会話を続け、`--context fresh` では毎回新しく始めます。外部の指摘から別の実行を作る `repair` の初回は新しいセッションを使います。
+- `"baselineCheck": true`: エージェントを呼ぶ前に `base` コミット上で `check` を 1 回実行し、失敗していれば `baseline-check-failed` で即停止します。壊れたベースに対してクォータを消費するのを防ぎます。このとき `setup` が `.gitignore` 対象外の未追跡ファイルを残すとエラーになり、`check` が出力した未追跡ファイルはクリーンアップされます（デフォルト: `false`）。
+- `"baselineReuse": { "maxAgeMs": 3600000 }`: `baselineCheck` が有効なとき、同じ保存先にある過去 run のベース検証結果（リポジトリ、ベースコミット、コマンド、タイムアウト、Node.js バージョン、OS/アーキテクチャ、実行ファイルが一致するもの）を再利用します。上限は 7 日です。依存関係の中身や環境変数が変わる場合は期限を短くするか無効にしてください（[ADR-0025](adr/0025-local-agent-loop-baseline-reuse.md)）。
 
-## 推論量だけが違う修正では、実装のセッションを続ける（Claude）
+### 検証とレビューの並列実行（parallelReview）
 
-`--context reuse` で、実装と修正がともに Claude、違いが推論量だけなら、事前確認で条件がそろったときにセッションを続けます。対象モデルは Opus 5.5、Fable 5.1、Fable 5.2 です。CLI の版と、同じモデルが実際に使われたことを確認します。Bedrock、Vertex、実験的な機能を無効にする環境変数を指定している場合は新しく始めます。レポートの `repairSession` に判定と理由が出ます。 [方式の詳細](adr/0024-local-agent-loop-claude-effort-session-reuse.md)
+`"parallelReview": true` にすると、固定した Candidate に対する `check` と 2 つのコードレビューを同時に開始します（デフォルトは `check` 通過後にレビューを開始）。`check` が失敗した場合、実行中のレビューは即座にキャンセルされ、すでに完了していたレビュー結果も破棄されます（使用量はレポートに記録されます）。チェックの成果物（`checkArtifacts`）は同一ラウンドの並列レビューには間に合わないため注意してください。このフラグは `configVersion` の計算対象外です。
 
-## 検査に時間を使う場所を決める
+### コードレビューのスキップ（codeReview）
 
-### ベースの採点を先に確かめる（baselineCheck）
+`"codeReview": false` を設定すると、Factory 側の 2 つのコードレビューを省略し、`check` を通過した時点で承認・出力段階へ進みます。リポジトリ自身のマージゲートや別 CI がコードレビューを担う構成向けです。固定の `check` と `spec` レビューは引き続き実行されます。`review.sessionMode: "reuse-experiment"` とは併用できません（[ADR-0060](adr/0060-code-review-off.md)）。
 
-`"baselineCheck": true` で、エージェントを呼ぶ前にベースの `check` を実行します。ベースが落ちれば `baseline-check-failed` で止まり、検査ログが残ります。`setup` は追跡済みのファイルを変更せず、無視されていない未追跡ファイルを残さないようにします。検査が作った未追跡ファイルは作業ツリーから片付けます。既定はオフです。
+### 完了前のセルフチェック（selfCheck）
 
-### ベースの採点結果を使い回す（baselineReuse）
+`"selfCheck": [["pnpm", "lint"], ["pnpm", "typecheck"]]` のように 1〜5 個のコマンドを指定すると、実装・修正担当に終了前の自己確認として実行を指示します。結果は自己申告としてレポートに残りますが、合否を確定するのはあくまで Factory 側の `check` です。
 
-`"baselineReuse": { "maxAgeMs": 3600000 }` は、同じ保存先に条件の合うベース検査の成功があれば使い回します。`baselineCheck` がオンの場合に使え、期限の上限は 7 日です。ベース、コマンド、制限時間、実行環境を照合します。依存パッケージの中身や環境変数が変わった場合は、期限を短くするか設定を外します。 [照合する項目](adr/0025-local-agent-loop-baseline-reuse.md)
+### Candidate 固定前の生成コマンド（generate）
 
-### 検証とレビューを同時に始める（parallelReview）
+`"generate": [["pnpm", "screenshots:update"]]` のように 1〜5 個のコマンドを指定すると、実装・修正で差分が生じた場合に、Candidate を固定する直前にワーカー環境で順番に実行します。生成されたファイルは Candidate に含まれます。各コマンドには環境変数 `FACTORY_RUN_ID` と `FACTORY_SPEC_PATH` が渡され、失敗時は `generate-failed` で停止します。
 
-`"parallelReview": true` で、同じ候補の検査と二つのレビューを同時に始めます。既定では検査が通ってからレビューを始めます。並列時に検査が失敗すると、進行中のレビューを止め、終了済みの判定は破棄します。そこまでに分かった使用量はレポートに残ります。オン・オフは `configVersion` に含まれません。検査が書き出す成果物は同じ回の並列レビューに間に合いません。
-
-### コードのレビューをしない（codeReview）
-
-リポジトリ側の検査がコードレビューまで行う構成では、`"codeReview": false` で Factory の二つのコードレビューを省けます。固定検査と仕様レビューは行います。再レビューの実験モードとは併用できません。 [設計記録](adr/0060-code-review-off.md)
-
-### 終える前にエージェントに確かめさせる（selfCheck）
-
-`"selfCheck": [["pnpm", "lint"], ["pnpm", "typecheck"]]` のように、実装担当に実行してもらうコマンドを 1〜5 個指定します。結果は自己申告としてレポートに残ります。合否は Factory が実行する `check` で決まります。
-
-### 候補にする前に生成コマンドを実行する（generate）
-
-`"generate": [["pnpm", "screenshots:update"]]` のように 1〜5 個指定します。実装や修正で変更があった場合に、Factory がワーカーの環境で順に実行します。生成物は候補に含まれます。各コマンドに `FACTORY_RUN_ID` と `FACTORY_SPEC_PATH` を渡し、失敗時は `generate-failed` で停止します。
-
-### 新しいテストをベースと候補で動かす（testProbe）
+### 新規・変更テストのベース比較（testProbe）
 
 ```json
 {
@@ -104,60 +107,59 @@ pnpm factory trigger --repo . --task-file task.md --provider codex --approve man
 }
 ```
 
-候補が追加・変更したテストをベースと候補の両方で実行し、その結果をレビューへ渡します。`{files}` は独立した引数にし、ファイルを一つずつ渡します。検査の合否は固定の `check` が決めます。 [設計記録](adr/0039-local-agent-loop-test-probe.md)
+実装・修正で追加または変更されたテストファイルを `base` と Candidate の両方で実行し、その結果をレビュアーに渡します（「修正前から通ってしまう空虚なテスト」を見抜くための仕組みです）。`{files}` は独立した配列要素として指定してください（[ADR-0039](adr/0039-local-agent-loop-test-probe.md)）。
 
-## 参照ファイルとチェックの出力を渡す（--reference、checkArtifacts）
+### チェック成果物の共有（checkArtifacts）
 
-`--reference mock.html --reference shots/` のように指定します。参照資料は開始時にコピーし、仕様・実装・レビューの各担当へ渡します。`repair`、`recheck`、`retrigger` でも同じ資料を使います。上限は合計 20 MiB で、シンボリックリンクと名前の重複は受け付けません。
+`"checkArtifacts": ".factory/artifacts"` のように作業ツリー内の相対パスを指定すると、`check` 実行後にその配下の通常ファイル（合計 50 MiB まで）を Candidate ごとに保存し、`--reference` で渡した資料と見比べられるようレビュアーに渡します。
 
-`"checkArtifacts": ".factory/artifacts"` を設定すると、検査が書いたファイルを候補ごとに保存します。通常のファイルが対象で、上限は合計 50 MiB です。作業ツリー内の相対パスを指定してください。既定の順序では実際の出力をレビューに渡せます。
+### blocker のしきい値と再レビュー（review）
 
-## レビューの `blocker` を頻度と深刻さで決める（review.blockerThreshold）
+- `review.blockerThreshold`（`0`〜`100` の整数、デフォルト `5`）: `findings-json` 形式のコードレビューにおいて、プロダクトの挙動に関する指摘のうち「発生頻度（`likelihood` 1〜10）× 深刻度（`impact` 1〜10）」がしきい値未満のものを `non-blocker` として扱わせます（`0` で無効化）。ただし、仕様・タスク・確定コンテキストで明示された要件の漏れや、テスト不足・スコープ・セキュリティ等の指摘には適用されません。最終判定はレビュアーが行い、しきい値未満でも `blocker` とされたものはレポートの `belowThresholdBlockers` に記録されます。
+- `review.sessionMode`: デフォルトは `"fresh"` です。`"reuse-experiment"` にすると再レビューで同一セッションを継続し、通過後に新規セッション 2 つで最終確認を行います（[実験結果](review-and-repair.md#再レビューのセッション継続reuse-experiment)）。
 
-`findings-json` を使うコードレビューでは、製品の動作に関する指摘に、起こりやすさと深刻さの積で目安を与えます。既定は 5 で、0〜100 の整数を指定できます。0 でこの目安を省きます。明示された要件や、範囲・安全性・テストに関する指摘にはこの目安を適用しません。判定を返すのはレビュアーです。積が目安を下回る `blocker` は、例外理由とあわせてレポートの `belowThresholdBlockers` で確認できます。
+## Git コミット・承認・Draft PR 出力（commit）
 
-## コミットの作者とメッセージ（commit）
+```json
+{
+  "commit": {
+    "authorName": "Factory Bot",
+    "authorEmail": "factory@example.com",
+    "messageTemplate": "factory: {task} ({runId} #{iteration})",
+    "publishSquashed": false
+  }
+}
+```
 
-`commit.authorName` と `authorEmail` で作者を指定します。`messageTemplate` では `{task}`、`{runId}`、`{iteration}` を使えます。承認された候補は、通常の履歴に加え、変更を一つにまとめた `-squashed` ブランチにも残ります。
+- `messageTemplate` では `{task}`（タスクの 1 行目）、`{runId}`、`{iteration}` が展開されます。
+- 承認された run は、反復ごとのコミットを持つ `factory/<runId>`（Issue 起点なら `factory/issue-<n>-<runId>`）と、ベース上に 1 コミットへまとめた `factory/<runId>-squashed` の 2 ブランチを残します。
+- `--publish` を指定すると GitHub に push して Draft PR を作成します（`commit.publishSquashed: true` の場合は `-squashed` ブランチを公開）。リポジトリ実行ではデフォルトが `--approve auto`（検証・レビュー通過で即出力）、手動承認を挟む場合は `--approve manual` を指定します。
 
-リポジトリを対象にした run は既定で承認待ちを挟まず、成果物をローカルに保存します。`--approve manual` で承認待ちを挟み、`--publish` で GitHub に下書き PR を作れます。`commit.publishSquashed: true` を指定した場合は、まとめたブランチを公開します。
+## 事前確認（preflight）・タイムアウト・プロンプト・再実行
 
-## 設定の事前確認（preflight）
+### 設定の事前確認（preflight）
 
-実装前に、役割で使うプロバイダー・モデル・推論量の組み合わせを確認します。Codex はまず App Server の `model/list` を読み、必要な場合だけ最小の呼び出しを行います。Claude は組み合わせごとに最小の呼び出しを行います。この使用量は `preflight` として集計します。明示的に拒否された場合は、設定やログインを直してから再実行します。
+最初のエージェント呼び出しの前に、各ロールの `provider` / `model` / `effort` の組み合わせが利用可能かを確認します。Codex はまず App Server の `model/list` で無料確認し、判断できない場合のみ最小限の呼び出しを行います。Claude は組み合わせごとに最小限の呼び出しを行い、使用量は `preflight` として集計されます。拒否された場合は設定やログインを修正してやり直します。
 
-## 時間の上限
+### タイムアウト設定
 
-| 設定                 | リポジトリ | 同梱サンプル |
-| -------------------- | ---------- | ------------ |
-| `agentTimeoutMs`     | 2 時間     | 5 分         |
-| `agentIdleTimeoutMs` | 15 分      | 5 分         |
-| `checkTimeoutMs`     | 15 分      | 2 分         |
+| 設定                 | リポジトリ既定 | サンプル既定 | 対応する環境変数        |
+| -------------------- | -------------- | ------------ | ----------------------- |
+| `agentTimeoutMs`     | 2 時間         | 5 分         | `AGENT_TIMEOUT_MS`      |
+| `agentIdleTimeoutMs` | 15 分          | 5 分         | `AGENT_IDLE_TIMEOUT_MS` |
+| `checkTimeoutMs`     | 15 分          | 2 分         | `TEST_TIMEOUT_MS`       |
 
-値はミリ秒で、1〜2147483647 の整数です。無通信の上限は呼び出し全体の上限以下にします。優先順は `factory.json`、起動時の環境変数（`AGENT_TIMEOUT_MS`、`AGENT_IDLE_TIMEOUT_MS`、`TEST_TIMEOUT_MS`）、表の既定値です。無通信の既定値は全体の上限に合わせて短くなります。
+単位はミリ秒（`1`〜`2147483647`）で、`agentIdleTimeoutMs <= agentTimeoutMs` である必要があります。優先順位は `factory.json` ＞ 起動時の環境変数 ＞ 表の既定値です。実装・修正がタイムアウトしても worktree に変更が残っていればその時点で Candidate を作って検証に進み、変更がなければ `agent-timeout` で停止します。
 
-実装や修正が時間切れになっても変更が残っていれば、その時点で候補を作り、検査に進みます。変更がなければ `agent-timeout` で停止します。
+### Codex のネットワーク許可と CLI 固定
 
-## Codex でローカルサーバーを使う（sandbox.network）
+- `sandbox.network`: `"sandbox": { "network": ["code", "repair"] }` とすると、Codex の実装・修正ロールに対して `workspace-write` 環境での localhost 待ち受けおよび外部ネットワーク通信を許可します（レビューやトリアージには適用されません）。
+- `codexPath`: 起動する Codex CLI の実行ファイルパスを指定します（`factory.json` からの相対パス可）。省略時は `PATH` 上の `codex`、次に同梱 CLI が使われます。
 
-`"sandbox": { "network": ["code", "repair"] }` で指定した役割にネットワークを許可します。localhost での待ち受けに加え、外部通信も許可されます。指定できるのは Codex の実装と修正です。
+### 設定の固定・自動リトライ・プロンプト調整
 
-## Codex CLI を固定する（codexPath）
+- **設定のスナップショット**: `trigger` 時点で入力・`factory.json`・参照資料・解決済みプロファイルを DB に固定します。`factory.json` を書き換えてやり直したい場合は `pnpm factory retrigger --run RUN_ID --reload-config` を使います（`repair` や `recheck` は親の設定を引き継ぎます）。
+- **自動リトライ上限（`automaticRetryLimit`）**: `0`〜`3` の整数（デフォルト `1`）。レート制限や一時的な通信失敗時、シリーズ単位で自動再試行します（[対象となる停止理由](operations.md#検証失敗の分類と自動リトライ)）。
+- **ロール別プロンプト（`prompts`）**: `implement`、`repair`、`review-a`、`review-b`、`triage`、`spec-author`、`spec-fix`、`spec-review` ごとに Markdown ファイルを指定できます。例: `"prompts": { "implement": { "file": "prompts/implement.md", "mode": "append" } }`（`append` は追記、`replace` は差し替え。`factory.json` 相対パス、UTF-8、32 KiB まで）。
 
-`codexPath` で CLI のファイルを指定できます。相対パスの基準は `factory.json` の場所です。絶対パスに解決し、事前確認と本番で同じファイルを使います。指定を省くと PATH 上の `codex` を優先します。実際に使った版とパスはレポートで確認できます。
-
-## `trigger` のときに固定されるもの
-
-実行の入力、設定、参照資料と、解決したプロファイルを保存します。設定ファイルを編集した後に新しい設定でやり直す場合は、`retrigger --run RUN_ID --reload-config` を使います。再検査や外部指摘からの修正では、親が記録した設定を引き継ぎます。
-
-### 自動再試行の上限
-
-`automaticRetryLimit` は保存済みの入力で行う自動再試行の上限です。0〜3 を指定でき、既定は系列ごとに 1 回です。 [対象になる停止理由](operations.md#検査失敗の分類と自動再試行)
-
-### 役ごとのプロンプトをカスタマイズする
-
-`prompts` で各役の Markdown を指定できます。たとえば `"prompts": { "implement": { "file": "prompts/implement.md", "mode": "append" } }` とすると、実装の既定の指示に追記します。`replace` は差し替えです。ファイルは設定ファイルからの相対パスで、空でない UTF-8 テキストを 1 件 32 KiB まで指定できます。キーは `implement`、`repair`、`review-a`、`review-b`、`triage`、`spec-author`、`spec-fix`、`spec-review` です。内容とハッシュは実行時に保存します。
-
-## durably-factory のチェックアウトを固定して呼ぶ
-
-ソースの特定コミットから起動する手順は [別のリポジトリで使う](porting.md) を参照してください。
+特定のソースコミットに固定して呼び出す運用については [チェックアウト固定と独自 Target](porting.md) を参照してください。

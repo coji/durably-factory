@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-設計を決めた経緯と、当時検討した選択肢を記録しています。現在の使い方は [README](../../README.md) を参照してください。
+設計を決めた経緯と、当時検討した選択肢の記録です。現在の仕様や使い方は [README](../../README.md) を参照してください。
 
 This directory contains Architecture Decision Records (ADRs) for durably-factory. ADR-0017 to ADR-0040 were written in [coji/durably](https://github.com/coji/durably) while the factory lived there as `examples/local-agent-loop`; they keep their numbers, and the issue and pull request numbers in them refer to coji/durably.
 
