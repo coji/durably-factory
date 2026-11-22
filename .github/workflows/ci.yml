@@ -14,13 +14,19 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  checks:
+    name: ${{ matrix.group }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [cli-config, cli-workers, cli-other, other-tests, package]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check pinned release actions
+        if: matrix.group == 'package'
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/check-release-actions.sh
@@ -33,12 +39,48 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate
+      - name: Run tests
+        if: matrix.group != 'package'
+        env:
+          TEST_GROUP: ${{ matrix.group }}
         run: |
+          cli_tests=tests/cli-config.test.ts
+          # Split this slow file by suite. The cli-other group includes new suites by default.
+          config='factory\.json and input files|trigger validation|settings fixed at trigger|review\.blockerThreshold|retrigger --reload-config'
+          workers='status without --run|archive and unarchive|archive retry hints|one worker per state root|wait and worker state|worker --exit-when-idle|auto-started worker'
+          case "$TEST_GROUP" in
+            cli-config) args=("--test-name-pattern=^($config)$" "$cli_tests") ;;
+            cli-workers) args=("--test-name-pattern=^($workers)$" "$cli_tests") ;;
+            cli-other) args=("--test-skip-pattern=^($config|$workers)$" "$cli_tests") ;;
+            other-tests)
+              args=()
+              for file in tests/*.test.ts; do
+                if [[ "$file" != "$cli_tests" ]]; then
+                  args+=("$file")
+                fi
+              done
+              ;;
+            *) exit 1 ;;
+          esac
           validation_home="$(mktemp -d)"
-          HOME="$validation_home" pnpm validate
+          HOME="$validation_home" pnpm exec tsx --test "${args[@]}"
+
+      - name: Check formatting, lint and types
+        if: matrix.group == 'package'
+        run: pnpm format && pnpm lint && pnpm typecheck
 
       - name: Test the npm tarball outside the checkout
+        if: matrix.group == 'package'
         run: |
           pnpm pack --out "$RUNNER_TEMP/factory.tgz"
           pnpm exec node scripts/smoke-package.mjs "$RUNNER_TEMP/factory.tgz"
+
+  validate:
+    needs: checks
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all checks to pass
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+        run: test "$CHECKS_RESULT" = success
