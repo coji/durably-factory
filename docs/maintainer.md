@@ -13,12 +13,12 @@ pnpm validate
 実際のエージェントを使うときは、[利用者向けの手順](../README.md#自分のリポジトリで動かす)に沿ってログインします。
 ワーカーを起動するテストやスモークテストには、[普段とは別の `HOME`](operations.md) を使います。
 
-`src/factory/job.ts` は保存された状態から次の工程を選び、`src/factory/stages.ts` が実装、検査、レビュー、承認待ちを進めます。Durably がそれぞれの判断と結果を保存し、再開時に読み戻します。実装と修正のセッションを引き継ぐ際は、Codex の `threadId` または Claude Code の `sessionId` を使います。候補の固定と再開の詳細は [仕組みと制約](architecture.md) を参照してください。
+コードの構成や、ワーカーが途中から再開する仕組みは [仕組みと制約](architecture.md) にあります。
 
 ## npm に新しいバージョンを公開する
 
 1. ブランチで `package.json` の `version` を更新します。PR を `main` にマージします。
-2. `gh` にログイン済みの checkout で次を実行します。最初のコマンドは予定のタグとコミットを表示します。確認後、表示された `--push` 付きのコマンドでタグを push します。
+2. `gh` にログイン済みの checkout で次を実行します。最初のコマンドでタグと対象コミットを確認し、表示されたコマンドでタグを push します。
 
    ```bash
    pnpm release:tag
