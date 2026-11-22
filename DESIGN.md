@@ -258,7 +258,7 @@ A government-dashboard palette: Digital Agency Blue on Solid Gray, with Orange, 
 
 - **Display** (700, 40px, line-height 1): the two headline figures in the blue block; units (件, 時間, 分) drop to 14px medium beside the digits so "1時間37分" reads as two numbers.
 - **Headline** (700, 28px): the lane counts on the factory floor and the 判断待ち / 止まったまま counts.
-- **Figure** (700, 20px, line-height 1.25): the value in a metric card, the review table's figures, and a run's lead time.
+- **Figure** (700, 20px, line-height 1.25): the value in a metric card and the review table's figures. A run's lead time, the last row of its time-and-cost table, takes the figure face at 14px bold.
 - **Title** (600, 20px): the page's one `h1`.
 - **Section** (600, 16px): a section heading inside a page, with its item count beside it at 13px.
 - **Card title** (600, 14px): a card's title, with its data kind (how it is counted: 30 days, median, newest first) beside it at 12px in `fg-2`.
@@ -279,7 +279,7 @@ A government-dashboard palette: Digital Agency Blue on Solid Gray, with Orange, 
 
 The page is a centred column up to 88rem, padded 16px (32px from 640px). The guidebook's six-column grid with 16px gaps applies from 64rem, collapsing to one column below; cards span 2, 3, 4 or 6 columns. On 工場 the first row is the blue block (2) beside the floor (4); below it the page is two independent stacks at 2fr | 1fr (the charts; the stops and the decisions), each stacking its own cards with 16px gaps so a short card never leaves a hole beside a tall one. On 振り返り the charts pair two per row at 3 + 3, the two cards of a row at equal height. The floor's lanes auto-fit at a 6.5rem minimum. Metric grids auto-fill at 10rem.
 
-Spacing is a 4px base (`--spacing`), used in steps of 4, 8, 12, 16, 20, 24, 32 and 48px. Fixed widths for dense columns (task meta columns, stage names, the trace inspector) are tokens in `app.css`; the task meta columns stay fixed and right-aligned from 48rem and close up below it. The trace and its axis respond to their own box with container queries (40rem, 56rem), not to the window. On a coarse pointer every control is at least 44px tall.
+Spacing is a 4px base (`--spacing`), used in steps of 4, 8, 12, 16, 20, 24, 32 and 48px. Fixed widths for dense columns (task meta columns, the trace inspector) are tokens in `app.css`; the task meta columns stay fixed and right-aligned from 48rem and close up below it. The trace and its axis respond to their own box with container queries (40rem, 56rem), not to the window. On a coarse pointer every control is at least 44px tall.
 
 **The Still Columns Rule.** Columns never move on refresh; only values change.
 
