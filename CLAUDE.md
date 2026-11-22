@@ -7,6 +7,17 @@ Start with `README.md`; details are in `docs/`.
 ## Git Workflow
 
 - Never commit or push to `main` directly. Branch and open a pull request.
+- Commit and PR titles follow Conventional Commits (`feat:`, `fix:`, `docs:`, `ci:` …). A squash merge keeps the commit title for a one-commit PR and the PR title otherwise; release-please reads those titles.
+
+## Releases
+
+npm releases are automated by release-please in `.github/workflows/release.yml` (see `docs/maintainer.md`).
+
+- Never edit `version` in `package.json`, `.release-please-manifest.json` or `CHANGELOG.md`, and never push a `v*` tag. release-please owns them.
+- A push to `main` updates the release PR (`chore(main): release x.y.z`). Merging it tags, builds and publishes to npm. Merge it only when a person asks.
+- The release PR gets no CI because Actions opened it: close and reopen it to run CI before merging.
+- `feat:` raises minor, `fix:` patch; `docs:`/`test:`/`ci:`/`chore:` release nothing. To force a version, put `Release-As: x.y.z` in a commit body.
+- A failed publish is rerun with `gh workflow run release.yml --ref main -f tag=vX.Y.Z`.
 
 ## Toolchain
 
