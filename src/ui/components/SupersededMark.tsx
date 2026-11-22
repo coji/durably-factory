@@ -31,7 +31,7 @@ export function SupersededMark() {
  */
 export function RepoMark({ name, path }: { name: string; path?: string }) {
   return (
-    <span title={path} className="font-code text-fg-2 text-xs">
+    <span title={path} className="text-fg-2 text-xs">
       <span className="sr-only">{REPO.label} </span>
       {name}
     </span>

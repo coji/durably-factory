@@ -195,6 +195,22 @@ export function taskRunIds(runs: Linked[], id: string): string[] {
   return runs.filter((r) => rootOf(r) === root).map((r) => r.id)
 }
 
+/** Days a stop stays among the recent ones a person is asked to look at. */
+export const RECENT_STOP_DAYS = 7
+
+/**
+ * The stopped tasks whose newest run is older than `RECENT_STOP_DAYS`, by
+ * their first run's ID: still stops, still archivable, but no longer the
+ * ones a person is expected to act on today. The list and the factory page
+ * count only the others.
+ */
+export function oldStopIds(tasks: Task[], now: number): string[] {
+  const since = now - RECENT_STOP_DAYS * 24 * 60 * 60 * 1000
+  return tasks
+    .filter((t) => t.attention === 'stop' && Date.parse(t.latestAt) < since)
+    .map((t) => t.id)
+}
+
 const newestFirst = (x: { createdAt: string }, y: { createdAt: string }) =>
   Date.parse(y.createdAt) - Date.parse(x.createdAt)
 

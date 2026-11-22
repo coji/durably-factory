@@ -58,6 +58,8 @@ import { checkpointPaths } from '../src/engine/runner.js'
 import {
   archivable,
   groupTasks,
+  oldStopIds,
+  RECENT_STOP_DAYS,
   taskRunIds,
   needsAttention,
   type Diagnosis,
@@ -4227,23 +4229,26 @@ describe('numbers on the screens', () => {
     }) as unknown as RunRow
 
   const listOf = (runs: RunRow[], parents: Record<string, string> = {}) => {
+    const tasks = groupTasks(
+      runs.map((r) => ({
+        id: r.id,
+        createdAt: r.createdAt,
+        parentId: parents[r.id] ?? null,
+        kind: r.diagnosis.kind,
+        approved: r.conclusion === 'approved',
+        leadTimeMs: r.leadTimeMs,
+        costUsd: r.costUsd,
+        archived: r.archived,
+      })),
+    )
     const data = {
       exists: true,
       db: '/tmp/x.db',
       now,
       runs,
-      tasks: groupTasks(
-        runs.map((r) => ({
-          id: r.id,
-          createdAt: r.createdAt,
-          parentId: parents[r.id] ?? null,
-          kind: r.diagnosis.kind,
-          approved: r.conclusion === 'approved',
-          leadTimeMs: r.leadTimeMs,
-          costUsd: r.costUsd,
-          archived: r.archived,
-        })),
-      ),
+      tasks,
+      oldStops: oldStopIds(tasks, Date.parse(now)),
+      recentStopDays: RECENT_STOP_DAYS,
       repos: [],
       repo: null,
     } as unknown as RunsResponse
@@ -4264,8 +4269,8 @@ describe('numbers on the screens', () => {
       archivedStop({ id: '01K6D2Q7XB3M9RKT4WARCHVD', name: 'archived task' }),
     ])
     const list = htmlText(html)
-    // The overview and the section count both finished tasks, as status does.
-    assert.match(list, new RegExp(`${LIST.overviewDone}\\n+2\\n`))
+    // The section counts both finished tasks, as status does.
+    assert.match(list, new RegExp(`${LIST.done}\\n+2\\n`))
     assert.ok(list.includes(LIST.shownOf('1', '2')))
     assert.ok(list.includes(LIST.showArchived))
     assert.ok(list.includes(LIST.archivedCount('1')))
@@ -4611,25 +4616,39 @@ describe('numbers on the screens', () => {
       diagnosis: { kind, next: [], failure: null },
     } as unknown as Partial<RunRow>)
 
-  it('marks the running count when an older repair runs while a newer one waits', () => {
-    const html = listOf(
-      [
-        asked,
-        as(older, 'running', '2026-09-30T11:10:00.000Z'),
-        as(newer, 'pending', '2026-09-30T11:20:00.000Z'),
-      ],
-      repairs,
-    )
-    const overview = html.slice(html.indexOf('<nav'), html.indexOf('</nav>'))
-    assert.ok(overview.includes('dot-live'))
-  })
-
   // The stopped section only, from its heading to the next section.
   const stopSection = (html: string) => {
     const at = html.indexOf('id="tasks-stop"')
     assert.ok(at >= 0)
     return html.slice(at, html.indexOf('id="tasks-done"', at))
   }
+
+  it('counts only recent stops and keeps older ones closed apart', () => {
+    const stopped = (id: string, createdAt: string) =>
+      row({
+        id,
+        name: id,
+        status: 'failed',
+        conclusion: null,
+        createdAt,
+        diagnosis: { kind: 'stopped', next: [], failure: null },
+      } as unknown as Partial<RunRow>)
+    const html = listOf([
+      stopped('01K6D2Q7XB3M9RKT4WRECENT', '2026-09-29T12:00:00.000Z'),
+      stopped('01K6D2Q7XB3M9RKT4WOLDSTP', '2026-09-10T12:00:00.000Z'),
+    ])
+    // The recent part ends where the closed older part starts.
+    const all = htmlText(stopSection(html))
+    const section = all.slice(
+      0,
+      all.indexOf(LIST.oldStops(String(RECENT_STOP_DAYS))),
+    )
+    assert.ok(section.includes('01K6D2Q7XB3M9RKT4WRECENT'))
+    assert.ok(!section.includes('01K6D2Q7XB3M9RKT4WOLDSTP'))
+    const text = htmlText(html)
+    assert.match(text, new RegExp(`${LIST.stopped}\\n+1\\n`))
+    assert.ok(text.includes(LIST.oldStops(String(RECENT_STOP_DAYS))))
+  })
 
   for (const kind of ['running', 'pending', 'lease-expired', 'decided'])
     it(`opens a stopped row whose retried repair is ${kind}`, () => {

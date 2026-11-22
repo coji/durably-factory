@@ -115,6 +115,8 @@ import {
   diagnose,
   diagnoseRun,
   groupTasks,
+  oldStopIds,
+  RECENT_STOP_DAYS,
   needsHuman,
   taskRoots,
   taskRunIds,
@@ -287,6 +289,10 @@ export interface RunsResponse extends RepoScope {
   tasks: Task[]
   /** The open tasks by lane; see `floorOf`. */
   floor: FloorLane[]
+  /** Stopped tasks older than `RECENT_STOP_DAYS`; see `oldStopIds`. */
+  oldStops: string[]
+  /** `RECENT_STOP_DAYS`, for the words that name the split. */
+  recentStopDays: number
 }
 
 export interface RunDetailResponse {
@@ -1985,6 +1991,8 @@ function createUiApi(stateRoot: string) {
         runs: [],
         tasks: [],
         floor: floorOf([], []),
+        oldStops: [],
+        recentStopDays: RECENT_STOP_DAYS,
       }
     const all = await orEmpty(allRuns(db), [])
     reports.keep(all)
@@ -2018,6 +2026,8 @@ function createUiApi(stateRoot: string) {
       runs: listRows(rows, tasks),
       tasks,
       floor: floorOf(rows, tasks),
+      oldStops: oldStopIds(tasks, now),
+      recentStopDays: RECENT_STOP_DAYS,
     }
   }
 

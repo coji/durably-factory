@@ -644,10 +644,11 @@ export const LIST = {
   attentionEmpty: '人の手が要るものはありません',
   decision: '判断待ち',
   stopped: '止まったもの',
+  recentStops: (days: string) => `直近 ${days} 日`,
+  oldStops: (days: string) => `${days} 日より前に止まったもの`,
+  oldStopsNote: '開くと表示します。選んでまとめてアーカイブできます。',
   active: '動いているもの',
   activeEmpty: '動いている実行も、順番を待つ実行もありません。',
-  overview: '状況',
-  overviewDone: '終わった',
   filter: 'タスク名で絞り込む',
   onlyArchived:
     'アーカイブ済みのタスクだけです。「アーカイブ済みも表示」にすると出ます。',
@@ -1109,11 +1110,6 @@ export const DESIGN = {
       name: '状態バッジ',
       about: '色が付くのは人待ち、失敗、実行中の三つだけです。',
     },
-    overview: {
-      name: '件数の並び',
-      about:
-        '一覧の先頭で、どこに何件あるかを見せます。0 件は色を付けず、押すとその節へ移ります。',
-    },
     filters: {
       name: '一覧の絞り込み',
       about:
@@ -1198,8 +1194,6 @@ export const DESIGN = {
     },
   },
   state: {
-    attention: '人の手が要るとき',
-    calm: '何も待っていないとき',
     closed: '閉じた状態',
     open: '開いた状態',
     known: '分かっている値',

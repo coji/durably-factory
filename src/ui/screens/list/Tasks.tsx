@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useContext, useState } from 'react'
 
 import type { Task } from '../../../engine/status'
 import type { Act } from '../../components/ActionNotice'
 import { EmptyState } from '../../components/EmptyState'
 import { LiveProgress } from '../../components/LiveProgress'
 import { RunActions } from '../../components/RunActions'
-import { useRunHref } from '../../components/RunLink'
+import { RepoContext, useRunHref } from '../../components/RunLink'
 import { StageTrack } from '../../components/StageTrack'
 import {
   ArchivedMark,
@@ -58,13 +58,15 @@ function othersOpen(task: Task): boolean {
 }
 
 /**
- * Words beside the name: its repository, archived, and a finished
- * rehearsal on the fake.
+ * Words beside the name: its repository unless the list is narrowed to
+ * one, archived, and a finished rehearsal on the fake.
  */
 function Marks({ task, rep }: { task: Task; rep: RunRow }) {
+  // Narrowed to one repository, every row would name the same one.
+  const repo = useContext(RepoContext)
   return (
     <>
-      <RepoMark name={rep.repo} />
+      {repo ? null : <RepoMark name={rep.repo} />}
       {rep.archived ? <ArchivedMark /> : null}
       {task.attention === 'done' && task.fake ? <FakeMark /> : null}
     </>

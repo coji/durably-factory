@@ -44,8 +44,13 @@ export function Attention({
   tasksHref: string
 }) {
   const rows = new Map(data.runs.map((r) => [r.id, r]))
+  const old = new Set(data.oldStops)
   const list = data.tasks
-    .filter((t) => t.attention === 'decision' || t.attention === 'stop')
+    .filter(
+      (t) =>
+        t.attention === 'decision' ||
+        (t.attention === 'stop' && !old.has(t.id)),
+    )
     .flatMap((t) => rows.get(t.representative) ?? [])
   const shown = list.slice(0, 5)
   return (

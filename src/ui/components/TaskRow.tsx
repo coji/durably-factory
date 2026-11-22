@@ -48,9 +48,9 @@ export function openNow(toggled: boolean | null, wanted: boolean): boolean {
 
 /**
  * One task in a list: its state, its name as a link to the run that shows
- * it, and its facts in aligned columns. A summary line,
- * such as why it stopped, stays under the name while closed, cut to one
- * line, and shows whole when open. The chevron opens what is below: the
+ * it, and its facts in aligned columns. A summary line, such as why it
+ * stopped, shows under the name once the row is open; closed, the badge
+ * says how it stopped. The chevron opens what is below: the
  * next step and every run the task took. The name leads; the ID is a quiet
  * suffix, and marks such as アーカイブ済み sit beside it.
  */
@@ -111,9 +111,9 @@ export function TaskRow({
       >
         <Chevron open={open} />
       </button>
-      <div className="task-line flex min-h-8 min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+      <div className="task-line flex min-h-8 min-w-0 flex-wrap items-start gap-x-3 gap-y-1 md:items-center">
         <StatusBadge label={status.label} tone={status.tone} />
-        <span className="flex min-w-0 flex-1 basis-48 items-baseline gap-2">
+        <span className="flex min-w-0 flex-1 basis-32 flex-wrap items-baseline gap-x-2 md:basis-48 md:flex-nowrap">
           {href ? (
             <a
               href={href}
