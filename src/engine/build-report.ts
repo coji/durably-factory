@@ -8,6 +8,7 @@ import type { AnyDurably, Run } from '@coji/durably'
 import type { CodeResponse } from '../factory/code-response.js'
 import {
   asLaterRoundException,
+  asTestException,
   asThresholdException,
 } from '../factory/events.js'
 import {
@@ -61,6 +62,7 @@ import {
   type AttemptRow,
   type BelowThresholdBlockers,
   type LaterRoundNonBlockers,
+  type BlockingRuleNonBlockers,
   type LoopReport,
   type ReportAgentTimeouts,
   type ReportBaseline,
@@ -265,6 +267,8 @@ function asFinding(value: unknown): ReportFinding | null {
     f.severity === 'non-blocker'
       ? asLaterRoundException(f.laterRoundException)
       : undefined
+  const testMark =
+    f.severity === 'non-blocker' ? asTestException(f.testException) : undefined
   return {
     severity: f.severity,
     title: f.title,
@@ -275,6 +279,7 @@ function asFinding(value: unknown): ReportFinding | null {
     ...(typeof f.impact === 'number' ? { impact: f.impact } : {}),
     ...(exception ? { thresholdException: exception } : {}),
     ...(laterRound ? { laterRoundException: laterRound } : {}),
+    ...(testMark ? { testException: testMark } : {}),
   }
 }
 
@@ -798,6 +803,47 @@ export function laterRoundNonBlockersOf(
         }),
       ),
   )
+}
+
+/**
+ * The non-blockers the shared blocking rule makes worth a look, by round
+ * and lens; see `BlockingRuleNonBlockers`. None without a threshold of 1 or
+ * more. Only rounds whose verdicts counted.
+ */
+export function blockingRuleNonBlockersOf(
+  threshold: number | null,
+  rounds: ReportReviewRound[],
+): BlockingRuleNonBlockers[] {
+  if (threshold == null || threshold < 1) return []
+  return rounds
+    .filter((round) => (round.status ?? 'completed') === 'completed')
+    .flatMap((round) =>
+      round.reviews.flatMap((review) => {
+        const kept = review.findings?.nonBlocker ?? []
+        const aboveThreshold = kept.filter(
+          (f) =>
+            f.laterRoundException === undefined &&
+            // A test or check finding is counted apart, scored or not.
+            f.testException === undefined &&
+            f.likelihood !== undefined &&
+            f.impact !== undefined &&
+            f.likelihood * f.impact >= threshold,
+        ).length
+        const testException = kept.filter(
+          (f) => f.testException !== undefined,
+        ).length
+        return aboveThreshold + testException > 0
+          ? [
+              {
+                round: round.round,
+                lens: review.lens,
+                aboveThreshold,
+                testException,
+              },
+            ]
+          : []
+      }),
+    )
 }
 
 /**
@@ -1641,6 +1687,10 @@ export async function buildReport(
     setupOutput?.reviewLaterRounds === 'whole'
       ? { reviewLaterRounds: setupOutput.reviewLaterRounds }
       : {}),
+    blockingRuleNonBlockers: blockingRuleNonBlockersOf(
+      reviewBlockerThreshold,
+      reviewRounds,
+    ),
     laterRoundNonBlockers: laterRoundNonBlockersOf([
       { stage: 'code', rounds: reviewRounds },
       { stage: 'spec', rounds: specRoundsOf(steps) },

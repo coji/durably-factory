@@ -16,6 +16,7 @@ import type { StepAttempt } from '@coji/durably'
 import type { CodeResponse } from '../factory/code-response.js'
 import type {
   LaterRoundException,
+  TestException,
   ThresholdException,
 } from '../factory/events.js'
 import { INTERRUPTED_CHECK } from './failure-details.js'
@@ -328,6 +329,11 @@ export interface ReportFinding {
    * from blocking, as it said; never checked (ADR-0062).
    */
   laterRoundException?: LaterRoundException
+  /**
+   * The reviewer's mark on a test or check finding the shared blocking rule
+   * made a non-blocker, as it said; never checked (ADR-0063).
+   */
+  testException?: TestException
 }
 
 /**
@@ -1003,6 +1009,24 @@ export interface LaterRoundNonBlockers {
   count: number
 }
 
+/**
+ * One code review's kept non-blockers the shared blocking rule makes worth
+ * a look (ADR-0063), in a round that counted, when the run fixed a
+ * threshold of 1 or more. `aboveThreshold`: non-blockers whose likelihood ×
+ * impact is at or above the threshold, the later-round rule's marked ones
+ * and the marked test or check findings left out; from prompt version 5 the rule says such a finding blocks, so a
+ * count shows a reviewer that under-blocks. `testException`: test or check
+ * findings the reviewer made non-blockers because the failure they miss is
+ * not named. Only reviews with one or more are listed. Counted from the
+ * kept findings.
+ */
+export interface BlockingRuleNonBlockers {
+  round: number
+  lens: string
+  aboveThreshold: number
+  testException: number
+}
+
 /** Each reviewer invocation, retaining its measured values and session decision. */
 export interface ReportReviewCall {
   reviewPass?: 'iterative' | 'final'
@@ -1085,6 +1109,8 @@ export interface LoopReport {
   reviewLaterRounds?: 'scoped' | 'whole'
   /** See `LaterRoundNonBlockers`; absent on a report made before it existed. */
   laterRoundNonBlockers?: LaterRoundNonBlockers[]
+  /** See `BlockingRuleNonBlockers`; absent on a report made before it existed. */
+  blockingRuleNonBlockers?: BlockingRuleNonBlockers[]
   summary: RunSummary
   triage: ReportTriage | null
   /**
@@ -1899,6 +1925,10 @@ export function reportToMarkdown(r: LoopReport): string {
   if (r.reviewLaterRounds)
     lines.push(
       `- later review rounds: ${r.reviewLaterRounds} (${r.reviewLaterRounds === 'scoped' ? 'after a repair, a review blocks only on an earlier blocker left unfixed, a defect the repair introduced or a problem inside the repair diff' : 'every round may block on anything'})`,
+    )
+  for (const n of r.blockingRuleNonBlockers ?? [])
+    lines.push(
+      `- non-blockers under the blocking rule: ${n.lens}, round ${n.round}: ${n.aboveThreshold} at or above the threshold, ${n.testException} test or check finding${n.testException === 1 ? '' : 's'} missing no named failure`,
     )
   for (const n of r.laterRoundNonBlockers ?? [])
     lines.push(

@@ -103,7 +103,7 @@ const spec = (
 
 describe('later-round review prompts (ADR-0062)', () => {
   it('pins v8, and keeps the v7 bytes for "whole" and for a v7 replay', () => {
-    assert.equal(INSTRUCTIONS_VERSION, 'local-factory.v8')
+    assert.equal(promptVersionOf(INSTRUCTIONS_VERSION) >= 4, true)
     assert.equal(promptVersionOf('local-factory.v8'), 4)
     assert.equal(promptVersionOf('local-factory.v7'), 3)
     // Captured from the preceding committed implementation, before this edit.

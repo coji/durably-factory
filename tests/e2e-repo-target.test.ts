@@ -79,7 +79,11 @@ import {
   testProbeBaseRecordOf,
   testProbeMarkerOf,
 } from '../src/factory/layout.js'
-import { codePrompt, REVIEW_STATUS_COMPLETE } from '../src/factory/prompts.js'
+import {
+  blockerThresholdRules,
+  codePrompt,
+  REVIEW_STATUS_COMPLETE,
+} from '../src/factory/prompts.js'
 import { stageReferences } from '../src/factory/references.js'
 import { repairLabels } from '../src/factory/repair.js'
 import {
@@ -2203,6 +2207,7 @@ function configuredRun(
     fakeScenario?: Record<string, unknown>
     autoApprove?: boolean
     reviewLaterRounds?: 'scoped' | 'whole'
+    reviewBlockerThreshold?: number
   } = {},
 ) {
   return {
@@ -2211,6 +2216,9 @@ function configuredRun(
       kind: 'repo' as const,
       repoPath: repo,
       baseRef: 'HEAD',
+      ...(extra.reviewBlockerThreshold !== undefined
+        ? { reviewBlockerThreshold: extra.reviewBlockerThreshold }
+        : {}),
       task: 'Fix add() so decimal inputs are not truncated.',
       spec: 'SPEC: add(0.1, 0.2) is 0.30000000000000004.',
       dispositions: null,
@@ -3377,6 +3385,92 @@ describe('configured reviewers', { timeout: 240000 }, () => {
       })
       assert.ok(ok.id)
     } finally {
+      await durably.db.destroy()
+    }
+  })
+
+  it('gives both findings-json reviewers the same blocking rule, by local instructions and by command, and counts the non-blockers it makes worth a look (ADR-0063)', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'repo-review-rule-'))
+    const repo = await seedRepo(root)
+    delete process.env.FAKE_FAIL_FIRST
+    delete process.env.FAKE_REVIEW_SEQUENCE
+    delete process.env.FAKE_REVIEW_SLOW_MS
+    recording = recordFakeReviewCalls()
+    const durably = createAgentDurably({ stateRoot: join(root, 'state') })
+    await durably.init()
+    try {
+      const run = await durably.jobs.agentLoop.trigger(
+        configuredRun(
+          repo,
+          {
+            correctness: {
+              command: null,
+              context: 'local-instructions',
+              output: 'findings-json',
+            },
+            'edge-cases': {
+              command: '/review',
+              context: 'prompt',
+              output: 'findings-json',
+            },
+          },
+          {
+            reviewBlockerThreshold: 5,
+            fakeScenario: {
+              failIterations: 0,
+              reviewOutputs: [
+                findings([
+                  {
+                    severity: 'non-blocker',
+                    title: 'rare',
+                    body: 'b',
+                    likelihood: 3,
+                    impact: 3,
+                  },
+                  {
+                    severity: 'non-blocker',
+                    title: 'probe',
+                    body: 'b',
+                    testException: 'unnamed-failure',
+                  },
+                ]),
+                findings([]),
+              ],
+            },
+          },
+        ),
+      )
+      await waitFor(
+        async () =>
+          ['completed', 'failed'].includes(
+            (await durably.getRun(run.id))?.status ?? '',
+          ),
+        150000,
+        'the run settles',
+      )
+      const done = await durably.getRun(run.id)
+      const output = done?.output as { conclusion: string; workdir: string }
+      assert.equal(output.conclusion, 'approved', done?.error ?? '')
+      const calls = endedCalls(output.workdir).filter((c) =>
+        c.role.startsWith('review-'),
+      )
+      const a = calls.find((c) => c.role === 'review-a')
+      const b = calls.find((c) => c.role === 'review-b')
+      const rule = blockerThresholdRules('findings-json', 5)
+      const shown = (text: string) => rule.filter((line) => text.includes(line))
+      assert.deepEqual(shown(a?.localInstructionsAtStart?.content ?? ''), rule)
+      assert.ok((b?.input ?? '').startsWith('/review\n\n'))
+      assert.deepEqual(shown(b?.input ?? ''), rule)
+      const report = await buildReport(durably, run.id)
+      assert.deepEqual(report.blockingRuleNonBlockers, [
+        { round: 1, lens: 'review-a', aboveThreshold: 1, testException: 1 },
+      ])
+      assert.match(
+        reportToMarkdown(report),
+        /^- non-blockers under the blocking rule: review-a, round 1: 1 at or above the threshold, 1 test or check finding missing no named failure$/m,
+      )
+    } finally {
+      await durably.stop()
       await durably.db.destroy()
     }
   })

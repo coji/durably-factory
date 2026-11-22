@@ -1905,10 +1905,12 @@ describe('the blocker threshold of a findings-json code review', () => {
   const review = (output: 'verdict' | 'findings-json', threshold?: number) =>
     reviewPrompt('correctness', 'CTX', ['rule'], [], null, null, {
       output,
+      // The rule as runs pinned before ADR-0063 replay it.
+      promptVersion: 4,
       ...(threshold !== undefined ? { blockerThreshold: threshold } : {}),
     })
   /** Every line of the rule, whatever its threshold. */
-  const RULE_LINES = blockerThresholdRules('findings-json', 7).map(
+  const RULE_LINES = blockerThresholdRules('findings-json', 7, 4).map(
     (line) =>
       new RegExp(
         line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replaceAll('7', '\\d+'),
