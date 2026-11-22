@@ -119,6 +119,20 @@ export function asLaterRoundException(
   return LATER_ROUND_EXCEPTIONS.find((e) => e === value)
 }
 
+/**
+ * Why a reviewer returned a test or check finding as a non-blocker: the
+ * failure the test or check would let through is not one the task, the
+ * spec's acceptance criteria or the owner context names (ADR-0063). The
+ * reviewer's own claim; kept, never checked.
+ */
+const TEST_EXCEPTIONS = ['unnamed-failure'] as const
+export type TestException = (typeof TEST_EXCEPTIONS)[number]
+
+/** `value` when it is the test-finding mark; else undefined, as above. */
+export function asTestException(value: unknown): TestException | undefined {
+  return TEST_EXCEPTIONS.find((e) => e === value)
+}
+
 const reviewFindingSchema = z.object({
   severity: z.enum(['blocker', 'non-blocker']),
   title: z.string(),
@@ -129,6 +143,7 @@ const reviewFindingSchema = z.object({
   impact: z.number().optional(),
   thresholdException: z.enum(THRESHOLD_EXCEPTIONS).optional(),
   laterRoundException: z.enum(LATER_ROUND_EXCEPTIONS).optional(),
+  testException: z.enum(TEST_EXCEPTIONS).optional(),
 })
 
 const reviewFindingsSchema = z.object({

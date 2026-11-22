@@ -861,7 +861,16 @@ Repository config: factory.json at the repository root, or --config <file>:
   The reviewer classifies; the factory keeps the scores and never changes a
   severity. A blocker kept below the threshold is to name its
   "thresholdException" (not-product or explicit-requirement), and the report
-  counts such blockers by round and lens, with and without one. 0 adds no
+  counts such blockers by round and lens, with and without one.
+  From local-factory.v9 both reviewers get the same blocking rule: a product
+  finding at or above the threshold blocks, a missed stated requirement
+  blocks, and a finding about whether tests or checks are sufficient blocks
+  only when they would let through a failure the task, the spec's
+  acceptance criteria or the confirmed context names; otherwise it is a
+  non-blocker marked "testException": "unnamed-failure". Neither reviewer
+  blocks or passes for a reason outside the rule. The report counts, by
+  round and reviewer, non-blockers at or above the threshold and the marked
+  test findings. 0 adds no
   such rule; a repair of review feedback is still told "Do not design for
   rare or future cases nobody asked for." whatever the threshold. Verdict
   reviews and spec reviews are not affected.

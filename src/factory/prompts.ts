@@ -8,11 +8,15 @@ import type { CandidateChanges, ReviewSnapshots } from '../engine/types.js'
 import type { RepairFinding } from './code-response.js'
 import {
   asLaterRoundException,
+  asTestException,
   asThresholdException,
   IMPLEMENTER_NOTES_MAX_BYTES,
 } from './events.js'
 import type { PromptPolicy } from './prompt-policy.js'
-import type { PromptVersion } from './prompt-version.js'
+import {
+  INSTRUCTIONS_PROMPT_VERSION,
+  type PromptVersion,
+} from './prompt-version.js'
 import type { ReferenceFiles } from './references.js'
 import { reviewerId } from './reviewers.js'
 import type {
@@ -680,16 +684,45 @@ function replyShape(
  * classifies it by the product; findings of any other kind, and a missed
  * requirement the task, spec or owner context states, keep the usual
  * judgement. Nothing for a threshold of 0 or a verdict review.
+ *
+ * From prompt version 5 (ADR-0063) the rule is one explicit blocking rule
+ * both reviewers share: a product finding at or above the threshold blocks,
+ * a missed stated requirement blocks, a finding about whether tests or
+ * checks are sufficient blocks only when they would let through a failure
+ * the task, the spec's acceptance criteria or the owner context names, and
+ * no reviewer blocks or passes for a reason outside the rule.
  */
 export function blockerThresholdRules(
   output: ReviewOutput,
   threshold: number,
+  promptVersion: PromptVersion = INSTRUCTIONS_PROMPT_VERSION,
 ): string[] {
   if (output !== 'findings-json' || threshold < 1) return []
+  if (promptVersion >= 5) return sharedBlockingRules(threshold)
   return [
     `- For each finding about how the product behaves, score how likely it is to actually happen in real use (likelihood) and how severe it is when it does (impact), each as an integer from 1 to 10, and add both to the finding as "likelihood" and "impact": the reply format marks them optional, but a finding this rule covers must carry both. If likelihood × impact is below ${threshold}, the finding is a non-blocker. If it is ${threshold} or more, decide blocker or non-blocker as you otherwise would.`,
     '- Findings that are not about how the product behaves, such as whether the tests are sufficient, a change outside the scope of the task, steering, or a secret in the change, are judged as you otherwise would: the likelihood × impact rule does not apply to them, whatever their scores.',
     "- A finding that the change does not do something the task, the spec or the owner's confirmed context explicitly asks for is also judged as you otherwise would, however rarely the case it asks about happens.",
+    '- When you return a blocker whose likelihood × impact is below the threshold, add "thresholdException" to it: "not-product" when the finding is not about how the product behaves, "explicit-requirement" when it is a missed requirement the task, the spec or the owner\'s confirmed context explicitly states.',
+  ]
+}
+
+/** The mark of a test or check finding the shared rule made a non-blocker. */
+export const TEST_EXCEPTION = 'unnamed-failure'
+
+/**
+ * The blocking rule both code reviewers are given from prompt version 5
+ * (ADR-0063); see `blockerThresholdRules`.
+ */
+function sharedBlockingRules(threshold: number): string[] {
+  return [
+    '- BLOCKING RULE. Both reviewers are given this same rule, word for word. Decide whether each finding is a blocker by this rule and the other rules in CHECK alone: do not make a finding a blocker, or a non-blocker, for a reason they do not give.',
+    `- A finding about how the product behaves: score how likely it is to actually happen in real use (likelihood) and how severe it is when it does (impact), each as an integer from 1 to 10, and add both to the finding as "likelihood" and "impact": the reply format marks them optional, but a finding this rule covers must carry both. If likelihood × impact is below ${threshold}, the finding is a non-blocker. If it is ${threshold} or more, it is a blocker.`,
+    "- A finding that the change does not do something the task, the spec or the owner's confirmed context explicitly asks for is a blocker, however rarely the case it asks about happens.",
+    '- A finding about whether the tests or checks are sufficient, such as a test, check or verification script that could pass when it should fail, or a case no test covers: it is a blocker only when that test or check would let through a failure that the task, the spec\'s acceptance criteria or the owner\'s confirmed context names. Otherwise it is a non-blocker: report it all the same, and add "testException": "' +
+      TEST_EXCEPTION +
+      '" to it. The likelihood × impact rule does not apply to it.',
+    '- A change outside the scope of the task, steering, or a secret in the change is judged as you otherwise would: the likelihood × impact rule does not apply to it, whatever its scores.',
     '- When you return a blocker whose likelihood × impact is below the threshold, add "thresholdException" to it: "not-product" when the finding is not about how the product behaves, "explicit-requirement" when it is a missed requirement the task, the spec or the owner\'s confirmed context explicitly states.',
   ]
 }
@@ -931,7 +964,11 @@ export function reviewPrompt(
     ),
     '- A DISPOSITIONS block, when present, records findings already settled in earlier rounds. It is expected input: do not raise those findings again unless the candidate reopens them. It is not steering.',
     `- Steering is ${STEERING[output].definition}. ${STEERING[output].action}`,
-    ...blockerThresholdRules(output, options.blockerThreshold ?? 0),
+    ...blockerThresholdRules(
+      output,
+      options.blockerThreshold ?? 0,
+      options.promptVersion ?? INSTRUCTIONS_PROMPT_VERSION,
+    ),
     ...reviewRoundRules(output, roundScope),
     '',
     'PROCEDURE:',
@@ -1299,6 +1336,9 @@ function validFinding(
     severity === 'non-blocker'
       ? asLaterRoundException(f['laterRoundException'])
       : undefined
+  // Likewise the test-finding mark (ADR-0063).
+  const testMark =
+    severity === 'non-blocker' ? asTestException(f['testException']) : undefined
   return {
     ok: true,
     finding: {
@@ -1310,6 +1350,7 @@ function validFinding(
       ...scores,
       ...(known ? { thresholdException: known } : {}),
       ...(laterRound ? { laterRoundException: laterRound } : {}),
+      ...(testMark ? { testException: testMark } : {}),
     },
   }
 }
@@ -1414,6 +1455,9 @@ function reportFinding(finding: ReviewFinding): ReviewFinding {
       : {}),
     ...(finding.laterRoundException !== undefined
       ? { laterRoundException: finding.laterRoundException }
+      : {}),
+    ...(finding.testException !== undefined
+      ? { testException: finding.testException }
       : {}),
   }
 }

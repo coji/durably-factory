@@ -43,6 +43,7 @@ export function wholeChangeReviewReport(
       : {}),
     reviewBlockerRuleLenses: report.reviewBlockerRuleLenses?.map(reviewerId),
     belowThresholdBlockers: report.belowThresholdBlockers?.map(verdict),
+    blockingRuleNonBlockers: report.blockingRuleNonBlockers?.map(verdict),
     laterRoundNonBlockers: report.laterRoundNonBlockers?.map((row) =>
       row.stage === 'code' ? verdict(row) : row,
     ),
