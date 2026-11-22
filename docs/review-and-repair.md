@@ -84,11 +84,11 @@
 
 `status` や `wait` に「仕様の判断待ち」が出ます。表示された待ち ID を使います。
 
-| 操作                                             | コマンド                                                 |
-| ------------------------------------------------ | -------------------------------------------------------- |
-| この仕様で実装する                               | `factory approve --run RUN_ID --wait WAIT_ID`            |
-| メモを渡して、仕様の修正とレビューをもう一度行う | `factory spec-revise --run RUN_ID --notes-file notes.md` |
-| 仕様を却下して終了する                           | `factory reject --run RUN_ID --wait WAIT_ID`             |
+| 操作                                             | コマンド                                                      |
+| ------------------------------------------------ | ------------------------------------------------------------- |
+| この仕様で実装する                               | `pnpm factory approve --run RUN_ID --wait WAIT_ID`            |
+| メモを渡して、仕様の修正とレビューをもう一度行う | `pnpm factory spec-revise --run RUN_ID --notes-file notes.md` |
+| 仕様を却下して終了する                           | `pnpm factory reject --run RUN_ID --wait WAIT_ID`             |
 
 修正後も `blocker` が残れば、再び判断を待ちます。`spec-revise` のメモは空でない UTF-8 テキストで、上限は 256 KiB です。
 
@@ -112,7 +112,7 @@
 CI や人のレビューなどで見つかった指摘を渡すと、最後の候補から修正を始められます。所要時間や使用量は、元の実行にひもづく新しい実行としてレポートに出ます。
 
 ```bash
-factory repair --run RUN_ID --findings-file findings.md
+pnpm factory repair --run RUN_ID --findings-file findings.md
 ```
 
 | 元の実行                         | `--findings-file` を省いた場合                     |
@@ -152,7 +152,7 @@ F3: disputed — the confirmed owner context requires the current behavior
 ## この修正で扱う範囲を変える
 
 ```bash
-factory repair --run RUN_ID --findings-file findings.md --scope-file scope.md
+pnpm factory repair --run RUN_ID --findings-file findings.md --scope-file scope.md
 ```
 
 `scope.md` に、今回対象外とする仕様の節や実行環境の制約を書きます。例えば「仕様の第 3 節は対象外。実行環境で Docker は使えない」と指定できます。修正担当とレビュアーが読み、固定した検査はそのまま実行します。
@@ -162,7 +162,7 @@ factory repair --run RUN_ID --findings-file findings.md --scope-file scope.md
 ## 候補を変えずに検査とレビューをやり直す
 
 ```bash
-factory recheck --run RUN_ID
+pnpm factory recheck --run RUN_ID
 ```
 
 `repair` と同じ条件を満たす候補で、検査と設定済みのレビューをやり直します。保存済みの設定を使い、コードの修正は行いません。承認方針は元の実行から引き継ぎ、成果物はローカルに残します。入力から実装もやり直すときは、[retrigger](operations.md) を使います。
@@ -170,7 +170,7 @@ factory recheck --run RUN_ID
 ### 新しいbaseの上で検査とレビューをやり直す
 
 ```bash
-factory recheck --run RUN_ID --onto origin/main
+pnpm factory recheck --run RUN_ID --onto origin/main
 ```
 
 元のベースから候補までの変更を指定したコミットに載せ、できた候補を検査します。競合があればファイル名を示して止まります。元のベースを使う場合は `--onto` を省きます。 [ADR-0061](adr/0061-recheck-onto-newer-base.md)
@@ -185,4 +185,4 @@ factory recheck --run RUN_ID --onto origin/main
 
 継続レビューが両方通ったら、新しいセッションの 2 人が同じ候補を最終確認します。`parallelReview` と併用して検査が落ちた場合は、その回の継続セッションを破棄します。
 
-レポートの `reviewCalls` には再レビュー（`iterative`）と最終確認（`final`）が出ます。小規模な実験では、最終確認を含めた使用量の削減は確認できませんでした。 [実 CLI での検証結果と再現手順](research/review-session-experiment.md)
+レポートの `reviewCalls` には、最終確認の前のレビュー（`iterative`）と最終確認（`final`）が出ます。小規模な実験では、最終確認を含めた API 換算費用の節約は確認できませんでした。 [実 CLI での検証結果と再現手順](research/review-session-experiment.md)

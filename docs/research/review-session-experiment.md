@@ -29,7 +29,7 @@ Claude にログインし、まだ存在しない出力ディレクトリを指�
 pnpm exec tsx scripts/smoke-review-session.ts --run /tmp/review-session-smoke-new
 ```
 
-実際のタスクで比べる場合は、モデル、推論量、タスク、ベースコミットをそろえ、`review.sessionMode` だけを `fresh` と `reuse-experiment` に変えます。`factory report` の `reviewCalls` で最終確認 2 回を確認し、`factory compare --runs FRESH_RUN,EXPERIMENT_RUN` で費用と時間を比べます。修正済みの指摘が再び出たか、新しい不具合を検出したか、最終確認で初めて出た指摘があったかも確認します。
+実際のタスクで比べる場合は、モデル、推論量、タスク、ベースコミットをそろえ、`review.sessionMode` だけを `fresh` と `reuse-experiment` に変えます。`pnpm factory report` の `reviewCalls` で最終確認 2 回を確認し、`pnpm factory compare --runs FRESH_RUN,EXPERIMENT_RUN` で費用と時間を比べます。修正済みの指摘が再び出たか、新しい不具合を検出したか、最終確認で初めて出た指摘があったかも確認します。
 
 ## 限界と失敗した試行
 
