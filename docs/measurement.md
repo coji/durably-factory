@@ -24,6 +24,15 @@ pnpm factory report --run RUN_ID --format md --out report.md
 
 トークンはプロバイダーが報告した値です。見えなかった値は `unknown` または JSON の `null` で表します。投入する作業とタイミングは、プロバイダー側に表示される利用枠を見て決めます。
 
+## AI SDK で呼び出し、使用量を記録する
+
+Codex と Claude Code は、Vercel AI SDK v7 の `generateText` で呼び出します。Factory は各 CLI 用のアダプターを通じて、AI SDK の共通の `usage` と、CLI 固有の使用量データを受け取ります。
+
+- **Codex** は `ai-sdk-provider-codex-cli` 経由で App Server を使います。完了時は AI SDK が返す `usage` を読み、途中の使用量は App Server の `thread/tokenUsage/updated` で拾います。ChatGPT ログインで返るキャッシュ書き込みのゼロは不明として扱います。 [Codex の実装](../src/engine/providers/codex.ts)
+- **Claude Code** は `ai-sdk-provider-claude-code` 経由で Claude Agent SDK を使います。完了時はモデル別の `modelUsage` を優先し、セッションを再開した場合は前回の累計を引いて今回分を求めます。途中の使用量は Agent SDK のメッセージから拾います。 [Claude の実装](../src/engine/providers/claude.ts)
+
+Factory は呼び出しごとに、こうして得た使用量と所要時間をチェックポイントに保存します。レポートはその記録を担当や工程ごとに集計します。 [呼び出しの記録](../src/engine/runner.ts)
+
 ## 複数の実行の比較
 
 同じ題材とベースを使い、モデルやセッションの扱いなど、確かめたい設定を一つ変えて実行します。
@@ -45,8 +54,8 @@ pnpm factory compare --trend --days 30
 
 費用は実行時の単価を使った API 換算の参考値です。サブスクリプションの請求や利用枠は、契約先で確認します。価格表を更新しても、過去の呼び出しには保存済みの単価が使われます。
 
-- **Codex** は App Server の使用量を使います。ChatGPT ログインで返るキャッシュ書き込みのゼロは不明として扱うため、対応する追加費用を含まない場合があります。
-- **Claude** は再開したセッションのモデル別累計から、前回の累計を引いて今回分を求めます。補助モデルとサブエージェントもモデルごとに集計します。キャッシュ書き込みは報告された 5 分・1 時間の保持時間で計算し、内訳や単価が分からない場合は不明とします。
+- **Codex** は、キャッシュ書き込みが不明な場合、その追加費用を含まないことがあります。
+- **Claude Code** は、補助モデルとサブエージェントもモデルごとに集計します。キャッシュ書き込みは報告された 5 分・1 時間の保持時間で計算し、内訳や単価が分からない場合は不明とします。
 - **再レビュー** は `reviewCalls` に候補、ラウンド、新規・継続の別、所要時間、使用量を残します。最終確認があればその呼び出しも集計します。
 
 ### 価格表の定期確認
