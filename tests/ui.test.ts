@@ -98,6 +98,7 @@ import {
   PIPELINE_SUFFIX,
   REPO,
   REVIEW,
+  RUN_RETRO,
   REVIEW_STATUS,
   TREND,
 } from '../src/ui/glossary.js'
@@ -160,6 +161,7 @@ import {
   ReviewsPanel,
 } from '../src/ui/screens/run/ReviewsPanel.js'
 import { PricingNotice, RunTime } from '../src/ui/screens/run/RunTime.js'
+import { rowsOf } from '../src/ui/screens/run/RunTimeParts.js'
 import { UsagePanels } from '../src/ui/screens/run/UsagePanels.js'
 import { RunScreen } from '../src/ui/screens/RunScreen.js'
 import { RunsScreen } from '../src/ui/screens/RunsScreen.js'
@@ -201,6 +203,70 @@ import {
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const cli = join(packageRoot, 'src', 'cli.ts')
+
+describe('the run time table', () => {
+  const lane = (part: string, wallMs: number | null) =>
+    ({
+      part,
+      wallMs,
+      workMs: wallMs,
+      complete: true,
+      called: true,
+      costUsd: 1,
+    }) as never
+  it('orders rows by the pipeline, whatever the average holds', () => {
+    const rows = rowsOf(
+      {
+        lanes: [lane('prepare', 10), lane('code', 20), lane('review', 30)],
+        waits: [{ part: 'human-wait', ms: 5 }],
+      },
+      [
+        { part: 'prepare', perTaskMs: 1 },
+        { part: 'spec', perTaskMs: 1 },
+        { part: 'code', perTaskMs: 1 },
+        { part: 'verify', perTaskMs: 1 },
+        { part: 'between', perTaskMs: 1 },
+      ] as never,
+      true,
+    )
+    assert.deepEqual(
+      rows.map((r) => r.part),
+      ['prepare', 'spec', 'code', 'verify', 'review', 'human-wait', 'between'],
+    )
+    assert.equal(rows.find((r) => r.part === 'spec')?.skipped, true)
+  })
+
+  it('shows the lead time and cost of an ended run with no lane', () => {
+    const html = htmlText(
+      renderToStaticMarkup(
+        createElement(RunTime, {
+          data: {
+            report: {
+              summary: {
+                leadTimeMs: 65_000,
+                costUsd: 0.5,
+                totalTokens: null,
+                repairs: 0,
+                reviewRounds: 0,
+              },
+              attempts: [],
+              baseline: null,
+              stageTotalMs: 0,
+            },
+            now: '2026-01-01T00:00:00.000Z',
+            diagnosis: { kind: 'stopped' },
+            baselineSource: null,
+            waits: [],
+            lanes: [],
+          } as unknown as RunDetailResponse,
+        }),
+      ),
+    )
+    assert.match(html, /1分5秒/)
+    assert.match(html, /\$0\.50/)
+    assert.ok(!html.includes(RUN_RETRO.empty))
+  })
+})
 
 describe('runName', () => {
   it('explains unpriced models beside costs and stays absent for older records', () => {
@@ -4650,6 +4716,26 @@ describe('numbers on the screens', () => {
     assert.ok(text.includes(LIST.oldStops(String(RECENT_STOP_DAYS))))
   })
 
+  it('keeps a stop recent when its run ended within the days, however old it is', () => {
+    const tasks = groupTasks([
+      {
+        id: '01K6D2Q7XB3M9RKT4WOLDRUN',
+        createdAt: '2026-09-20T12:00:00.000Z',
+        endedAt: '2026-09-30T11:00:00.000Z',
+        parentId: null,
+        kind: 'stopped',
+        approved: false,
+        leadTimeMs: null,
+        costUsd: null,
+      },
+    ])
+    assert.deepEqual(oldStopIds(tasks, Date.parse(now)), [])
+    assert.deepEqual(
+      oldStopIds(tasks, Date.parse('2026-10-08T12:00:00.000Z')),
+      ['01K6D2Q7XB3M9RKT4WOLDRUN'],
+    )
+  })
+
   for (const kind of ['running', 'pending', 'lease-expired', 'decided'])
     it(`opens a stopped row whose retried repair is ${kind}`, () => {
       const html = listOf(
@@ -5136,7 +5222,7 @@ describe('numbers on the screens', () => {
             now: '2026-01-01T00:00:00.000Z',
             diagnosis: { kind: 'finished' },
             baselineSource: null,
-            time: null,
+            waits: [],
             lanes: [
               {
                 part: 'code',

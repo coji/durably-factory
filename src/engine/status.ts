@@ -70,6 +70,11 @@ export function needsAttention(attention: TaskAttention): boolean {
 export interface TaskRunInput {
   id: string
   createdAt: string
+  /**
+   * When the run last changed: its completion, or its last update while it
+   * has none. Absent in older callers; `createdAt` stands in then.
+   */
+  endedAt?: string | null
   /** The run it repairs, from `repairParentId`; null for a first run. */
   parentId: string | null
   kind: DiagnosisKind
@@ -122,6 +127,11 @@ export interface Task {
   fake: boolean
   /** When the task's newest run was created. */
   latestAt: string
+  /**
+   * When any run of the task last ended or changed, for how long ago it
+   * stopped; the newest `createdAt` when no run says.
+   */
+  lastActiveAt: string
   /**
    * Lead time and cost summed over every run of the task. Either is null
    * when any run's is not known, so a total never passes for more than it
@@ -198,16 +208,26 @@ export function taskRunIds(runs: Linked[], id: string): string[] {
 /** Days a stop stays among the recent ones a person is asked to look at. */
 export const RECENT_STOP_DAYS = 7
 
+/** The latest moment any of the runs ended, changed, or was created. */
+function lastActive(runs: TaskRunInput[]): string {
+  let at = ''
+  for (const r of runs)
+    for (const t of [r.createdAt, r.endedAt])
+      if (t && (at === '' || Date.parse(t) > Date.parse(at))) at = t
+  return at
+}
+
 /**
- * The stopped tasks whose newest run is older than `RECENT_STOP_DAYS`, by
- * their first run's ID: still stops, still archivable, but no longer the
+ * The stopped tasks none of whose runs ended or changed within
+ * `RECENT_STOP_DAYS`, by their first run's ID: a run created long ago that
+ * stopped today is still recent. They are still stops, still archivable, but no longer the
  * ones a person is expected to act on today. The list and the factory page
  * count only the others.
  */
 export function oldStopIds(tasks: Task[], now: number): string[] {
   const since = now - RECENT_STOP_DAYS * 24 * 60 * 60 * 1000
   return tasks
-    .filter((t) => t.attention === 'stop' && Date.parse(t.latestAt) < since)
+    .filter((t) => t.attention === 'stop' && Date.parse(t.lastActiveAt) < since)
     .map((t) => t.id)
 }
 
@@ -271,6 +291,7 @@ export function groupTasks(runs: TaskRunInput[]): Task[] {
       runs: taskRuns,
       fake: list.find((r) => r.id === id)?.fake ?? false,
       latestAt: ordered.at(-1)?.createdAt ?? '',
+      lastActiveAt: lastActive(ordered),
       total: {
         leadTimeMs: sumKnown(ordered.map((r) => r.leadTimeMs)),
         costUsd: sumKnown(ordered.map((r) => r.costUsd)),

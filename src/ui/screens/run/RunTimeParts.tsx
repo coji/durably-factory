@@ -1,4 +1,5 @@
 import type { RunLane, TimePart } from '../../../engine/flow'
+import { partRank } from '../../../engine/lanes'
 import { RUN_RETRO } from '../../glossary'
 import type { RunDetailResponse } from '../../server'
 
@@ -7,46 +8,45 @@ export const WAITS = ['human-wait', 'slot-wait', 'between']
 /** One row: this run's time and the average, as numbers and as a bar. */
 export interface Row {
   part: string
+  /** This run's time; null when unknown, or when `skipped`. */
   ms: number | null
   average: number | undefined
+  /** An ended run never went through this part; the average still shows. */
+  skipped?: boolean
   lane?: RunLane
 }
 
 /**
- * The rows in pipeline order: the lanes the run entered, then the waits.
- * Once the run is over, the parts it never went through stay as rows with
- * a dash, so a skipped stage reads against the average too.
+ * The rows in pipeline order (`partRank`): the lanes the run entered, then
+ * its waits. Once the run is over (`over`), the parts it never went through
+ * stay as rows, so a skipped stage reads against the average too, and an
+ * unknown wait says so; while it runs, only what it has so far.
  */
 export function rowsOf(
-  data: RunDetailResponse,
+  data: Pick<RunDetailResponse, 'lanes' | 'waits'>,
   average: TimePart[] | null,
+  over: boolean,
 ): Row[] {
   const avg = new Map((average ?? []).map((t) => [t.part, t.perTaskMs]))
-  const over = data.time !== null
   const rows: Row[] = data.lanes.map((lane) => ({
     part: lane.part,
     ms: lane.wallMs,
     average: avg.get(lane.part),
     lane,
   }))
-  const waits = new Map((data.time ?? []).map((t) => [t.part, t.ms]))
-  for (const t of average ?? [])
-    if (over && !WAITS.includes(t.part) && !rows.some((r) => r.part === t.part))
-      rows.push({ part: t.part, ms: null, average: t.perTaskMs })
-  const order = (p: string) =>
-    (average ?? []).findIndex((t) => t.part === p) +
-    (WAITS.includes(p) ? 1000 : 0)
-  rows.sort((x, y) => {
-    const a = data.lanes.findIndex((l) => l.part === x.part)
-    const b = data.lanes.findIndex((l) => l.part === y.part)
-    return a >= 0 && b >= 0 ? a - b : order(x.part) - order(y.part)
-  })
-  for (const part of WAITS) {
-    const ms = waits.get(part) ?? null
-    if (ms !== null || (over && avg.has(part)))
-      rows.push({ part, ms, average: avg.get(part) })
-  }
-  return rows
+  for (const w of data.waits)
+    if (w.ms !== null || over)
+      rows.push({ part: w.part, ms: w.ms, average: avg.get(w.part) })
+  if (over)
+    for (const t of average ?? [])
+      if (!rows.some((r) => r.part === t.part))
+        rows.push({
+          part: t.part,
+          ms: null,
+          average: t.perTaskMs,
+          skipped: true,
+        })
+  return rows.sort((x, y) => partRank(x.part) - partRank(y.part))
 }
 
 /** The bar for this run and a dark tick for the average, on one scale. */

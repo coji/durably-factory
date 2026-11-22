@@ -34,22 +34,25 @@ export function RunTime({ data }: { data: RunDetailResponse }) {
   const r = data.report
   const s = r.summary
   const control = flow?.control ?? null
-  const rows = rowsOf(data, flow?.time ?? null)
+  const over = ['finished', 'stopped'].includes(data.diagnosis.kind)
+  const rows = rowsOf(data, flow?.time ?? null, over)
   const max = Math.max(
     1,
     ...rows.map((x) => Math.max(x.ms ?? 0, x.average ?? 0)),
   )
+  // Only a lane with measured time can be the longest.
   const longest = rows
-    .filter((x) => x.lane)
+    .filter((x) => x.lane && (x.ms ?? 0) > 0)
     .reduce<Row | null>(
       (a, x) => (a && (a.ms ?? 0) >= (x.ms ?? 0) ? a : x),
       null,
     )
   const running = data.diagnosis.kind === 'running'
-  const over = ['finished', 'stopped'].includes(data.diagnosis.kind)
   const lead = s.leadTimeMs
   const above = lead !== null && control !== null && lead > control.upperMs
-  const dashes = data.lanes.some((l) => !l.called)
+  const dashes =
+    rows.some((x) => x.skipped || x.average === undefined) ||
+    data.lanes.some((l) => !l.called)
   return (
     <Card
       title={RUN_RETRO.title}
@@ -71,16 +74,18 @@ export function RunTime({ data }: { data: RunDetailResponse }) {
       foot={
         <div className="flex flex-col gap-1">
           <p className="text-fg tabular-nums">
-            {RUN_RETRO.facts(
-              formatTokens(s.totalTokens),
-              formatCount(s.repairs),
-            )}
+            {RUN_RETRO.tokens(formatTokens(s.totalTokens))}
             {s.totalTokens == null || s.tokensComplete ? null : (
               <PartialTag title={COMMON.partialUsage} />
             )}
+            {COMMON.separator}
+            {RUN_RETRO.rounds(
+              formatCount(s.repairs),
+              formatCount(s.reviewRounds),
+            )}
           </p>
           <p>{RUN_RETRO.note}</p>
-          {dashes ? <p>{RUN_RETRO.noCostNote}</p> : null}
+          {dashes ? <p>{RUN_RETRO.dashNote}</p> : null}
           {running ? <p>{RUN_RETRO.runningNote}</p> : null}
           <PricingNotice attempts={r.attempts} />
           <BaselineSource
@@ -91,9 +96,11 @@ export function RunTime({ data }: { data: RunDetailResponse }) {
         </div>
       }
     >
-      {rows.length === 0 ? (
-        <p className="text-fg-2 text-sm">{RUN_RETRO.empty}</p>
-      ) : (
+      {rows.length === 0 && !over ? (
+        <p className="text-fg-2 mb-2 text-sm">{RUN_RETRO.empty}</p>
+      ) : null}
+      {
+        // The lead time and the cost total show even with no lane yet.
         <table className="w-full border-collapse text-sm">
           <caption className="sr-only">{RUN_RETRO.title}</caption>
           <thead>
@@ -126,7 +133,7 @@ export function RunTime({ data }: { data: RunDetailResponse }) {
             {rows.map((row) => {
               const hot = row.part === longest?.part && rows.length > 1
               const lane = row.lane
-              const skipped = row.ms === null
+              const skipped = row.skipped === true
               return (
                 <tr
                   key={row.part}
@@ -158,7 +165,7 @@ export function RunTime({ data }: { data: RunDetailResponse }) {
                     {lane ? (
                       <>
                         {formatDuration(lane.workMs)}
-                        {lane.complete ? null : (
+                        {lane.complete || lane.workMs === null ? null : (
                           <PartialTag title={COMMON.partialTiming} />
                         )}
                       </>
@@ -210,7 +217,7 @@ export function RunTime({ data }: { data: RunDetailResponse }) {
             </tr>
           </tfoot>
         </table>
-      )}
+      }
     </Card>
   )
 }

@@ -80,11 +80,11 @@ import {
   flowOf,
   laneOf,
   runLanes,
-  runTimeParts,
+  runWaits,
   type Flow,
   type FlowLane,
   type RunLane,
-  type RunTimePart,
+  type RunWait,
 } from '../engine/flow.js'
 import { formatCount } from '../engine/format.js'
 import {
@@ -331,13 +331,10 @@ export interface RunDetailResponse {
   baselineSource: RunRef | null
   /** The run as a span tree on one time axis, as of `now`. */
   trace: Trace
-  /**
-   * Where the run's lead time went, by lane and wait; null while it is
-   * open or a part is unknown. See `runTimeParts`.
-   */
-  time: RunTimePart[] | null
   /** The run's time and cost by lane, so far. See `runLanes`. */
   lanes: RunLane[]
+  /** The run's waits and the time between steps; see `runWaits`. */
+  waits: RunWait[]
   /** Exactly what `report --run <id> --format json` prints. */
   report: LoopReport
 }
@@ -2066,8 +2063,8 @@ function createUiApi(stateRoot: string) {
         path: repo?.key.startsWith('/') ? repo.key : null,
       },
       lineage,
-      time: runTimeParts(report),
       lanes: runLanes(report),
+      waits: runWaits(report),
       checkLogs: checkLogFiles(seen.diagnosis.failure?.details ?? []),
       baselineSource,
       trace: deriveTrace({

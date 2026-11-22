@@ -730,38 +730,23 @@ export const DETAIL = {
   retry: '再実行',
   humanCheck: '人が確認すること',
   leadTime: '所要時間',
-  workTime: '工程の作業時間',
   humanWait: '人の待ち時間',
   totalTokens: '合計トークン',
   cost: '費用',
-  repairsReviews: '修正 / レビュー回数',
   triage: '見立て',
   triageShadow: '見立ては記録するだけで、進め方は変えません。',
   trace: '工程の時系列',
-  stageTimesEmpty: 'まだ完了した工程がありません。',
-  stageTotal: '全体',
   stageUsage: '工程ごとのトークンと費用',
   stageUsageEmpty: 'まだモデルの呼び出しがありません。',
   roleUsage: '役割ごとのトークンと費用',
   usageNote:
     '。「不明」は使用量か価格が分からない呼び出しを含むことを、「一部」の印は分かった分だけの値であることを示します。',
   fake: '模擬の実行で、実際のモデルでは検証していません',
-  timeAndCost: '工程ごとの時間と費用',
-  work: '作業時間',
-  wall: '所要時間',
   noCost: '–',
-  noCostNote: '費用の「–」は、モデルを呼ばなかった工程です。',
-  workOverLead:
-    '作業時間が所要時間より長いのは、並んで動いた工程を重ねて数えるためです。',
   checkLogs: 'チェックのログファイル',
   logMissing: 'ファイルがありません',
   noLogRecorded:
     'この実行の記録には、ログファイルの場所が残っていません。チェックの出力はレポートの検証の試行で読みます。',
-  specTogether: '仕様の工程まとめ',
-  specTogetherTitle:
-    '仕様の作成、仕様レビュー、採点コマンドの決定を合わせた経過時間です。並んだレビューは一度だけ数え、人の判断を待った時間は含みません。',
-  timeNote:
-    '作業時間は工程ごとの呼び出しの時間の合計です。レビューのように並んで動いた工程は重ねて数えるので、合計が所要時間を超えることがあります。所要時間は登録から終わるまでの時計の時間です。',
   evidence: '記録の詳細',
   evidenceNote: '開くと表示します。',
 } as const
@@ -1386,10 +1371,12 @@ export const RUN_RETRO = {
   aboveUpper: '上限を超えています',
   longest: 'この実行で最も長い',
   reworkMost: '手戻りが最も多い',
-  facts: (tokens: string, repairs: string) =>
-    `合計トークン ${tokens} · 修正 ${repairs} 回`,
+  tokens: (tokens: string) => `合計トークン ${tokens}`,
+  rounds: (repairs: string, reviews: string) =>
+    `修正 ${repairs} 回 · レビュー ${reviews} 回`,
   note: '「この実行」と平均は時計の時間で、並んで動いたレビューは一度だけ数えます。作業時間は呼び出しの時間の合計なので、並んだ分だけ長くなります。',
-  noCostNote: '費用の「–」は、モデルを呼ばなかった工程です。',
+  dashNote:
+    '「–」は、この実行が通らなかった工程、30 日の平均がない行、モデルを呼ばなかった工程の費用です。',
   runningNote: '実行中の工程は、終わった呼び出しの分だけを数えます。',
   empty: 'まだ終わった工程がありません。',
 } as const
