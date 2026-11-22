@@ -9,6 +9,7 @@
   "sortTailwindcss": true,
   "ignorePatterns": [
     "pnpm-lock.yaml",
+    "CHANGELOG.md",
     "dist/",
     "node_modules/",
     "*.log",
