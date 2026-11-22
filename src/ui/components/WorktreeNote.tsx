@@ -50,11 +50,12 @@ export function WorktreeNote({
 export function CleanupCommand({ cleanup }: { cleanup: string | null }) {
   if (!cleanup) return null
   return (
-    <div>
-      <p className="text-fg-2 mb-2 text-xs">
-        {cleanup.startsWith('git ') ? COPY.cleanupNote : COPY.cleanupPruneNote}
-      </p>
-      <Commands lines={[cleanup]} />
-    </div>
+    <Commands
+      lines={[cleanup]}
+      summary={COPY.cleanupSummary}
+      note={
+        cleanup.startsWith('git ') ? COPY.cleanupNote : COPY.cleanupPruneNote
+      }
+    />
   )
 }

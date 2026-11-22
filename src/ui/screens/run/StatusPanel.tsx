@@ -18,7 +18,6 @@ import {
   retryLabel,
 } from '../../labels'
 import type { RunDetailResponse } from '../../server'
-import { SummaryPanel } from './SummaryPanel'
 
 /**
  * Failure detail lines with a stable key each. An exit code line repeats
@@ -84,8 +83,8 @@ function FailureFields({
 
 /**
  * What the run came to and what a person does next, with the actions it
- * allows and their CLI commands, then its time and cost. A stop's check
- * comes first; its recorded details stay closed.
+ * allows, their CLI commands closed. A stop's check comes first; its
+ * recorded details stay closed. Time and cost are in the table below.
  */
 export function StatusPanel({
   data,
@@ -172,9 +171,6 @@ export function StatusPanel({
           </details>
         ) : null}
         <CleanupCommand cleanup={data.diagnosis.cleanup} />
-        <div className="border-line border-t pt-3">
-          <SummaryPanel report={data.report} />
-        </div>
       </div>
     </Panel>
   )

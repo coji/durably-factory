@@ -522,6 +522,7 @@ export const COPY = {
   agentLogPath: '出力のパスをコピー',
   squashedBranch: 'まとめたブランチ名をコピー',
   branch: 'ブランチ名をコピー',
+  cleanupSummary: '作業ツリーを片付ける CLI コマンド',
   cleanupNote:
     '作業ツリーを片付けるコマンドです。ブランチは残ります。変更が残っている作業ツリーは git が削除を拒否します。',
   cleanupPruneNote:
@@ -643,10 +644,11 @@ export const LIST = {
   attentionEmpty: '人の手が要るものはありません',
   decision: '判断待ち',
   stopped: '止まったもの',
+  recentStops: (days: string) => `直近 ${days} 日`,
+  oldStops: (days: string) => `${days} 日より前に止まったもの`,
+  oldStopsNote: '開くと表示します。選んでまとめてアーカイブできます。',
   active: '動いているもの',
   activeEmpty: '動いている実行も、順番を待つ実行もありません。',
-  overview: '状況',
-  overviewDone: '終わった',
   filter: 'タスク名で絞り込む',
   onlyArchived:
     'アーカイブ済みのタスクだけです。「アーカイブ済みも表示」にすると出ます。',
@@ -728,38 +730,23 @@ export const DETAIL = {
   retry: '再実行',
   humanCheck: '人が確認すること',
   leadTime: '所要時間',
-  workTime: '工程の作業時間',
   humanWait: '人の待ち時間',
   totalTokens: '合計トークン',
   cost: '費用',
-  repairsReviews: '修正 / レビュー回数',
   triage: '見立て',
   triageShadow: '見立ては記録するだけで、進め方は変えません。',
   trace: '工程の時系列',
-  stageTimesEmpty: 'まだ完了した工程がありません。',
-  stageTotal: '全体',
   stageUsage: '工程ごとのトークンと費用',
   stageUsageEmpty: 'まだモデルの呼び出しがありません。',
   roleUsage: '役割ごとのトークンと費用',
   usageNote:
     '。「不明」は使用量か価格が分からない呼び出しを含むことを、「一部」の印は分かった分だけの値であることを示します。',
   fake: '模擬の実行で、実際のモデルでは検証していません',
-  timeAndCost: '工程ごとの時間と費用',
-  work: '作業時間',
-  wall: '所要時間',
   noCost: '–',
-  noCostNote: '費用の「–」は、モデルを呼ばなかった工程です。',
-  workOverLead:
-    '作業時間が所要時間より長いのは、並んで動いた工程を重ねて数えるためです。',
   checkLogs: 'チェックのログファイル',
   logMissing: 'ファイルがありません',
   noLogRecorded:
     'この実行の記録には、ログファイルの場所が残っていません。チェックの出力はレポートの検証の試行で読みます。',
-  specTogether: '仕様の工程まとめ',
-  specTogetherTitle:
-    '仕様の作成、仕様レビュー、採点コマンドの決定を合わせた経過時間です。並んだレビューは一度だけ数え、人の判断を待った時間は含みません。',
-  timeNote:
-    '作業時間は工程ごとの呼び出しの時間の合計です。レビューのように並んで動いた工程は重ねて数えるので、合計が所要時間を超えることがあります。所要時間は登録から終わるまでの時計の時間です。',
   evidence: '記録の詳細',
   evidenceNote: '開くと表示します。',
 } as const
@@ -1108,11 +1095,6 @@ export const DESIGN = {
       name: '状態バッジ',
       about: '色が付くのは人待ち、失敗、実行中の三つだけです。',
     },
-    overview: {
-      name: '件数の並び',
-      about:
-        '一覧の先頭で、どこに何件あるかを見せます。0 件は色を付けず、押すとその節へ移ります。',
-    },
     filters: {
       name: '一覧の絞り込み',
       about:
@@ -1197,8 +1179,6 @@ export const DESIGN = {
     },
   },
   state: {
-    attention: '人の手が要るとき',
-    calm: '何も待っていないとき',
     closed: '閉じた状態',
     open: '開いた状態',
     known: '分かっている値',
@@ -1377,19 +1357,28 @@ export const RETRO = {
 } as const
 
 export const RUN_RETRO = {
-  title: 'この実行の時間',
+  title: '時間と費用',
   kind: '工程ごと · 直近 30 日の 1 タスク平均と比べる',
   part: '工程',
   thisRun: 'この実行',
   average: '30 日の平均',
-  leadTime: 'リードタイム',
-  mean: (t: string) => `配送したタスクの平均 ${t}`,
-  upper: (t: string) => `上限 ${t}`,
+  work: '作業時間',
+  cost: '費用',
+  total: 'リードタイム',
+  totalAverageTitle: '配送したタスクのリードタイムの平均',
+  notOver: '終わっていない',
+  upper: (t: string) => `リードタイムの上限 ${t}`,
   aboveUpper: '上限を超えています',
   longest: 'この実行で最も長い',
   reworkMost: '手戻りが最も多い',
-  open: '実行が終わると、工程ごとの時間を平均と比べて表示します。',
-  unknown: '一部の時間が記録されていないため、内訳を出せません。',
+  tokens: (tokens: string) => `合計トークン ${tokens}`,
+  rounds: (repairs: string, reviews: string) =>
+    `修正 ${repairs} 回 · レビュー ${reviews} 回`,
+  note: '「この実行」と平均は時計の時間で、並んで動いたレビューは一度だけ数えます。作業時間は呼び出しの時間の合計なので、並んだ分だけ長くなります。',
+  dashNote:
+    '「–」は、この実行が通らなかった工程、30 日の平均がない行、モデルを呼ばなかった工程の費用です。',
+  runningNote: '実行中の工程は、終わった呼び出しの分だけを数えます。',
+  empty: 'まだ終わった工程がありません。',
 } as const
 
 /** Words inside the charts: legends, summaries for screen readers, folds. */

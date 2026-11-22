@@ -49,7 +49,11 @@ export function FactoryScreen({
     )
   const tasksHref = pageHref('runs', repo)
   const decision = data.tasks.filter((t) => t.attention === 'decision').length
-  const stopped = data.tasks.filter((t) => t.attention === 'stop').length
+  // Recent stops only, as the task list counts them.
+  const old = new Set(data.oldStops)
+  const stopped = data.tasks.filter(
+    (t) => t.attention === 'stop' && !old.has(t.id),
+  ).length
   const days = String(flow?.days ?? 30)
   const delivered =
     flow?.tasks.filter((t) => t.outcome === 'delivered').length ?? 0

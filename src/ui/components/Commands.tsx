@@ -1,6 +1,7 @@
 import { COMMAND_COPY, COPY } from '../glossary'
 import { commandNote, commandText } from '../labels'
 import { CopyAnnouncer, CopyButton, useCopy } from './copy'
+import { Chevron } from './Layout'
 
 /** What a copy button says, from the command it copies. */
 function commandLabel(command: string): string {
@@ -45,14 +46,17 @@ function commandLabel(command: string): string {
  * Next commands as copy buttons named for what they do, each with the CLI's
  * note as its tooltip. The command text, which carries IDs such as the wait
  * ID, stays behind a disclosure. With `summary`, the buttons go behind it
- * too: one closed disclosure beside the actions that do the same.
+ * too: one closed disclosure beside the actions that do the same, with
+ * `note` above them inside.
  */
 export function Commands({
   lines,
   summary,
+  note,
 }: {
   lines: string[]
   summary?: string
+  note?: string
 }) {
   const { copied, copy } = useCopy()
   if (lines.length === 0) return null
@@ -85,18 +89,23 @@ export function Commands({
       ))}
     </ul>
   )
+  // The announcer sits outside the gap, so a closed disclosure adds no space.
   return (
-    <div className="flex flex-col gap-2">
-      {summary ? null : buttons}
-      <details className="text-xs">
-        <summary className="text-fg-2 hover:text-fg inline-flex min-h-8 cursor-pointer items-center">
-          {summary ?? COPY.commandText}
-        </summary>
-        <div className="mt-1 flex flex-col gap-2">
-          {summary ? buttons : null}
-          {text}
-        </div>
-      </details>
+    <div>
+      <div className="flex flex-col gap-2">
+        {summary ? null : buttons}
+        <details className="group text-xs">
+          <summary className="text-fg-2 hover:text-fg inline-flex min-h-8 cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden">
+            <Chevron />
+            {summary ?? COPY.commandText}
+          </summary>
+          <div className="mt-1 flex flex-col gap-2">
+            {note ? <p className="text-fg-2">{note}</p> : null}
+            {summary ? buttons : null}
+            {text}
+          </div>
+        </details>
+      </div>
       <CopyAnnouncer copied={copied} />
     </div>
   )

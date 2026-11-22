@@ -1268,6 +1268,7 @@ describe('archive --series', { timeout: 300000 }, () => {
         'runs',
         'fake',
         'latestAt',
+        'lastActiveAt',
         'total',
       ])
       for (const run of task.runs)

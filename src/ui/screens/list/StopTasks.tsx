@@ -5,7 +5,7 @@ import type { Task } from '../../../engine/status'
 import type { Act } from '../../components/ActionNotice'
 import type { BulkAct } from '../../components/BulkNotice'
 import { BUTTON } from '../../components/button'
-import { Section } from '../../components/Layout'
+import { Collapsible, Section } from '../../components/Layout'
 import { BULK, LIST } from '../../glossary'
 import type { RunRow } from '../../server'
 import { BulkBar } from './BulkBar'
@@ -51,7 +51,9 @@ function SelectAll({
  * show, so old stops do not push the finished list off the screen; the
  * section's count still says how many there are. With `actMany`, tasks can
  * be chosen and archived together; a chosen task that leaves the section,
- * such as one retried, leaves the choice with it.
+ * such as one retried, leaves the choice with it. `old` holds the stops
+ * past `RECENT_STOP_DAYS` in a closed part of its own, quiet, to be
+ * archived together rather than read one by one.
  */
 export function StopTasks({
   tasks,
@@ -59,12 +61,17 @@ export function StopTasks({
   now,
   act,
   actMany,
+  old = false,
+  days,
 }: {
   tasks: Task[]
   rows: Map<string, RunRow>
   now: string
   act: Act
   actMany?: BulkAct
+  old?: boolean
+  /** How many days a stop counts as recent, from the server. */
+  days: number
 }) {
   const [all, setAll] = useState(false)
   const [sort, setSort] = useState<TaskSort>('newest')
@@ -87,26 +94,22 @@ export function StopTasks({
     runId: t.id,
     name: taskName(t, rows) ?? t.id,
   }))
-  return (
-    <Section
-      id={SECTION_ID.stop}
-      title={LIST.stopped}
-      count={tasks.length}
-      tools={
-        <>
-          <SortSelect sort={sort} onSort={setSort} />
-          {actMany ? (
-            <SelectAll
-              chosen={chosen.length}
-              total={tasks.length}
-              onChange={(on) =>
-                setPicked(on ? new Set(tasks.map((t) => t.id)) : new Set())
-              }
-            />
-          ) : null}
-        </>
-      }
-    >
+  const tools = (
+    <>
+      <SortSelect sort={sort} onSort={setSort} />
+      {actMany ? (
+        <SelectAll
+          chosen={chosen.length}
+          total={tasks.length}
+          onChange={(on) =>
+            setPicked(on ? new Set(tasks.map((t) => t.id)) : new Set())
+          }
+        />
+      ) : null}
+    </>
+  )
+  const list = (
+    <>
       <MetaHead />
       <Tasks
         tasks={shown}
@@ -132,6 +135,35 @@ export function StopTasks({
           onClear={() => setPicked(new Set())}
         />
       ) : null}
+    </>
+  )
+  if (old)
+    return (
+      <div className="mb-8">
+        <Collapsible
+          title={LIST.oldStops(formatCount(days))}
+          count={tasks.length}
+          note={LIST.oldStopsNote}
+          bare
+        >
+          <div>
+            <div className="mb-3 flex flex-wrap items-center gap-3">
+              {tools}
+            </div>
+            {list}
+          </div>
+        </Collapsible>
+      </div>
+    )
+  return (
+    <Section
+      id={SECTION_ID.stop}
+      title={LIST.stopped}
+      count={tasks.length}
+      note={LIST.recentStops(formatCount(days))}
+      tools={tools}
+    >
+      {list}
     </Section>
   )
 }

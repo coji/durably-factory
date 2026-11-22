@@ -97,7 +97,7 @@ export function Chevron({ open }: { open?: boolean }) {
         d="M4.5 3l3 3-3 3"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1.75"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

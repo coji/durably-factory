@@ -79,10 +79,12 @@ import {
   FLOW_LANES,
   flowOf,
   laneOf,
-  runTimeParts,
+  runLanes,
+  runWaits,
   type Flow,
   type FlowLane,
-  type RunTimePart,
+  type RunLane,
+  type RunWait,
 } from '../engine/flow.js'
 import { formatCount } from '../engine/format.js'
 import {
@@ -113,6 +115,8 @@ import {
   diagnose,
   diagnoseRun,
   groupTasks,
+  oldStopIds,
+  RECENT_STOP_DAYS,
   needsHuman,
   taskRoots,
   taskRunIds,
@@ -285,6 +289,10 @@ export interface RunsResponse extends RepoScope {
   tasks: Task[]
   /** The open tasks by lane; see `floorOf`. */
   floor: FloorLane[]
+  /** Stopped tasks older than `RECENT_STOP_DAYS`; see `oldStopIds`. */
+  oldStops: string[]
+  /** `RECENT_STOP_DAYS`, for the words that name the split. */
+  recentStopDays: number
 }
 
 export interface RunDetailResponse {
@@ -323,11 +331,10 @@ export interface RunDetailResponse {
   baselineSource: RunRef | null
   /** The run as a span tree on one time axis, as of `now`. */
   trace: Trace
-  /**
-   * Where the run's lead time went, by lane and wait; null while it is
-   * open or a part is unknown. See `runTimeParts`.
-   */
-  time: RunTimePart[] | null
+  /** The run's time and cost by lane, so far. See `runLanes`. */
+  lanes: RunLane[]
+  /** The run's waits and the time between steps; see `runWaits`. */
+  waits: RunWait[]
   /** Exactly what `report --run <id> --format json` prints. */
   report: LoopReport
 }
@@ -1981,6 +1988,8 @@ function createUiApi(stateRoot: string) {
         runs: [],
         tasks: [],
         floor: floorOf([], []),
+        oldStops: [],
+        recentStopDays: RECENT_STOP_DAYS,
       }
     const all = await orEmpty(allRuns(db), [])
     reports.keep(all)
@@ -2014,6 +2023,8 @@ function createUiApi(stateRoot: string) {
       runs: listRows(rows, tasks),
       tasks,
       floor: floorOf(rows, tasks),
+      oldStops: oldStopIds(tasks, now),
+      recentStopDays: RECENT_STOP_DAYS,
     }
   }
 
@@ -2052,7 +2063,8 @@ function createUiApi(stateRoot: string) {
         path: repo?.key.startsWith('/') ? repo.key : null,
       },
       lineage,
-      time: runTimeParts(report),
+      lanes: runLanes(report),
+      waits: runWaits(report),
       checkLogs: checkLogFiles(seen.diagnosis.failure?.details ?? []),
       baselineSource,
       trace: deriveTrace({

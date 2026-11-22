@@ -58,6 +58,8 @@ import { checkpointPaths } from '../src/engine/runner.js'
 import {
   archivable,
   groupTasks,
+  oldStopIds,
+  RECENT_STOP_DAYS,
   taskRunIds,
   needsAttention,
   type Diagnosis,
@@ -96,6 +98,7 @@ import {
   PIPELINE_SUFFIX,
   REPO,
   REVIEW,
+  RUN_RETRO,
   REVIEW_STATUS,
   TREND,
 } from '../src/ui/glossary.js'
@@ -126,9 +129,9 @@ import {
 import { seriesCommand } from '../src/ui/screens/list/BulkBar.js'
 import { STOP_PAGE } from '../src/ui/screens/list/StopTasks.js'
 import { TaskRuns } from '../src/ui/screens/list/TaskRuns.js'
+import { BaselineSource } from '../src/ui/screens/run/BaselineSource.js'
 import { RecordPanels } from '../src/ui/screens/run/RecordPanels.js'
 import { SpecPanel } from '../src/ui/screens/run/SpecPanel.js'
-import { BaselineSource } from '../src/ui/screens/run/StageTimings.js'
 
 /** A page's actions, for a page rendered where nothing is sent. */
 const noAct = async () => true
@@ -157,9 +160,10 @@ import {
   ReviewHighlightsPanel,
   ReviewsPanel,
 } from '../src/ui/screens/run/ReviewsPanel.js'
-import { SummaryPanel } from '../src/ui/screens/run/SummaryPanel.js'
+import { PricingNotice, RunTime } from '../src/ui/screens/run/RunTime.js'
+import { rowsOf } from '../src/ui/screens/run/RunTimeParts.js'
 import { UsagePanels } from '../src/ui/screens/run/UsagePanels.js'
-import { RunScreen, PricingNotice } from '../src/ui/screens/RunScreen.js'
+import { RunScreen } from '../src/ui/screens/RunScreen.js'
 import { RunsScreen } from '../src/ui/screens/RunsScreen.js'
 import {
   derivePipeline,
@@ -199,6 +203,70 @@ import {
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const cli = join(packageRoot, 'src', 'cli.ts')
+
+describe('the run time table', () => {
+  const lane = (part: string, wallMs: number | null) =>
+    ({
+      part,
+      wallMs,
+      workMs: wallMs,
+      complete: true,
+      called: true,
+      costUsd: 1,
+    }) as never
+  it('orders rows by the pipeline, whatever the average holds', () => {
+    const rows = rowsOf(
+      {
+        lanes: [lane('prepare', 10), lane('code', 20), lane('review', 30)],
+        waits: [{ part: 'human-wait', ms: 5 }],
+      },
+      [
+        { part: 'prepare', perTaskMs: 1 },
+        { part: 'spec', perTaskMs: 1 },
+        { part: 'code', perTaskMs: 1 },
+        { part: 'verify', perTaskMs: 1 },
+        { part: 'between', perTaskMs: 1 },
+      ] as never,
+      true,
+    )
+    assert.deepEqual(
+      rows.map((r) => r.part),
+      ['prepare', 'spec', 'code', 'verify', 'review', 'human-wait', 'between'],
+    )
+    assert.equal(rows.find((r) => r.part === 'spec')?.skipped, true)
+  })
+
+  it('shows the lead time and cost of an ended run with no lane', () => {
+    const html = htmlText(
+      renderToStaticMarkup(
+        createElement(RunTime, {
+          data: {
+            report: {
+              summary: {
+                leadTimeMs: 65_000,
+                costUsd: 0.5,
+                totalTokens: null,
+                repairs: 0,
+                reviewRounds: 0,
+              },
+              attempts: [],
+              baseline: null,
+              stageTotalMs: 0,
+            },
+            now: '2026-01-01T00:00:00.000Z',
+            diagnosis: { kind: 'stopped' },
+            baselineSource: null,
+            waits: [],
+            lanes: [],
+          } as unknown as RunDetailResponse,
+        }),
+      ),
+    )
+    assert.match(html, /1分5秒/)
+    assert.match(html, /\$0\.50/)
+    assert.ok(!html.includes(RUN_RETRO.empty))
+  })
+})
 
 describe('runName', () => {
   it('explains unpriced models beside costs and stays absent for older records', () => {
@@ -4227,23 +4295,26 @@ describe('numbers on the screens', () => {
     }) as unknown as RunRow
 
   const listOf = (runs: RunRow[], parents: Record<string, string> = {}) => {
+    const tasks = groupTasks(
+      runs.map((r) => ({
+        id: r.id,
+        createdAt: r.createdAt,
+        parentId: parents[r.id] ?? null,
+        kind: r.diagnosis.kind,
+        approved: r.conclusion === 'approved',
+        leadTimeMs: r.leadTimeMs,
+        costUsd: r.costUsd,
+        archived: r.archived,
+      })),
+    )
     const data = {
       exists: true,
       db: '/tmp/x.db',
       now,
       runs,
-      tasks: groupTasks(
-        runs.map((r) => ({
-          id: r.id,
-          createdAt: r.createdAt,
-          parentId: parents[r.id] ?? null,
-          kind: r.diagnosis.kind,
-          approved: r.conclusion === 'approved',
-          leadTimeMs: r.leadTimeMs,
-          costUsd: r.costUsd,
-          archived: r.archived,
-        })),
-      ),
+      tasks,
+      oldStops: oldStopIds(tasks, Date.parse(now)),
+      recentStopDays: RECENT_STOP_DAYS,
       repos: [],
       repo: null,
     } as unknown as RunsResponse
@@ -4264,8 +4335,8 @@ describe('numbers on the screens', () => {
       archivedStop({ id: '01K6D2Q7XB3M9RKT4WARCHVD', name: 'archived task' }),
     ])
     const list = htmlText(html)
-    // The overview and the section count both finished tasks, as status does.
-    assert.match(list, new RegExp(`${LIST.overviewDone}\\n+2\\n`))
+    // The section counts both finished tasks, as status does.
+    assert.match(list, new RegExp(`${LIST.done}\\n+2\\n`))
     assert.ok(list.includes(LIST.shownOf('1', '2')))
     assert.ok(list.includes(LIST.showArchived))
     assert.ok(list.includes(LIST.archivedCount('1')))
@@ -4611,25 +4682,59 @@ describe('numbers on the screens', () => {
       diagnosis: { kind, next: [], failure: null },
     } as unknown as Partial<RunRow>)
 
-  it('marks the running count when an older repair runs while a newer one waits', () => {
-    const html = listOf(
-      [
-        asked,
-        as(older, 'running', '2026-09-30T11:10:00.000Z'),
-        as(newer, 'pending', '2026-09-30T11:20:00.000Z'),
-      ],
-      repairs,
-    )
-    const overview = html.slice(html.indexOf('<nav'), html.indexOf('</nav>'))
-    assert.ok(overview.includes('dot-live'))
-  })
-
   // The stopped section only, from its heading to the next section.
   const stopSection = (html: string) => {
     const at = html.indexOf('id="tasks-stop"')
     assert.ok(at >= 0)
     return html.slice(at, html.indexOf('id="tasks-done"', at))
   }
+
+  it('counts only recent stops and keeps older ones closed apart', () => {
+    const stopped = (id: string, createdAt: string) =>
+      row({
+        id,
+        name: id,
+        status: 'failed',
+        conclusion: null,
+        createdAt,
+        diagnosis: { kind: 'stopped', next: [], failure: null },
+      } as unknown as Partial<RunRow>)
+    const html = listOf([
+      stopped('01K6D2Q7XB3M9RKT4WRECENT', '2026-09-29T12:00:00.000Z'),
+      stopped('01K6D2Q7XB3M9RKT4WOLDSTP', '2026-09-10T12:00:00.000Z'),
+    ])
+    // The recent part ends where the closed older part starts.
+    const all = htmlText(stopSection(html))
+    const section = all.slice(
+      0,
+      all.indexOf(LIST.oldStops(String(RECENT_STOP_DAYS))),
+    )
+    assert.ok(section.includes('01K6D2Q7XB3M9RKT4WRECENT'))
+    assert.ok(!section.includes('01K6D2Q7XB3M9RKT4WOLDSTP'))
+    const text = htmlText(html)
+    assert.match(text, new RegExp(`${LIST.stopped}\\n+1\\n`))
+    assert.ok(text.includes(LIST.oldStops(String(RECENT_STOP_DAYS))))
+  })
+
+  it('keeps a stop recent when its run ended within the days, however old it is', () => {
+    const tasks = groupTasks([
+      {
+        id: '01K6D2Q7XB3M9RKT4WOLDRUN',
+        createdAt: '2026-09-20T12:00:00.000Z',
+        endedAt: '2026-09-30T11:00:00.000Z',
+        parentId: null,
+        kind: 'stopped',
+        approved: false,
+        leadTimeMs: null,
+        costUsd: null,
+      },
+    ])
+    assert.deepEqual(oldStopIds(tasks, Date.parse(now)), [])
+    assert.deepEqual(
+      oldStopIds(tasks, Date.parse('2026-10-08T12:00:00.000Z')),
+      ['01K6D2Q7XB3M9RKT4WOLDRUN'],
+    )
+  })
 
   for (const kind of ['running', 'pending', 'lease-expired', 'decided'])
     it(`opens a stopped row whose retried repair is ${kind}`, () => {
@@ -5095,6 +5200,9 @@ describe('numbers on the screens', () => {
         reviewRounds: 1,
       },
       triage: null,
+      attempts: [],
+      baseline: null,
+      stageTotalMs: 0,
       stageUsage: [{ ...usage, stage: 'code' }],
       roleUsage: [
         {
@@ -5107,8 +5215,27 @@ describe('numbers on the screens', () => {
       ],
     } as unknown as LoopReport
     const detail = htmlText(
-      renderToStaticMarkup(createElement(SummaryPanel, { report })) +
-        renderToStaticMarkup(createElement(UsagePanels, { report })),
+      renderToStaticMarkup(
+        createElement(RunTime, {
+          data: {
+            report,
+            now: '2026-01-01T00:00:00.000Z',
+            diagnosis: { kind: 'finished' },
+            baselineSource: null,
+            waits: [],
+            lanes: [
+              {
+                part: 'code',
+                wallMs: 1_093_000,
+                workMs: 0,
+                complete: true,
+                called: true,
+                costUsd: 6.443984,
+              },
+            ],
+          } as unknown as RunDetailResponse,
+        }),
+      ) + renderToStaticMarkup(createElement(UsagePanels, { report })),
     )
     assert.match(detail, /5\.1M/)
     assert.match(detail, /\$6\.44/)

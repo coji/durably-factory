@@ -1302,13 +1302,15 @@ export function repairParentId(run: {
  * mapping `factory status` and the web UI share.
  */
 export function taskRunInput(
-  run: Pick<Run, 'id' | 'createdAt' | 'labels' | 'input'>,
+  run: Pick<Run, 'id' | 'createdAt' | 'labels' | 'input'> &
+    Partial<Pick<Run, 'completedAt' | 'updatedAt'>>,
   kind: DiagnosisKind,
   report: Pick<LoopReport, 'summary' | 'fake'>,
 ): TaskRunInput {
   return {
     id: run.id,
     createdAt: run.createdAt,
+    endedAt: run.completedAt ?? run.updatedAt ?? null,
     parentId: repairParentId(run),
     kind,
     approved: report.summary.success,

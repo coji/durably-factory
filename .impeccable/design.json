@@ -1,13 +1,13 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-22T09:01:07+00:00",
+  "generatedAt": "2026-11-22T13:45:37+00:00",
   "title": "Design System: durably-factory",
   "extensions": {
     "colorMeta": {
       "highlight": {
         "role": "primary",
         "displayName": "Agency Deep Blue",
-        "canonical": "light-dark(var(--blue-900), #1d2d8f)",
+        "canonical": "light-dark(#0017c1, #1d2d8f)",
         "tonalRamp": [
           "#000060",
           "#0017c1",
@@ -22,7 +22,7 @@
       "brand": {
         "role": "primary",
         "displayName": "Agency Deep Blue (text and marks)",
-        "canonical": "light-dark(var(--blue-900), var(--blue-400))",
+        "canonical": "light-dark(#0017c1, #7096f8)",
         "tonalRamp": [
           "#000060",
           "#0017c1",
@@ -37,7 +37,7 @@
       "brand-soft": {
         "role": "primary",
         "displayName": "Agency Blue Wash",
-        "canonical": "light-dark(var(--blue-50), #1a2456)",
+        "canonical": "light-dark(#e8f1fe, #1a2456)",
         "tonalRamp": [
           "#000060",
           "#0017c1",
@@ -52,7 +52,7 @@
       "chart-1": {
         "role": "primary",
         "displayName": "Agency Series Blue",
-        "canonical": "light-dark(var(--blue-600), var(--blue-400))",
+        "canonical": "light-dark(#3460fb, #7096f8)",
         "tonalRamp": [
           "#000060",
           "#0017c1",
@@ -67,7 +67,7 @@
       "chart-3": {
         "role": "primary",
         "displayName": "Agency Pale Blue",
-        "canonical": "light-dark(var(--blue-200), #2b3a73)",
+        "canonical": "light-dark(#c5d7fb, #2b3a73)",
         "tonalRamp": [
           "#000060",
           "#0017c1",
@@ -82,7 +82,7 @@
       "focus": {
         "role": "primary",
         "displayName": "Focus Blue",
-        "canonical": "light-dark(var(--blue-600), var(--blue-400))",
+        "canonical": "light-dark(#3460fb, #7096f8)",
         "tonalRamp": [
           "#000060",
           "#0017c1",
@@ -97,7 +97,7 @@
       "running": {
         "role": "primary",
         "displayName": "Running Blue",
-        "canonical": "light-dark(var(--blue-900), var(--blue-200))",
+        "canonical": "light-dark(#0017c1, #c5d7fb)",
         "tonalRamp": [
           "#000060",
           "#0017c1",
@@ -112,7 +112,7 @@
       "running-bg": {
         "role": "primary",
         "displayName": "Running Blue Wash",
-        "canonical": "light-dark(var(--blue-50), #1a2456)",
+        "canonical": "light-dark(#e8f1fe, #1a2456)",
         "tonalRamp": [
           "#000060",
           "#0017c1",
@@ -127,7 +127,7 @@
       "on-highlight": {
         "role": "neutral",
         "displayName": "White on Blue",
-        "canonical": "var(--white)",
+        "canonical": "#ffffff",
         "tonalRamp": [
           "#1a1a1a",
           "#333333",
@@ -157,7 +157,7 @@
       "limit": {
         "role": "secondary",
         "displayName": "Limit Orange",
-        "canonical": "light-dark(var(--orange-600), var(--orange-400))",
+        "canonical": "light-dark(#fb5b01, #ff8d44)",
         "tonalRamp": [
           "#5a2100",
           "#ac3e00",
@@ -172,7 +172,7 @@
       "limit-text": {
         "role": "secondary",
         "displayName": "Limit Orange (text)",
-        "canonical": "light-dark(var(--orange-900), var(--orange-200))",
+        "canonical": "light-dark(#ac3e00, #ffc199)",
         "tonalRamp": [
           "#5a2100",
           "#ac3e00",
@@ -187,7 +187,7 @@
       "limit-bg": {
         "role": "secondary",
         "displayName": "Constraint Tint",
-        "canonical": "light-dark(var(--orange-50), #3a2416)",
+        "canonical": "light-dark(#ffeee2, #3a2416)",
         "tonalRamp": [
           "#5a2100",
           "#ac3e00",
@@ -202,7 +202,7 @@
       "stop": {
         "role": "tertiary",
         "displayName": "Stop Red",
-        "canonical": "light-dark(var(--red-600), var(--red-400))",
+        "canonical": "light-dark(#fe3939, #ff7171)",
         "tonalRamp": [
           "#6b0000",
           "#ce0000",
@@ -217,7 +217,7 @@
       "failed": {
         "role": "tertiary",
         "displayName": "Stop Red (text)",
-        "canonical": "light-dark(var(--red-900), var(--red-200))",
+        "canonical": "light-dark(#ce0000, #ffbbbb)",
         "tonalRamp": [
           "#6b0000",
           "#ce0000",
@@ -232,7 +232,7 @@
       "failed-bg": {
         "role": "tertiary",
         "displayName": "Stop Red Wash",
-        "canonical": "light-dark(var(--red-50), #3b1a1c)",
+        "canonical": "light-dark(#fdeeee, #3b1a1c)",
         "tonalRamp": [
           "#6b0000",
           "#ce0000",
@@ -247,7 +247,7 @@
       "waiting": {
         "role": "tertiary",
         "displayName": "Waiting Yellow (text)",
-        "canonical": "light-dark(var(--yellow-900), var(--yellow-200))",
+        "canonical": "light-dark(#6e5600, #ffe380)",
         "tonalRamp": [
           "#3a2d00",
           "#6e5600",
@@ -262,7 +262,7 @@
       "waiting-bg": {
         "role": "tertiary",
         "displayName": "Waiting Yellow Wash",
-        "canonical": "light-dark(var(--yellow-50), #352c0c)",
+        "canonical": "light-dark(#fff7cc, #352c0c)",
         "tonalRamp": [
           "#3a2d00",
           "#6e5600",
@@ -277,7 +277,7 @@
       "canvas": {
         "role": "neutral",
         "displayName": "Canvas",
-        "canonical": "light-dark(var(--gray-50), var(--ink-950))",
+        "canonical": "light-dark(#f8f8fb, #0c0d10)",
         "tonalRamp": [
           "#1a1a1a",
           "#333333",
@@ -292,7 +292,7 @@
       "raised": {
         "role": "neutral",
         "displayName": "Raised White",
-        "canonical": "light-dark(var(--white), var(--ink-900))",
+        "canonical": "light-dark(#ffffff, #121318)",
         "tonalRamp": [
           "#1a1a1a",
           "#333333",
@@ -307,7 +307,7 @@
       "sunken": {
         "role": "neutral",
         "displayName": "Sunken Gray",
-        "canonical": "light-dark(var(--gray-100), var(--ink-800))",
+        "canonical": "light-dark(#f1f1f4, #1c1e24)",
         "tonalRamp": [
           "#1a1a1a",
           "#333333",
@@ -322,7 +322,7 @@
       "fg": {
         "role": "neutral",
         "displayName": "Solid Gray Ink",
-        "canonical": "light-dark(var(--gray-900), #f2f2f4)",
+        "canonical": "light-dark(#1a1a1a, #f2f2f4)",
         "tonalRamp": [
           "#1a1a1a",
           "#333333",
@@ -337,7 +337,7 @@
       "fg-2": {
         "role": "neutral",
         "displayName": "Solid Gray Secondary",
-        "canonical": "light-dark(var(--gray-600), #b4b6bd)",
+        "canonical": "light-dark(#626264, #b4b6bd)",
         "tonalRamp": [
           "#1a1a1a",
           "#333333",
@@ -367,7 +367,7 @@
       "line": {
         "role": "neutral",
         "displayName": "Hairline",
-        "canonical": "light-dark(var(--gray-200), #2a2d35)",
+        "canonical": "light-dark(#e6e6ea, #2a2d35)",
         "tonalRamp": [
           "#1a1a1a",
           "#333333",
@@ -382,7 +382,7 @@
       "line-strong": {
         "role": "neutral",
         "displayName": "Control Line",
-        "canonical": "light-dark(var(--gray-300), #3a3e48)",
+        "canonical": "light-dark(#cccccc, #3a3e48)",
         "tonalRamp": [
           "#1a1a1a",
           "#333333",
@@ -397,31 +397,31 @@
       "chart-grid": {
         "role": "neutral",
         "displayName": "Gridline",
-        "canonical": "light-dark(var(--gray-200), #2a2d35)",
+        "canonical": "light-dark(#e6e6ea, #2a2d35)",
         "tonalRamp": [
-          "#0c0d10",
-          "#121318",
-          "#17191e",
-          "#1c1e24",
-          "#2a2d35",
-          "#3a3e48",
-          "#5a5e68",
-          "#9a9ca3"
+          "#1a1a1a",
+          "#333333",
+          "#626264",
+          "#6b6b6d",
+          "#999999",
+          "#cccccc",
+          "#e6e6ea",
+          "#f8f8fb"
         ]
       },
       "chart-axis": {
         "role": "neutral",
         "displayName": "Zero Axis",
-        "canonical": "light-dark(var(--gray-400), #5a5e68)",
+        "canonical": "light-dark(#999999, #5a5e68)",
         "tonalRamp": [
-          "#0c0d10",
-          "#121318",
-          "#17191e",
-          "#1c1e24",
-          "#2a2d35",
-          "#3a3e48",
-          "#5a5e68",
-          "#9a9ca3"
+          "#1a1a1a",
+          "#333333",
+          "#626264",
+          "#6b6b6d",
+          "#999999",
+          "#cccccc",
+          "#e6e6ea",
+          "#f8f8fb"
         ]
       }
     },
@@ -436,7 +436,7 @@
       },
       "figure": {
         "displayName": "Figure",
-        "purpose": "Metric card values, review table figures, a run's lead time; figure face."
+        "purpose": "Metric card values and review table figures at 20px; a run's lead time, the last row of its time-and-cost table, at 14px bold; figure face."
       },
       "title": {
         "displayName": "Title",
@@ -478,7 +478,7 @@
       {
         "name": "duration-fast",
         "value": "150ms",
-        "purpose": "Hover and focus colour changes."
+        "purpose": "Hover and focus colour changes, and the turn of a disclosure's chevron."
       },
       {
         "name": "duration-pulse",
@@ -500,10 +500,6 @@
       {
         "name": "sm",
         "value": "640px"
-      },
-      {
-        "name": "stage-row",
-        "value": "40rem"
       },
       {
         "name": "task-meta",

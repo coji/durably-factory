@@ -28,6 +28,9 @@ import {
   type ControlLimits,
 } from './control.js'
 import { formatters } from './format.js'
+import { FLOW_LANES, laneOf, partRank, type FlowLane } from './lanes.js'
+
+export { FLOW_LANES, laneOf, partRank, type FlowLane } from './lanes.js'
 import { STAGE_ORDER, type LoopReport } from './report.js'
 import { sumKnown } from './status.js'
 
@@ -275,45 +278,6 @@ function weekOf(
   }
 }
 
-/**
- * The factory's lanes, in pipeline order: what the pages group stages by,
- * so the floor, the time breakdown and a run read in the same seven words.
- */
-export const FLOW_LANES = [
-  'prepare',
-  'spec',
-  'code',
-  'verify',
-  'review',
-  'approve',
-  'finish',
-] as const
-export type FlowLane = (typeof FLOW_LANES)[number]
-
-const LANE_OF: Record<string, FlowLane> = {
-  setup: 'prepare',
-  preflight: 'prepare',
-  baseline: 'prepare',
-  spec: 'spec',
-  'spec-review': 'spec',
-  'spec-check': 'spec',
-  'spec-wait': 'spec',
-  triage: 'code',
-  policy: 'code',
-  code: 'code',
-  verify: 'verify',
-  recheck: 'verify',
-  review: 'review',
-  approve: 'approve',
-  finish: 'finish',
-  stop: 'finish',
-}
-
-/** The lane a stage belongs to; a stage this table does not know, `prepare`. */
-export function laneOf(stage: string): FlowLane {
-  return LANE_OF[stage] ?? 'prepare'
-}
-
 /** One part of a lead time: a lane's wall time, a wait, or the rest. */
 export interface RunTimePart {
   part: string
@@ -348,16 +312,109 @@ export function runTimeParts(report: LoopReport): RunTimePart[] | null {
   return out.sort((x, y) => partRank(x.part) - partRank(y.part))
 }
 
-const PART_ORDER: string[] = [
-  ...FLOW_LANES,
-  'human-wait',
-  'slot-wait',
-  'between',
-]
+/** One lane of one run: its stages' wall time, work, and cost together. */
+export interface RunLane {
+  part: FlowLane
+  /**
+   * The lane's clock time: the stages' wall times added up, the spec lane's
+   * overlapping stages once (`specWallMs`). Null while no attempt in the
+   * lane has a measured time, such as the first stage still running.
+   */
+  wallMs: number | null
+  /** The stages' measured work; parallel calls each count. Null when unmeasured. */
+  workMs: number | null
+  /** False when an attempt in the lane has no measured time. */
+  complete: boolean
+  /** Whether any stage of the lane called a model. */
+  called: boolean
+  /** The calls' cost; null when one of them has no price. */
+  costUsd: number | null
+}
 
-function partRank(part: string): number {
-  const i = PART_ORDER.indexOf(part)
-  return i < 0 ? PART_ORDER.length : i
+/**
+ * A run's time and cost by lane, in pipeline order, for the lanes it
+ * entered so far: the run page's one table of where the time and money
+ * went. Known while the run is still going, unlike `runTimeParts`.
+ */
+export function runLanes(report: LoopReport): RunLane[] {
+  const lanes = new Map<FlowLane, RunLane & { measured: boolean }>()
+  const laneFor = (stage: string) => {
+    const part = laneOf(stage)
+    let lane = lanes.get(part)
+    if (!lane) {
+      lane = {
+        part,
+        wallMs: 0,
+        workMs: 0,
+        complete: true,
+        called: false,
+        costUsd: 0,
+        measured: false,
+      }
+      lanes.set(part, lane)
+    }
+    return lane
+  }
+  for (const s of report.stageTimings) {
+    // A stage that took no time, like a stop, adds an empty row and nothing else.
+    const took = (s.wallElapsedMs ?? 0) > 0 || (s.elapsedMs ?? 0) > 0
+    if (!took && s.complete) continue
+    const lane = laneFor(s.stage)
+    const wall = s.wallElapsedMs ?? s.elapsedMs
+    if (wall != null) {
+      lane.wallMs = (lane.wallMs ?? 0) + wall
+      lane.measured = true
+    }
+    lane.workMs =
+      lane.workMs === null || s.elapsedMs == null
+        ? null
+        : lane.workMs + s.elapsedMs
+    if (!s.complete) lane.complete = false
+  }
+  for (const u of report.stageUsage) {
+    const lane = laneFor(u.stage)
+    lane.called = true
+    lane.costUsd =
+      lane.costUsd === null || u.costUsd === null
+        ? null
+        : lane.costUsd + u.costUsd
+  }
+  const spec = lanes.get('spec')
+  if (spec && report.specWallMs != null) {
+    spec.wallMs = report.specWallMs
+    spec.measured = true
+  }
+  return [...lanes.values()]
+    .map(({ measured, ...lane }) => ({
+      ...lane,
+      wallMs: measured ? lane.wallMs : null,
+    }))
+    .sort((x, y) => partRank(x.part) - partRank(y.part))
+}
+
+/** One wait of a run, or the time between its steps; null when not known. */
+export interface RunWait {
+  part: 'human-wait' | 'slot-wait' | 'between'
+  ms: number | null
+}
+
+/**
+ * Where a run's lead time went outside its lanes: the wait on a person and
+ * for a worker, each as soon as it is known on its own, and the time
+ * between steps once the lead time and both waits are. A wait that is 0
+ * is left out.
+ */
+export function runWaits(report: LoopReport): RunWait[] {
+  const human = report.summary.humanWaitMs
+  const slot = slotWaitOf(report)
+  const parts = runTimeParts(report)
+  const between = parts?.find((p) => p.part === 'between')?.ms ?? null
+  const out: RunWait[] = []
+  if (human !== 0) out.push({ part: 'human-wait', ms: human })
+  if (slot !== 0) out.push({ part: 'slot-wait', ms: slot })
+  if (parts === null || between !== null)
+    out.push({ part: 'between', ms: between })
+  return out
 }
 
 function timeParts(tasks: Task[]) {

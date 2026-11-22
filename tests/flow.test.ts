@@ -6,6 +6,8 @@ import {
   flowOf,
   flowToMarkdown,
   laneOf,
+  runLanes,
+  runWaits,
   runTimeParts,
   type FlowRun,
 } from '../src/engine/flow.js'
@@ -349,5 +351,111 @@ describe('controlLimits', () => {
 
   it('has no limits under two values', () => {
     assert.equal(controlLimits([{ id: 'a', ms: 1 }]), null)
+  })
+})
+
+describe('runLanes', () => {
+  it('adds stages up by lane with their work and cost, and leaves empty stages out', () => {
+    const report = {
+      stageTimings: [
+        {
+          stage: 'preflight',
+          elapsedMs: 50,
+          wallElapsedMs: 50,
+          complete: true,
+        },
+        { stage: 'code', elapsedMs: 600, wallElapsedMs: 600, complete: true },
+        {
+          stage: 'review',
+          elapsedMs: 900,
+          wallElapsedMs: 500,
+          complete: false,
+        },
+        { stage: 'verify', elapsedMs: 400, wallElapsedMs: 400, complete: true },
+        { stage: 'stop', elapsedMs: 0, wallElapsedMs: 0, complete: true },
+      ],
+      stageUsage: [
+        { stage: 'code', costUsd: 1.5 },
+        { stage: 'review', costUsd: 0.5 },
+        { stage: 'review', costUsd: null },
+      ],
+    } as unknown as LoopReport
+    assert.deepEqual(runLanes(report), [
+      {
+        part: 'prepare',
+        wallMs: 50,
+        workMs: 50,
+        complete: true,
+        called: false,
+        costUsd: 0,
+      },
+      {
+        part: 'code',
+        wallMs: 600,
+        workMs: 600,
+        complete: true,
+        called: true,
+        costUsd: 1.5,
+      },
+      {
+        part: 'verify',
+        wallMs: 400,
+        workMs: 400,
+        complete: true,
+        called: false,
+        costUsd: 0,
+      },
+      {
+        part: 'review',
+        wallMs: 500,
+        workMs: 900,
+        complete: false,
+        called: true,
+        costUsd: null,
+      },
+    ])
+  })
+})
+
+describe('runLanes and runWaits on partial records', () => {
+  it('leaves a lane with no measured time unknown, and takes the spec lane once', () => {
+    const report = {
+      stageTimings: [
+        {
+          stage: 'preflight',
+          elapsedMs: null,
+          wallElapsedMs: null,
+          complete: false,
+        },
+        { stage: 'spec', elapsedMs: 300, wallElapsedMs: 300, complete: true },
+        {
+          stage: 'spec-review',
+          elapsedMs: 400,
+          wallElapsedMs: 200,
+          complete: true,
+        },
+      ],
+      stageUsage: [],
+      specWallMs: 420,
+    } as unknown as LoopReport
+    const lanes = runLanes(report)
+    assert.equal(lanes[0]?.part, 'prepare')
+    assert.equal(lanes[0]?.wallMs, null)
+    assert.equal(lanes[0]?.workMs, null)
+    assert.equal(lanes[1]?.part, 'spec')
+    assert.equal(lanes[1]?.wallMs, 420)
+  })
+
+  it('keeps a known wait on a person when another part is unknown', () => {
+    const r = run('a', now - DAY, { humanWaitMs: 3_600_000 })
+    const report = {
+      ...r.report,
+      waits: [{ executionSlotWaitMs: null }],
+    } as unknown as LoopReport
+    assert.deepEqual(runWaits(report), [
+      { part: 'human-wait', ms: 3_600_000 },
+      { part: 'slot-wait', ms: null },
+      { part: 'between', ms: null },
+    ])
   })
 })

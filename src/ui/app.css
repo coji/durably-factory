@@ -106,8 +106,6 @@
   --size-trace-max: 32rem;
   --size-inspector: 20rem;
   --size-label: 6.5rem;
-  --size-stage-name: 9rem;
-  --size-stage-value: 5rem;
   --size-meta-runs: 4.5rem;
   --size-meta-time: 5.5rem;
   --size-meta-cost: 3.5rem;
@@ -380,42 +378,6 @@ dd {
 .kv-inline {
   display: grid;
   grid-template-columns: var(--size-label) 1fr;
-}
-.stage-row {
-  display: grid;
-  grid-template-columns: var(--size-stage-name) repeat(
-      3,
-      var(--size-stage-value)
-    );
-}
-.stage-row-note {
-  display: grid;
-  grid-template-columns: var(--size-stage-name) 1fr;
-}
-/*
- * The bar needs room; on a narrow screen the numbers carry the row alone,
- * under the stage's name, so the three values fit the width.
- */
-.stage-bar {
-  display: none;
-}
-@media (width < 40rem) {
-  .stage-row {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .stage-row > :first-child {
-    grid-column: 1 / -1;
-  }
-}
-@media (width >= 40rem) {
-  .stage-row {
-    grid-template-columns:
-      var(--size-stage-name) minmax(2rem, 1fr)
-      repeat(3, var(--size-stage-value));
-  }
-  .stage-bar {
-    display: block;
-  }
 }
 /*
  * A task row: the chevron in its own column, and everything else, the

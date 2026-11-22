@@ -6,14 +6,14 @@ import { RepoFilter } from '../components/RepoFilter'
 import { LIST } from '../glossary'
 import type { RunsResponse } from '../server'
 import { DoneTasks } from './list/DoneTasks'
-import { Overview, SECTION_ID } from './list/Overview'
+import { SECTION_ID } from './list/Overview'
 import { StopTasks } from './list/StopTasks'
 import { Tasks } from './list/Tasks'
 
 /**
- * A count of each place first, then the tasks a person decides on, the
- * ones a worker has, the ones that stopped, and the finished ones, in the
- * order the engine gave them. A first run and its repairs are one row.
+ * The tasks a person decides on, the ones a worker has, the ones that
+ * stopped in the recent days, the older stops closed, and the finished
+ * ones, in the order the engine gave them; each part counts its own. A first run and its repairs are one row.
  * Decisions and running tasks open, since they change and ask to be
  * watched; stopped ones stay closed, each with why on its row, unless
  * another run of the task is still open or asks for a person. Archived
@@ -39,31 +39,20 @@ export function RunsScreen({
     )
   const rows = new Map(data.runs.map((r) => [r.id, r]))
   const decision = data.tasks.filter((t) => t.attention === 'decision')
-  const stop = data.tasks.filter((t) => t.attention === 'stop')
+  // A stop past the recent days stays archivable in a closed part of its
+  // own; only the recent ones are counted and shown in the stop colour.
+  const oldIds = new Set(data.oldStops)
+  const stops = data.tasks.filter((t) => t.attention === 'stop')
+  const stop = stops.filter((t) => !oldIds.has(t.id))
+  const oldStop = stops.filter((t) => oldIds.has(t.id))
   const active = data.tasks.filter((t) => t.attention === 'active')
   const done = data.tasks.filter((t) => t.attention === 'done')
-  // Any run of the task, not only the one that shows it: an older repair
-  // can be running while a newer one waits its turn.
-  const running = active.filter((t) =>
-    t.runs.some((r) => r.kind === 'running'),
-  ).length
   return (
     <>
       <RepoFilter page="runs" scope={data} />
-      <Overview
-        note={
-          decision.length === 0 && stop.length === 0
-            ? LIST.attentionEmpty
-            : undefined
-        }
-        counts={{
-          decision: decision.length,
-          active: active.length,
-          running,
-          stop: stop.length,
-          done: done.length,
-        }}
-      />
+      {decision.length === 0 && stop.length === 0 ? (
+        <p className="text-fg-2 mb-6 text-sm">{LIST.attentionEmpty}</p>
+      ) : null}
       {decision.length > 0 ? (
         <Section
           id={SECTION_ID.decision}
@@ -90,6 +79,18 @@ export function RunsScreen({
           now={data.now}
           act={act}
           actMany={actMany}
+          days={data.recentStopDays}
+        />
+      ) : null}
+      {oldStop.length > 0 ? (
+        <StopTasks
+          tasks={oldStop}
+          rows={rows}
+          now={data.now}
+          act={act}
+          actMany={actMany}
+          days={data.recentStopDays}
+          old
         />
       ) : null}
       <DoneTasks tasks={done} rows={rows} now={data.now} act={act} />
