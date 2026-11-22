@@ -33,8 +33,7 @@
     "prepare": "lefthook install",
     "build:cli": "tsc6 -p tsconfig.cli.json && node scripts/prepare-cli.mjs",
     "build:package": "pnpm build:cli && pnpm build:ui",
-    "prepack": "pnpm build:package",
-    "release:tag": "bash scripts/tag-release.sh"
+    "prepack": "pnpm build:package"
   },
   "dependencies": {
     "@ai-sdk/provider": "^4.0.7",
