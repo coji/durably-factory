@@ -74,16 +74,6 @@ after(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-async function fillSlowly(dir: string): Promise<void> {
-  // Enough files that git cannot delete them all within a 1 ms limit, even
-  // on a fast runner.
-  await Promise.all(
-    Array.from({ length: 2000 }, (_, i) =>
-      writeFile(join(dir, `slow-${i}.txt`), 'x'),
-    ),
-  )
-}
-
 describe('git engine', () => {
   it('resolves the repository root and a commit tree', async () => {
     // git reports the real path; on macOS /var is a symlink to /private/var.
@@ -354,18 +344,37 @@ describe('git engine', () => {
   it('says a worktree removal stopped at its limit may be partly done, and removes it when asked again', async () => {
     const wt = join(root, 'wt-slow')
     await addWorktree({ repo, dir: wt, baseCommit: base, branch: 'work/slow' })
-    await fillSlowly(wt)
-    // Killed before git can finish: the warning names the limit, the
-    // directory and the ways to finish, not git's exit code.
-    const stopped = await forceRemoveWorktree(repo, wt, 1)
-    assert.deepEqual(stopped, {
-      message: `git worktree remove was stopped at its <0.1s limit before it finished; ${wt} may be partly removed. git still lists it, so pnpm factory prune --apply continues the removal`,
-      byHand: false,
-    })
-    // The registration is kept, so asking again with the usual limit
-    // finishes the removal.
+    const bin = join(root, 'stalled-git')
+    await mkdir(bin)
+    // Stall the removal, but let real Git prune and list the worktrees.
+    // This makes the timeout independent of filesystem speed.
+    await writeFile(
+      join(bin, 'git'),
+      `#!/bin/sh
+if [ "$1" = worktree ] && [ "$2" = remove ]; then
+  exec sleep 30
+fi
+export PATH="\${PATH#*:}"
+exec git "$@"
+`,
+      { mode: 0o755 },
+    )
+    const path = process.env.PATH
+    process.env.PATH = `${bin}:${path ?? ''}`
+    try {
+      assert.deepEqual(await forceRemoveWorktree(repo, wt, 25), {
+        message: `git worktree remove was stopped at its <0.1s limit before it finished; ${wt} may be partly removed. git still lists it, so pnpm factory prune --apply continues the removal`,
+        byHand: false,
+      })
+    } finally {
+      process.env.PATH = path
+    }
     assert.equal(await forceRemoveWorktree(repo, wt), null)
+    assert.equal(existsSync(wt), false)
     assert.doesNotMatch(await git(repo, ['worktree', 'list']), /wt-slow/)
+  })
+
+  it('explains why a worktree removal needs manual cleanup or can be retried', async () => {
     // A directory git no longer lists, as when a stopped removal had
     // deleted its .git: no retry can remove it, and the warning says so.
     const orphan = join(root, 'wt-orphan')
@@ -389,11 +398,12 @@ describe('git engine', () => {
     }
     // A refusal that is not the limit keeps git's own words, and can be
     // retried.
+    const wt = join(root, 'wt-locked')
     await addWorktree({
       repo,
       dir: wt,
       baseCommit: base,
-      branch: 'work/slow-2',
+      branch: 'work/locked',
     })
     await git(repo, ['worktree', 'lock', wt])
     const locked = await forceRemoveWorktree(repo, wt)
@@ -402,14 +412,14 @@ describe('git engine', () => {
     assert.match(locked.message, /failed with code 128: .*locked/)
     await git(repo, ['worktree', 'unlock', wt])
     assert.equal(await forceRemoveWorktree(repo, wt), null)
-    // The same for the test probe's base, removed with -f -f.
+  })
+
+  it('removes a locked test probe worktree registration and can be called again', async () => {
+    const wt = join(root, 'wt-probe')
     await addWorktree({ repo, dir: wt, baseCommit: base })
-    await fillSlowly(wt)
-    assert.ok(
-      (await removeWorktreeRegistration(repo, wt, 1))?.startsWith(
-        `git worktree remove was stopped at its <0.1s limit before it finished; ${wt} may be partly removed.`,
-      ),
-    )
+    await git(repo, ['worktree', 'lock', wt])
+    assert.equal(await removeWorktreeRegistration(repo, wt), null)
+    assert.doesNotMatch(await git(repo, ['worktree', 'list']), /wt-probe/)
     assert.equal(await removeWorktreeRegistration(repo, wt), null)
   })
 
