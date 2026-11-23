@@ -131,7 +131,9 @@ pnpm factory trigger --repo . --task-file task.md --provider codex --approve man
 
 ### チェック成果物の共有（checkArtifacts）
 
-`"checkArtifacts": ".factory/artifacts"` のように作業ツリー内の相対パスを指定すると、`check` 実行後にその配下の通常ファイル（合計 50 MiB まで）を Candidate ごとに保存し、`--reference` で渡した資料と見比べられるようレビュアーに渡します。
+`"checkArtifacts": ".factory/artifacts"` のように作業ツリー内の相対パスを指定すると、`check` 実行後にその配下の通常ファイル（合計 50 MiB まで）を Candidate ごとに保存し、`--reference` で渡した資料と見比べられるようレビュアーに渡します。名前に制御文字や改行(Unicode の行区切り・段落区切りを含む)があるファイルとフォルダは保存しません。
+
+`check` が落ちたあとの修正担当にも、その Candidate の成果物を渡します。修正担当のプロンプトには、失敗の種類（`failureKind`）、終了コード、出力の末尾（保存している 4000 文字）、標準出力と標準エラーの完全なログのパス、成果物のパスが入ります。成果物は `check` が書いたもので、信頼しない資料として渡します。修正担当はログと成果物を読めますが、書き換えはできません。`verification-failed` で止まった run を指摘ファイルなしで `repair` したときは、最初の修正担当に親の run の最後の `check` のログと成果物を同じように渡します（[ADR-0066](adr/0066-repair-sees-check-evidence.md)）。
 
 ### blocker のしきい値と再レビュー（review）
 

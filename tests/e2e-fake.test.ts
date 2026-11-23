@@ -3389,7 +3389,9 @@ describe('verification and review side by side', { timeout: 300000 }, () => {
       )
       assert.equal(repairs.length, 1)
       const repairPrompt = repairs[0]?.input ?? ''
-      const failure = repairPrompt.indexOf('- acceptance: ')
+      const failure = repairPrompt.indexOf(
+        'CHECK FAILURE (the pinned check failed',
+      )
       const fence = repairPrompt.indexOf(
         '<<<UNTRUSTED FAILED_CANDIDATE_REVIEWS ',
       )
@@ -3679,7 +3681,8 @@ describe('verification and review side by side', { timeout: 300000 }, () => {
       assert.equal(repairs.length, 1)
       const prompt = repairs[0]?.input ?? ''
       const fence = prompt.indexOf('<<<UNTRUSTED FAILED_CANDIDATE_REVIEWS ')
-      assert.ok(prompt.indexOf('- acceptance: ') < fence, prompt)
+      const failure = prompt.indexOf('CHECK FAILURE (the pinned check failed')
+      assert.ok(failure >= 0 && failure < fence, prompt)
       const block = prompt.slice(fence)
       assert.match(block, /correctness: pass\nANSWERED-NOTE/)
       assert.match(block, /edge-cases: pass\nRUNNING-NOTE/)

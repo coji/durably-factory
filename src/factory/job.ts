@@ -364,7 +364,8 @@ const targetSchema = z
         .optional(),
       /**
        * The directory, relative to the worktree, whose files a completed
-       * check leaves for the reviewers. Absent or null: none.
+       * check leaves for the reviewers, and for the repair after a failed
+       * check. Absent or null: none.
        */
       checkArtifacts: z.string().min(1).nullable().optional(),
       /** Where each input came from, when it was read from a file. */
@@ -787,6 +788,28 @@ const repairOfSchema = z
      * them (ADR-0062). Absent otherwise.
      */
     parentBlockers: z.string().min(1).optional(),
+    /**
+     * What the check that failed on a verification-failed parent's last
+     * candidate left, when the findings were built from it: its kind, exit
+     * code and log paths, and the parent's copy of its artifacts. The first
+     * repair is shown them and may read them. Absent otherwise.
+     */
+    parentCheck: z
+      .object({
+        failureKind: z.enum(['timeout', 'setup', 'test', 'unknown']).nullable(),
+        exitCode: z.number().nullable(),
+        log: z
+          .object({
+            stdoutPath: z.string().min(1),
+            stderrPath: z.string().min(1),
+            writeError: z.string().optional(),
+          })
+          .strict()
+          .nullable(),
+        artifactsDir: z.string().min(1).nullable(),
+      })
+      .strict()
+      .optional(),
     /** The effective profiles the parent recorded at setup. */
     profiles: z
       .object({
@@ -1790,6 +1813,11 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
                               ? 'check-output'
                               : 'findings',
                           parentConclusion: repairOf.parentConclusion,
+                          ...(repairOf.parentCheck &&
+                          'parentRun' in repairOf.findingsFile &&
+                          repairOf.parentConclusion === 'verification-failed'
+                            ? { parentCheck: repairOf.parentCheck }
+                            : {}),
                         }
                       : null,
                     // The parent's candidate is checked again here, not only

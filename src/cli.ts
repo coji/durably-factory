@@ -984,6 +984,9 @@ Repository config: factory.json at the repository root, or --config <file>:
   completed, passing or failing, it is copied to
   runs/<id>/candidates/<candidate>/artifacts/ (at most 50 MiB), listed in
   the report, and given to both reviewers to compare with the references.
+  When the check fails, the repair that follows is given the same files as
+  untrusted evidence, with the failure kind, exit code, output tail and the
+  paths of the full logs, and may read them.
 State: database and run data live in ${dirname(dbPath(stateRoot))}.
 Set ${STATE_DIR_ENV} to select a state directory for all commands.
   (worktrees, checkpoints, verification scratch, delivery patches under runs/<id>/).

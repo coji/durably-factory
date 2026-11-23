@@ -1,9 +1,3 @@
-import type {
-  CandidateChanges,
-  CandidateRef,
-  GeneratedChanges,
-  ReviewSnapshots,
-} from '../engine/types.js'
 /**
  * What a factory is pointed at.
  *
@@ -19,6 +13,13 @@ import type {
  * provider is, because a worker that picks the run back up has only the
  * database to work from.
  */
+import type { CheckFailureKind } from '../engine/check-failure.js'
+import type {
+  CandidateChanges,
+  CandidateRef,
+  GeneratedChanges,
+  ReviewSnapshots,
+} from '../engine/types.js'
 import type { GradeResult } from '../engine/verification.js'
 import type { ReferenceFiles } from './references.js'
 import type { FactorySetup, ProfileRole, TestProbeRule } from './types.js'
@@ -133,7 +134,8 @@ export interface RepoTargetConfig {
   references?: ReferenceFiles
   /**
    * The directory, relative to the worktree, a completed check leaves its
-   * own outputs in; copied beside each candidate's diff for the reviewers.
+   * own outputs in; copied beside each candidate's diff for the reviewers,
+   * and for the repair after a check the candidate failed.
    * Absent: none.
    */
   checkArtifacts?: string
@@ -185,7 +187,27 @@ export interface RepoTargetConfig {
     findingsKind?: 'check-output' | 'findings'
     /** How the parent ended; absent on a run stored before it was kept. */
     parentConclusion?: RepairParentConclusion
+    /**
+     * The check that failed on a verification-failed parent's last
+     * candidate, when the findings were built from it: shown to the first
+     * repair with its logs and artifacts. Absent otherwise, and on a run
+     * stored before it was kept.
+     */
+    parentCheck?: ParentCheckEvidence
   } | null
+}
+
+/**
+ * What `factory repair` records of the check that failed on its parent's
+ * last candidate: the stored verdict's kind, exit code and log paths, and
+ * the directory the factory copied that check's artifacts to, when the
+ * parent had `checkArtifacts`.
+ */
+export interface ParentCheckEvidence {
+  failureKind: CheckFailureKind | null
+  exitCode: number | null
+  log: { stdoutPath: string; stderrPath: string; writeError?: string } | null
+  artifactsDir: string | null
 }
 
 /**

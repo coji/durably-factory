@@ -159,8 +159,9 @@ export interface AgentCallOptions {
   reviewRound?: number
   /**
    * Files outside `workdir` a role may read: the candidate's diff and
-   * changed-file list, written by the factory, the owner's reference files
-   * and the check's artifacts. Never writable.
+   * changed-file list, written by the factory, the owner's reference files,
+   * the check's artifacts, and a failed check's logs for the repair after
+   * it. Never writable.
    */
   readableFiles?: string[]
   /** A configured review's settings; absent for every other call. */
