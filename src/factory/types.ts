@@ -107,6 +107,14 @@ export type ReviewSessionMode = 'fresh' | 'reuse-experiment'
  */
 export type ReviewLaterRounds = 'scoped' | 'whole'
 
+/**
+ * What a failed check does to the reviews beside it with `parallelReview`
+ * (ADR-0064): "finish", a review already sent runs to its answer, which
+ * goes to the next repair; "cancel", it is ended at once, as before. A
+ * review not yet sent is skipped either way.
+ */
+export type ReviewOnFailedCheck = 'finish' | 'cancel'
+
 export interface FactorySetup {
   reviewSessionMode?: ReviewSessionMode
   prompts?: import('./prompt-policy.js').PromptPolicies
@@ -219,6 +227,12 @@ export interface FactorySetup {
    * "whole", every round may block on anything.
    */
   reviewLaterRounds?: ReviewLaterRounds
+  /**
+   * What a failed check does to the reviews beside it with
+   * `parallelReview`, fixed at trigger (ADR-0064). Absent, as on a run set
+   * up before it existed: "cancel".
+   */
+  reviewOnFailedCheck?: ReviewOnFailedCheck
   /**
    * The spec stages, fixed at trigger: set only on a repository run whose
    * `factory.json` configures them and that was given no `--spec-file`.

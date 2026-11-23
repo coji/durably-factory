@@ -111,8 +111,16 @@ export interface AgentCallSpec {
    * or a lost lease, the call is settled: a completed checkpoint records it
    * as `cancelled` with `reason`, the partial usage already reported stays
    * on the measurement, and a replay reads it back without calling again.
+   * With `onceSent: 'finish'` the signal only keeps a call from being sent:
+   * once sent, the call runs to its own end as if no signal were given,
+   * and a run cancel, a lost lease or a timeout still end it as they would
+   * (ADR-0064). Absent or `'cancel'`: it ends a call already sent too.
    */
-  supersede?: { signal: AbortSignal; reason: SupersedeReason }
+  supersede?: {
+    signal: AbortSignal
+    reason: SupersedeReason
+    onceSent?: 'cancel' | 'finish'
+  }
 }
 
 /** Why a call's result was no longer wanted; see `AgentCallSpec.supersede`. */
@@ -770,12 +778,33 @@ export async function runAgentCall(
         log.writeError ??= (error as Error).message
       })
   }
-  const supersede = spec.supersede ?? null
+  // What ends the call once sent: nothing, when a superseded call that was
+  // already sent is to finish (ADR-0064).
+  const supersede =
+    spec.supersede && spec.supersede.onceSent !== 'finish'
+      ? spec.supersede
+      : null
   const linked = AbortSignal.any([
     signal,
     timeout.signal,
     ...(supersede ? [supersede.signal] : []),
   ])
+  // Superseded after the check above but before the call is sent, while the
+  // start was being recorded: still not sent, under either `onceSent`. The
+  // start is on record, so it is settled as cancelled, as a replay reads it.
+  if (spec.supersede?.signal.aborted) {
+    endTimers()
+    const cancelled: CompletedCheckpoint = {
+      ...startRecord,
+      status: 'completed',
+      result: null,
+      cancelled: spec.supersede.reason,
+      partial: { ...reported },
+      invocationCompletedAt: new Date().toISOString(),
+    }
+    await writeJsonAtomic(paths.completed, cancelled, attempt.id)
+    return finishCancelled(spec.supersede.reason, cancelled, false)
+  }
   // Whether the agent was seen at work on this call; see `onActivity`.
   let active = false
   try {

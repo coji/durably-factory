@@ -3175,6 +3175,123 @@ describe('review.laterRounds', { timeout: 240000 }, () => {
   })
 })
 
+describe('review.onFailedCheck', { timeout: 240000 }, () => {
+  const onFailedCheckOf = async (box: Sandbox) =>
+    (
+      (
+        await inputOf(
+          box,
+          await trigger(box, ['--repo', box.repo, '--task', 'x']),
+        )
+      ).target as { reviewOnFailedCheck?: unknown }
+    ).reviewOnFailedCheck
+
+  it('fixes "finish" when left out, takes "cancel", and refuses anything else before the run exists', async () => {
+    assert.equal(
+      await onFailedCheckOf(await sandbox({ check: CHECK })),
+      'finish',
+    )
+    assert.equal(
+      await onFailedCheckOf(
+        await sandbox({ check: CHECK, review: { onFailedCheck: 'cancel' } }),
+      ),
+      'cancel',
+    )
+    for (const review of [
+      '{ "onFailedCheck": "keep" }',
+      '{ "onFailedCheck": null }',
+      '{ "onFailedCheck": true }',
+    ]) {
+      const box = await sandbox()
+      await writeFile(
+        join(box.repo, 'factory.json'),
+        `{ "check": ${JSON.stringify(CHECK)}, "review": ${review} }`,
+      )
+      await rejected(
+        box,
+        ['--repo', box.repo, '--task', 'x'],
+        /invalid factory config[\s\S]*review/,
+      )
+    }
+  })
+
+  it('gives a repair run its parent\'s value, and "cancel" to a parent set up before it existed', () => {
+    const commit = 'a'.repeat(40)
+    const profile = (role: string) => ({
+      id: `fake:provider-default:provider-default:${role}`,
+      provider: 'fake',
+      requestedModel: null,
+      requestedEffort: null,
+      effectiveModel: null,
+      effectiveEffort: null,
+    })
+    const parent = (reviewOnFailedCheck?: 'finish' | 'cancel') => ({
+      id: 'p',
+      status: 'completed',
+      input: {
+        provider: 'fake',
+        target: {
+          kind: 'repo',
+          parallelReview: true,
+          ...(reviewOnFailedCheck === undefined ? {} : { reviewOnFailedCheck }),
+        },
+      },
+      output: {
+        approved: true,
+        conclusion: 'approved',
+        candidate: { commit, branch: 'factory/p' },
+        delivery: { commit },
+      },
+    })
+    const setup = {
+      contextMode: 'reuse',
+      maxIterations: 1,
+      agentTimeoutMs: 600000,
+      autoApprove: true,
+      parallelReview: true,
+      profiles: {
+        code: profile('code'),
+        correctness: profile('correctness'),
+        'edge-cases': profile('edge-cases'),
+      },
+      target: {
+        kind: 'repo',
+        repoPath: '/repo',
+        task: 'task',
+        spec: null,
+        dispositions: null,
+        issue: null,
+        checkCommand: ['true'],
+        setupCommand: null,
+        checkTimeoutMs: 120000,
+        publish: false,
+      },
+    }
+    const files = {
+      findings: { content: 'FINDING\n', ref: { path: '/f.md' } },
+      dispositions: null,
+    }
+    const repair = (p: ReturnType<typeof parent>, s: object) =>
+      (
+        buildRepairInput(p, s, files).input.target as {
+          reviewOnFailedCheck?: unknown
+        }
+      ).reviewOnFailedCheck
+    assert.equal(
+      repair(parent('finish'), { ...setup, reviewOnFailedCheck: 'finish' }),
+      'finish',
+    )
+    assert.equal(
+      repair(parent('cancel'), { ...setup, reviewOnFailedCheck: 'cancel' }),
+      'cancel',
+    )
+    // Set up before it existed: "cancel", never the trigger default, even
+    // when the parent's input asked for "finish" (an older worker).
+    assert.equal(repair(parent(), setup), 'cancel')
+    assert.equal(repair(parent('finish'), setup), 'cancel')
+  })
+})
+
 describe('--max-iterations', { timeout: 120000 }, () => {
   it('accepts 1 to 5, defaults to 2, and refuses 0 and 6', async () => {
     const box = await sandbox({ check: CHECK })

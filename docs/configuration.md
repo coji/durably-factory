@@ -80,7 +80,7 @@ pnpm factory trigger --repo . --task-file task.md --provider codex --approve man
 
 ### 検証とレビューの並列実行（parallelReview）
 
-`"parallelReview": true` にすると、固定した Candidate に対する `check` と 2 つのコードレビューを同時に開始します（デフォルトは `check` 通過後にレビューを開始）。`check` が失敗した場合、実行中のレビューは即座にキャンセルされ、すでに完了していたレビュー結果も破棄されます（使用量はレポートに記録されます）。チェックの成果物（`checkArtifacts`）は同一ラウンドの並列レビューには間に合わないため注意してください。このフラグは `configVersion` の計算対象外です。
+`"parallelReview": true` にすると、固定した Candidate に対する `check` と 2 つのコードレビューを同時に開始します（デフォルトは `check` 通過後にレビューを開始）。`check` が失敗した場合、まだ送っていないレビューは送らずに終わります。すでに送ったレビューは、`review.onFailedCheck` がデフォルトの `"finish"` なら最後まで実行し、`"cancel"` ならその場でキャンセルします。答えが返ったレビューは、レビューの回数にも承認にも数えませんが、次の修正に `check` の失敗のあとで渡します(使用量はレポートに記録されます)。チェックの成果物（`checkArtifacts`）は同一ラウンドの並列レビューには間に合わないため注意してください。このフラグは `configVersion` の計算対象外です。
 
 ### コードレビューのスキップ（codeReview）
 
@@ -119,6 +119,7 @@ pnpm factory trigger --repo . --task-file task.md --provider codex --approve man
   - `local-factory.v9` 以降の run では、2 人のレビュアーに同じ「止める決まり」を渡します([ADR-0063](adr/0063-shared-blocking-rule.md))。積がしきい値以上の製品の指摘と、タスク・仕様・確定コンテキストに書かれた要件の見逃しは止めます。テストや検査の十分さについての指摘は、そのテストや検査が、タスク・仕様の受け入れ条件・確定コンテキストに書かれた失敗を見逃すときだけ止め、それ以外は `"testException": "unnamed-failure"` を付けた `non-blocker` にします。どちらのレビュアーも、この決まりにない理由で止める・止めないを決めません。レポートの `blockingRuleNonBlockers` は、回とレビュアーごとに、積がしきい値以上なのに止めなかった指摘と、止めなかったテスト・検査の指摘を数えます。
   - 既定値 `5` は今のところ変えていません。v9 の run のレポートに出る数から決め直します。
 - `review.laterRounds`: デフォルトは `"scoped"` です。`findings-json` 形式のレビュアーだけが対象です。1 回目のコードレビューと仕様レビューに、止める指摘(`blocker`)をその回で出し切るよう指示します。修正のあとの回は、変更の全体を読んだうえで、止めてよいのを「前の回の `blocker` が直っていない」「修正の差分が持ち込んだ不具合」「修正の差分の中の問題」の 3 つに限り、それ以外は `non-blocker` として報告させます。`verdict` 形式のレビュアーは、NOTES が文字数に上限のある 1 行で、止める指摘の一覧にならないため、設定にかかわらずどの回も今までどおりです。`"whole"` にすると、どの回も何でも止められる今までの動きになります。run の開始時に固定され、この設定より前に保存された run とその修正 run は `"whole"` のままです([レビューと修正](review-and-repair.md#2-回目以降のレビューで止めてよい理由laterrounds)、[ADR-0062](adr/0062-later-round-review-scope.md))。
+- `review.onFailedCheck`: `parallelReview` のときだけ使います。デフォルトは `"finish"` です。`check` が失敗した時点ですでに送っていたレビューを最後まで実行し、その指摘を次の修正に渡します。修正はそのレビューが終わるまで待つため、始まるのが遅れます。`"cancel"` にすると、送ったレビューもその場でキャンセルし、指摘は修正に渡りません(今までの動き)。どちらでも、まだ送っていないレビューは送りません。run の開始時に固定され、この設定より前に保存された run とその修正 run は `"cancel"` のままです([ADR-0064](adr/0064-finish-reviews-on-failed-check.md))。
 - `review.sessionMode`: デフォルトは `"fresh"` です。`"reuse-experiment"` にすると再レビューで同一セッションを継続し、通過後に新規セッション 2 つで最終確認を行います（[実験結果](review-and-repair.md#再レビューのセッション継続reuse-experiment)）。
 
 ## Git コミット・承認・Draft PR 出力（commit）

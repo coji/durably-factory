@@ -1645,6 +1645,160 @@ describe("the factory's total and idle limits on an agent call", () => {
     assert.equal(outcome.timedOut, null)
   })
 
+  describe('a supersede that lets a sent call finish (ADR-0064)', () => {
+    const finishing = async (
+      provider: AgentProvider,
+      limits: { timeoutMs: number; idleTimeoutMs?: number },
+    ) => {
+      const supersede = new AbortController()
+      return {
+        supersede,
+        spec: {
+          ...(await specOf(provider, limits)),
+          role: 'review-a' as const,
+          supersede: {
+            signal: supersede.signal,
+            reason: 'superseded-by-verify' as const,
+            onceSent: 'finish' as const,
+          },
+        },
+      }
+    }
+
+    it('lets a call aborted after it was sent answer, as a completed call', async () => {
+      const { provider, sent } = beating(() => {}, 10, 150)
+      const { supersede, spec } = await finishing(provider, {
+        timeoutMs: 5000,
+      })
+      const attempt = fakeAttempt()
+      const pending = runAgentCall(
+        new AbortController().signal,
+        attempt as never,
+        spec,
+      )
+      await sent.started
+      supersede.abort()
+      const outcome = await pending
+      assert.equal(outcome.cancelled, null)
+      assert.equal(outcome.text, 'done')
+      assert.equal(attempt.snapshots.at(-1)?.result, 'review-a-done')
+      assert.equal(sent.calls, 1)
+    })
+
+    it('still sends nothing when aborted before the call was sent', async () => {
+      const { provider, sent } = beating(() => {}, 10, 150)
+      const { supersede, spec } = await finishing(provider, {
+        timeoutMs: 5000,
+      })
+      supersede.abort()
+      const outcome = await runAgentCall(
+        new AbortController().signal,
+        fakeAttempt() as never,
+        spec,
+      )
+      assert.equal(outcome.cancelled, 'superseded-by-verify')
+      assert.equal(outcome.measurement.result, 'not-sent')
+      assert.equal(sent.calls, 0)
+    })
+
+    for (const onceSent of ['finish', 'cancel'] as const)
+      it(`sends nothing when superseded while the start is recorded (${onceSent}), and settles it cancelled`, async () => {
+        const { provider, sent } = beating(() => {}, 10, 150)
+        const supersede = new AbortController()
+        const spec = {
+          ...(await specOf(provider, { timeoutMs: 5000 })),
+          role: 'review-a' as const,
+          supersede: {
+            signal: supersede.signal,
+            reason: 'superseded-by-verify' as const,
+            onceSent,
+          },
+        }
+        // The check fails after the pre-send check passed: while the start
+        // is being recorded, before anything is handed to the provider.
+        const attempt = fakeAttempt()
+        const record = attempt.setMetadata
+        attempt.setMetadata = async (m: unknown) => {
+          if ((m as AttemptMeasurement).invocationStartedAt) supersede.abort()
+          await record(m)
+        }
+        const outcome = await runAgentCall(
+          new AbortController().signal,
+          attempt as never,
+          spec,
+        )
+        assert.equal(sent.calls, 0)
+        assert.equal(outcome.cancelled, 'superseded-by-verify')
+        assert.equal(outcome.measurement.result, 'cancelled')
+        const saved = JSON.parse(
+          await readFile(
+            checkpointPaths(spec.checkpointsDir, spec.operationKey).completed,
+            'utf8',
+          ),
+        ) as { cancelled?: string }
+        assert.equal(saved.cancelled, 'superseded-by-verify')
+        // A replay reads it back: nothing is sent, nothing is uncertain.
+        const replayed = await runAgentCall(
+          new AbortController().signal,
+          fakeAttempt() as never,
+          spec,
+        )
+        assert.equal(replayed.cancelled, 'superseded-by-verify')
+        assert.equal(sent.calls, 0)
+      })
+
+    it('settles the idle limit as a timeout, after the abort', async () => {
+      const { provider, sent } = beating(() => {}, 10, null)
+      const { supersede, spec } = await finishing(provider, {
+        timeoutMs: 5000,
+        idleTimeoutMs: 80,
+      })
+      const pending = runAgentCall(
+        new AbortController().signal,
+        fakeAttempt() as never,
+        spec,
+      ).catch((e: unknown) => e)
+      await sent.started
+      supersede.abort()
+      const error = await pending
+      assert.ok(error instanceof AgentTimeoutError)
+      assert.deepEqual(error.timedOut, { kind: 'idle', limitMs: 80 })
+    })
+
+    it('leaves a run-signal abort start-only and uncertain, after the abort', async () => {
+      const { provider, sent } = beating(() => {}, 10, null)
+      const { supersede, spec } = await finishing(provider, {
+        timeoutMs: 5000,
+      })
+      const controller = new AbortController()
+      const pending = runAgentCall(
+        controller.signal,
+        fakeAttempt() as never,
+        spec,
+      ).catch((e: unknown) => e)
+      await sent.started
+      supersede.abort()
+      controller.abort(new Error('lease lost'))
+      const error = await pending
+      assert.ok(error instanceof Error)
+      assert.ok(!(error instanceof AgentTimeoutError))
+      assert.equal(
+        existsSync(
+          checkpointPaths(spec.checkpointsDir, spec.operationKey).completed,
+        ),
+        false,
+      )
+      await assert.rejects(
+        runAgentCall(
+          new AbortController().signal,
+          fakeAttempt() as never,
+          spec,
+        ),
+        UncertainInvocationError,
+      )
+    })
+  })
+
   it("never reads the provider's own timeout as the factory's", async () => {
     const sent = { calls: 0 }
     const provider = stubProvider(async () => {

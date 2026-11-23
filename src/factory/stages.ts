@@ -612,11 +612,13 @@ export const reviewStage: StageHandler = async ({
  * `step.all` (ADR-0029). The steps keep the names the two stages give them
  * one after the other, so a report reads them the same way. The reviewers
  * read the candidate's sealed tree and diff, never the worktree the check
- * runs in. A failed check ends the reviews still running: each call is
- * settled as cancelled with the usage it had reported, and a review that
- * already answered is kept on record but not counted: its verdict and
- * findings go to the next repair, after the check failure. The stage ends
- * once every branch has.
+ * runs in. A failed check skips a review not yet sent. A review already
+ * sent runs to its answer under `reviewOnFailedCheck: "finish"`
+ * (ADR-0064); otherwise, as on a run set up before it, it is ended and
+ * settled as cancelled with the usage it had reported. A review that
+ * answered is kept on record but not counted: its verdict and findings go
+ * to the next repair, after the check failure. The stage ends once every
+ * branch has.
  */
 const verifyReviewStage: StageHandler = async (args) => {
   const { step, key, services } = args
@@ -643,7 +645,8 @@ const verifyReviewStage: StageHandler = async (args) => {
     candidate,
     snapshotOnly: true,
   })
-  // One controller for the round: a failed check ends both reviewers.
+  // One controller for the round: a failed check skips both reviewers, or
+  // ends them when they were sent (see `reviewOnce`).
   const superseded = new AbortController()
   const acceptance = `${key}:acceptance`
   const correctness = `${reviewKey}:correctness`
@@ -1151,8 +1154,20 @@ async function reviewRoundOf(args: {
           }
         : {}),
       configVersion: setup.configVersion,
+      // A failed check keeps a review from being sent; one already sent
+      // finishes, so its findings reach the repair, unless the run was set
+      // up to cancel it or before the choice existed (ADR-0064).
       ...(superseded
-        ? { supersede: { signal: superseded, reason: REVIEW_CANCEL_REASON } }
+        ? {
+            supersede: {
+              signal: superseded,
+              reason: REVIEW_CANCEL_REASON,
+              onceSent:
+                setup.reviewOnFailedCheck === 'finish'
+                  ? ('finish' as const)
+                  : ('cancel' as const),
+            },
+          }
         : {}),
     })
     if (result.cancelled)

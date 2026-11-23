@@ -625,12 +625,22 @@ describe('a review beside verification', () => {
      * when its signal is aborted.
      */
     order: 'calls-first' | 'check-first' | 'extracting' = 'calls-first',
+    options: {
+      /** The setup's `reviewOnFailedCheck`; absent as on an older run. */
+      onFailedCheck?: 'finish' | 'cancel'
+      /**
+       * On a failing check, each call answers once the check has ended,
+       * unless it is aborted first; otherwise it only waits for its abort.
+       */
+      answerAfterCheck?: boolean
+    } = {},
   ) {
     const gate = () => {
       let open = () => {}
       const opened = new Promise<void>((r) => (open = r))
       return { open, opened }
     }
+    const { onFailedCheck, answerAfterCheck = false } = options
     const bothCalled = gate()
     const checked = gate()
     const worktree = join(root, 'worktree')
@@ -670,11 +680,23 @@ describe('a review beside verification', () => {
             usage: null,
             elapsedMs: 1,
           }
-        return new Promise((_, reject) =>
+        return new Promise((resolve, reject) => {
           options.signal?.addEventListener('abort', () =>
             reject(new Error('aborted by the caller')),
-          ),
-        )
+          )
+          if (answerAfterCheck)
+            void checked.opened.then(() =>
+              resolve({
+                text: `PLAN: p\nCOUNTEREXAMPLE: none\nDECISION: needsChanges\nNOTES: LATE-${name}`,
+                resolvedModel: `${name}-model`,
+                resolvedEffort: null,
+                reportedModel: null,
+                reportedEffort: null,
+                usage: null,
+                elapsedMs: 1,
+              }),
+            )
+        })
       },
       checkAvailability: async () => ({
         verdict: 'available',
@@ -707,6 +729,7 @@ describe('a review beside verification', () => {
       agentTimeoutMs: 60000,
       autoApprove: true,
       parallelReview: true,
+      ...(onFailedCheck ? { reviewOnFailedCheck: onFailedCheck } : {}),
     } as unknown as FactorySetup
     const candidate = {
       id: 'candidate-1',
@@ -827,14 +850,136 @@ describe('a review beside verification', () => {
     }
   })
 
-  it('cancels both calls when the check fails, keeps their partial usage, and never resends them', async () => {
+  for (const onFailedCheck of [undefined, 'cancel'] as const)
+    it(`cancels both calls when the check fails${onFailedCheck ? ' under "cancel"' : ' on a run set up before the choice'}, keeps their partial usage, and never resends them`, async () => {
+      const root = await mkdtemp(join(tmpdir(), 'parallel-review-'))
+      // Both would answer once the check ended: the abort comes first.
+      const h = await harness(root, false, 'calls-first', {
+        ...(onFailedCheck ? { onFailedCheck } : {}),
+        answerAfterCheck: true,
+      })
+      const event = await h.stage()
+      assert.equal(event.type, 'verify-review.completed')
+      assert.equal((event as { passed: boolean }).passed, false)
+      assert.equal((event as { reviews: unknown }).reviews, null)
+      assert.equal(h.calls.length, 2)
+      for (const lens of ['correctness', 'edge-cases']) {
+        const name = `stage:1:review:${lens}`
+        assert.deepEqual(h.outputs.get(name), {
+          lens,
+          status: 'cancelled',
+          reason: 'superseded-by-verify',
+        })
+        const last = h.metadata.get(name)?.at(-1)
+        assert.equal(last?.result, 'cancelled')
+        assert.equal(last?.interruptionReason, 'superseded-by-verify')
+        assert.equal(last?.usage?.inputTokens, 1200)
+        assert.equal(last?.usage?.usageSource, 'provider-partial')
+        // The session and the split by model are kept too, and so is how far
+        // the usage goes (ADR-0034).
+        const model = lens === 'correctness' ? 'codex-model' : 'claude-model'
+        assert.equal(last?.usageByModel?.[model]?.outputTokens, 30)
+        assert.match(last?.sessionId ?? '', /-session$/)
+        assert.equal(last?.usageUntilStop?.reason, 'superseded-by-verify')
+        assert.equal(last?.usageUntilStop?.reports, 1)
+        const saved = JSON.parse(
+          await readFile(
+            checkpointPaths(
+              h.setup.checkpointsDir,
+              `run-1/stage:1:review/${lens}`,
+            ).completed,
+            'utf8',
+          ),
+        ) as {
+          cancelled?: string
+          status?: string
+          partial?: { usage?: { inputTokens?: number }; sessionId?: string }
+        }
+        assert.equal(saved.status, 'completed')
+        assert.equal(saved.cancelled, 'superseded-by-verify')
+        assert.equal(saved.partial?.usage?.inputTokens, 1200)
+        assert.equal(saved.partial?.sessionId, last?.sessionId)
+      }
+      // A replay reads both back: nothing is sent, nothing is uncertain, and
+      // the usage, its split and the session are restored from the checkpoint.
+      const firstRun = new Map(
+        ['correctness', 'edge-cases'].map((lens) => [
+          lens,
+          h.metadata.get(`stage:1:review:${lens}`)?.at(-1),
+        ]),
+      )
+      for (const lens of ['correctness', 'edge-cases'])
+        h.metadata.delete(`stage:1:review:${lens}`)
+      const replayed = await h.stage()
+      assert.equal((replayed as { passed: boolean }).passed, false)
+      assert.equal(h.calls.length, 2)
+      for (const lens of ['correctness', 'edge-cases']) {
+        const last = h.metadata.get(`stage:1:review:${lens}`)?.at(-1)
+        const first = firstRun.get(lens)
+        assert.equal(last?.result, 'cancelled')
+        assert.equal(last?.recovered, true)
+        assert.deepEqual(last?.usage, first?.usage)
+        assert.deepEqual(last?.usageByModel, first?.usageByModel)
+        assert.equal(last?.sessionId, first?.sessionId)
+        assert.deepEqual(last?.usageUntilStop, first?.usageUntilStop)
+      }
+    })
+
+  it('lets both calls already sent answer when the check fails under "finish", and hands their verdicts to the repair', async () => {
     const root = await mkdtemp(join(tmpdir(), 'parallel-review-'))
-    const h = await harness(root, false)
-    const event = await h.stage()
+    const h = await harness(root, false, 'calls-first', {
+      onFailedCheck: 'finish',
+      answerAfterCheck: true,
+    })
+    const event = (await h.stage()) as {
+      type: string
+      passed: boolean
+      reviews: unknown
+      failedCheckReviews?: { lens: string; decision: string; notes: string }[]
+    }
     assert.equal(event.type, 'verify-review.completed')
-    assert.equal((event as { passed: boolean }).passed, false)
-    assert.equal((event as { reviews: unknown }).reviews, null)
+    assert.equal(event.passed, false)
+    assert.equal(event.reviews, null)
     assert.equal(h.calls.length, 2)
+    assert.deepEqual(
+      event.failedCheckReviews?.map((r) => [r.lens, r.decision, r.notes]),
+      [
+        ['correctness', 'needsChanges', 'LATE-codex'],
+        ['edge-cases', 'needsChanges', 'LATE-claude'],
+      ],
+    )
+    for (const lens of ['correctness', 'edge-cases']) {
+      const name = `stage:1:review:${lens}`
+      const output = h.outputs.get(name) as { status?: string }
+      assert.equal(output.status, undefined)
+      const last = h.metadata.get(name)?.at(-1)
+      assert.notEqual(last?.result, 'cancelled')
+      assert.equal(last?.interruptionReason ?? null, null)
+    }
+    // A replay reads both answers back and sends nothing.
+    const replayed = (await h.stage()) as {
+      failedCheckReviews?: { notes: string }[]
+    }
+    assert.equal(h.calls.length, 2)
+    assert.deepEqual(
+      replayed.failedCheckReviews?.map((r) => r.notes),
+      ['LATE-codex', 'LATE-claude'],
+    )
+  })
+
+  it('still sends no review that was not ready when the check failed under "finish"', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'parallel-review-'))
+    const h = await harness(root, false, 'check-first', {
+      onFailedCheck: 'finish',
+      answerAfterCheck: true,
+    })
+    const event = (await h.stage()) as {
+      passed: boolean
+      failedCheckReviews?: unknown[]
+    }
+    assert.equal(event.passed, false)
+    assert.equal(h.calls.length, 0)
+    assert.deepEqual(event.failedCheckReviews, [])
     for (const lens of ['correctness', 'edge-cases']) {
       const name = `stage:1:review:${lens}`
       assert.deepEqual(h.outputs.get(name), {
@@ -842,58 +987,7 @@ describe('a review beside verification', () => {
         status: 'cancelled',
         reason: 'superseded-by-verify',
       })
-      const last = h.metadata.get(name)?.at(-1)
-      assert.equal(last?.result, 'cancelled')
-      assert.equal(last?.interruptionReason, 'superseded-by-verify')
-      assert.equal(last?.usage?.inputTokens, 1200)
-      assert.equal(last?.usage?.usageSource, 'provider-partial')
-      // The session and the split by model are kept too, and so is how far
-      // the usage goes (ADR-0034).
-      const model = lens === 'correctness' ? 'codex-model' : 'claude-model'
-      assert.equal(last?.usageByModel?.[model]?.outputTokens, 30)
-      assert.match(last?.sessionId ?? '', /-session$/)
-      assert.equal(last?.usageUntilStop?.reason, 'superseded-by-verify')
-      assert.equal(last?.usageUntilStop?.reports, 1)
-      const saved = JSON.parse(
-        await readFile(
-          checkpointPaths(
-            h.setup.checkpointsDir,
-            `run-1/stage:1:review/${lens}`,
-          ).completed,
-          'utf8',
-        ),
-      ) as {
-        cancelled?: string
-        status?: string
-        partial?: { usage?: { inputTokens?: number }; sessionId?: string }
-      }
-      assert.equal(saved.status, 'completed')
-      assert.equal(saved.cancelled, 'superseded-by-verify')
-      assert.equal(saved.partial?.usage?.inputTokens, 1200)
-      assert.equal(saved.partial?.sessionId, last?.sessionId)
-    }
-    // A replay reads both back: nothing is sent, nothing is uncertain, and
-    // the usage, its split and the session are restored from the checkpoint.
-    const firstRun = new Map(
-      ['correctness', 'edge-cases'].map((lens) => [
-        lens,
-        h.metadata.get(`stage:1:review:${lens}`)?.at(-1),
-      ]),
-    )
-    for (const lens of ['correctness', 'edge-cases'])
-      h.metadata.delete(`stage:1:review:${lens}`)
-    const replayed = await h.stage()
-    assert.equal((replayed as { passed: boolean }).passed, false)
-    assert.equal(h.calls.length, 2)
-    for (const lens of ['correctness', 'edge-cases']) {
-      const last = h.metadata.get(`stage:1:review:${lens}`)?.at(-1)
-      const first = firstRun.get(lens)
-      assert.equal(last?.result, 'cancelled')
-      assert.equal(last?.recovered, true)
-      assert.deepEqual(last?.usage, first?.usage)
-      assert.deepEqual(last?.usageByModel, first?.usageByModel)
-      assert.equal(last?.sessionId, first?.sessionId)
-      assert.deepEqual(last?.usageUntilStop, first?.usageUntilStop)
+      assert.equal(h.metadata.get(name)?.at(-1)?.result, 'not-sent')
     }
   })
 

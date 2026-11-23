@@ -46,6 +46,9 @@ import {
   reviewLaterRoundsSchema,
   DEFAULT_REVIEW_LATER_ROUNDS,
   type ReviewLaterRounds,
+  reviewOnFailedCheckSchema,
+  DEFAULT_REVIEW_ON_FAILED_CHECK,
+  type ReviewOnFailedCheck,
   selfCheckSchema,
   generateSchema,
   specMaxRoundsSchema,
@@ -227,13 +230,17 @@ const factoryConfigSchema = z
      * such rule (ADR-0040). `laterRounds` decides what a code or spec
      * review after a repair may block on: "scoped" (the default) only an
      * earlier blocker left unfixed or a problem the repair brought, "whole"
-     * anything, as before (ADR-0062).
+     * anything, as before (ADR-0062). `onFailedCheck` decides, with
+     * `parallelReview`, whether a review already sent when the check fails
+     * runs to its answer for the repair ("finish", the default) or is
+     * ended at once ("cancel", as before; ADR-0064).
      */
     review: z
       .object({
         blockerThreshold: reviewBlockerThresholdSchema.optional(),
         sessionMode: z.enum(['fresh', 'reuse-experiment']).optional(),
         laterRounds: reviewLaterRoundsSchema.optional(),
+        onFailedCheck: reviewOnFailedCheckSchema.optional(),
       })
       .strict()
       .optional(),
@@ -638,6 +645,8 @@ async function repoSettings(
       reviewSessionMode: config?.review?.sessionMode ?? 'fresh',
       reviewLaterRounds:
         config?.review?.laterRounds ?? DEFAULT_REVIEW_LATER_ROUNDS,
+      reviewOnFailedCheck:
+        config?.review?.onFailedCheck ?? DEFAULT_REVIEW_ON_FAILED_CHECK,
       reviewBlockerThreshold:
         config?.review?.blockerThreshold ?? DEFAULT_REVIEW_BLOCKER_THRESHOLD,
       baselineCheck: config?.baselineCheck ?? false,
@@ -1103,6 +1112,7 @@ interface StoredRepairInput {
     checkArtifacts?: string | null
     reviewSessionMode?: 'fresh' | 'reuse-experiment'
     reviewLaterRounds?: ReviewLaterRounds
+    reviewOnFailedCheck?: ReviewOnFailedCheck
     reviewBlockerThreshold?: number | null
     baselineCheck?: boolean
     baselineReuse?: BaselineReuse | null
@@ -1509,6 +1519,9 @@ export function buildRepairInput(
       // it, by a worker from before it existed, reviewed every round whole,
       // whatever its input says (ADR-0062).
       reviewLaterRounds: stored.reviewLaterRounds ?? 'whole',
+      // The same for a failed check's reviews: a parent set up without it
+      // cancelled them (ADR-0064).
+      reviewOnFailedCheck: stored.reviewOnFailedCheck ?? 'cancel',
       reviewBlockerThreshold: recorded(
         stored,
         'reviewBlockerThreshold',

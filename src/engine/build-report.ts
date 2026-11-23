@@ -1598,6 +1598,7 @@ export async function buildReport(
     review?: Partial<Record<string, { output?: string }>>
     reviewBlockerThreshold?: number | null
     reviewLaterRounds?: 'scoped' | 'whole'
+    reviewOnFailedCheck?: 'finish' | 'cancel'
     agentTimeoutMs?: number
     agentIdleTimeoutMs?: number
   } | null
@@ -1686,6 +1687,12 @@ export async function buildReport(
     ...(setupOutput?.reviewLaterRounds === 'scoped' ||
     setupOutput?.reviewLaterRounds === 'whole'
       ? { reviewLaterRounds: setupOutput.reviewLaterRounds }
+      : {}),
+    // Only beside the check, where a failed check meets a review.
+    ...(setupOutput?.parallelReview === true &&
+    (setupOutput.reviewOnFailedCheck === 'finish' ||
+      setupOutput.reviewOnFailedCheck === 'cancel')
+      ? { reviewOnFailedCheck: setupOutput.reviewOnFailedCheck }
       : {}),
     blockingRuleNonBlockers: blockingRuleNonBlockersOf(
       reviewBlockerThreshold,

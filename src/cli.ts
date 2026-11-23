@@ -768,7 +768,8 @@ Repository config: factory.json at the repository root, or --config <file>:
     "sandbox": { "network": ["code", "repair"] },
     "selfCheck": [["pnpm", "lint"], ["pnpm", "typecheck"]],
     "generate": [["pnpm", "screenshots:update"]],
-    "review": { "blockerThreshold": 5, "sessionMode": "fresh", "laterRounds": "scoped" },
+    "review": { "blockerThreshold": 5, "sessionMode": "fresh", "laterRounds": "scoped",
+                "onFailedCheck": "finish" },
     "checkTimeoutMs": 900000, "agentTimeoutMs": 7200000, "agentIdleTimeoutMs": 900000,
     "commit": { "authorName": "...", "authorEmail": "...",
                 "messageTemplate": "...", "publishSquashed": false },
@@ -810,12 +811,17 @@ Repository config: factory.json at the repository root, or --config <file>:
   "parallelReview": true starts verification and both reviews of each sealed
   candidate together (default false: review follows a passing check, as
   before). Reviewers then read the candidate's sealed tree and diff, never
-  the worktree the check runs in. A check that fails ends the reviews still
-  running (cancelled, superseded-by-verify) and sets aside the ones that
-  answered (discarded, verify-failed); neither is used for an approval, nor
-  counted toward the review cap. The next repair in the same run gets the
-  check failure first, then the answered reviews of that round as untrusted
-  findings; a cancelled review hands it nothing. A round whose check has no
+  the worktree the check runs in. A check that fails skips a review not yet
+  sent (cancelled, superseded-by-verify). With "review.onFailedCheck"
+  "finish" (the default, fixed at trigger) a review already sent runs to
+  its answer, so the repair starts later by the time it still needs; with
+  "cancel" it is ended at once (cancelled, superseded-by-verify), as before
+  and as on a run stored before the setting existed, and a repair of it.
+  The reviews that answered are set aside (discarded, verify-failed);
+  neither kind is used for an approval, nor counted toward the review cap.
+  The next repair in the same run gets the check failure first, then the
+  answered reviews of that round as untrusted findings; a cancelled review
+  hands it nothing. A round whose check has no
   result yet, or ended with an error, is pending (verify-pending) and not
   counted either. Only a candidate that passes both is approved. The
   report, compare and compare --trend show what the reviews of failed

@@ -3495,8 +3495,105 @@ describe('verification and review side by side', { timeout: 300000 }, () => {
     }
   })
 
-  it('hands the repair a review that answered before the check failed, and none that was cancelled', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'e2e-parallel-mixed-'))
+  for (const onFailedCheck of [undefined, 'cancel'] as const)
+    it(`hands the repair a review that answered before the check failed, and none that was cancelled${onFailedCheck ? ' under "cancel"' : ' on a run stored before the choice'}`, async () => {
+      const home = await mkdtemp(join(tmpdir(), 'e2e-parallel-mixed-'))
+      const dir = join(home, '.local', 'state', 'durably-factory')
+      const repo = await slowCheckRepo(home)
+      delete process.env.FAKE_FAIL_FIRST
+      delete process.env.FAKE_REVIEW_SEQUENCE
+      // The edge-case reviewer is still running when the check fails.
+      process.env.FAKE_REVIEW_SLOW_MS = '6000'
+      const durably = createAgentDurably({ stateRoot: dir })
+      await durably.migrate()
+      const recording = recordFakeReviewCalls()
+      try {
+        const id = (
+          await durably.jobs.agentLoop.trigger({
+            provider: 'fake',
+            profiles: { code: fake, correctness: fake, 'edge-cases': fake },
+            target: {
+              kind: 'repo' as const,
+              repoPath: repo,
+              baseRef: 'HEAD',
+              task: 'Fix add() so decimal inputs are not truncated.',
+              spec: null,
+              dispositions: null,
+              inputFiles: { task: null, spec: null, dispositions: null },
+              issue: null,
+              checkCommand: ['node', 'check.mjs', 'one'],
+              setupCommand: null,
+              publish: false,
+              parallelReview: true,
+              ...(onFailedCheck ? { reviewOnFailedCheck: onFailedCheck } : {}),
+            },
+            maxIterations: 2,
+            context: 'reuse',
+            fakeScenario: {
+              failIterations: 1,
+              reviewNotes: ['ANSWERED-NOTE', 'CANCELLED-NOTE'],
+            },
+          })
+        ).id
+        await durably.init()
+        await waitFor(
+          async () =>
+            ['completed', 'failed'].includes(
+              (await durably.getRun(id))?.status ?? '',
+            ),
+          120000,
+          'the mixed run settles',
+        )
+        const output = (await durably.getRun(id))?.output as {
+          conclusion: string
+          reviewRounds: number
+        }
+        assert.equal(output.conclusion, 'approved')
+        assert.equal(output.reviewRounds, 1)
+        const report = await buildReport(durably, id)
+        // A round with a review still running when the check failed is
+        // cancelled as a whole; its answered review is still handed on.
+        assert.deepEqual(
+          report.reviewRounds.map((r) => r.status),
+          ['cancelled', 'completed'],
+        )
+        assert.deepEqual(
+          report.reviewRounds[0]?.reviews.map((r) => [r.lens, r.status]),
+          [
+            ['review-a', 'discarded'],
+            ['review-b', 'cancelled'],
+          ],
+        )
+        const setup = (await durably.storage.getCompletedStep(id, 'setup'))
+          ?.output as {
+          target: { workdir: string }
+          reviewOnFailedCheck?: string
+        }
+        // A target stored without the choice is set up to cancel.
+        assert.equal(setup.reviewOnFailedCheck, 'cancel')
+        assert.equal(report.reviewOnFailedCheck, 'cancel')
+        const repairs = recording.calls.filter(
+          (c) => c.role === 'repair' && c.workdir === setup.target.workdir,
+        )
+        assert.equal(repairs.length, 1)
+        const prompt = repairs[0]?.input ?? ''
+        assert.ok(
+          prompt.indexOf('- acceptance: ') <
+            prompt.indexOf('<<<UNTRUSTED FAILED_CANDIDATE_REVIEWS '),
+        )
+        assert.match(prompt, /correctness: pass\nANSWERED-NOTE/)
+        assert.doesNotMatch(prompt, /edge-cases|CANCELLED-NOTE/)
+      } finally {
+        delete process.env.FAKE_REVIEW_SLOW_MS
+        recording.stop()
+        await durably.stop()
+        await durably.db.destroy()
+        await rm(home, { recursive: true, force: true })
+      }
+    })
+
+  it('lets a review still running when the check fails finish under "finish", and hands its findings to the repair', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'e2e-parallel-finish-'))
     const dir = join(home, '.local', 'state', 'durably-factory')
     const repo = await slowCheckRepo(home)
     delete process.env.FAKE_FAIL_FIRST
@@ -3524,12 +3621,13 @@ describe('verification and review side by side', { timeout: 300000 }, () => {
             setupCommand: null,
             publish: false,
             parallelReview: true,
+            reviewOnFailedCheck: 'finish',
           },
           maxIterations: 2,
           context: 'reuse',
           fakeScenario: {
             failIterations: 1,
-            reviewNotes: ['ANSWERED-NOTE', 'CANCELLED-NOTE'],
+            reviewNotes: ['ANSWERED-NOTE', 'RUNNING-NOTE'],
           },
         })
       ).id
@@ -3540,41 +3638,51 @@ describe('verification and review side by side', { timeout: 300000 }, () => {
             (await durably.getRun(id))?.status ?? '',
           ),
         120000,
-        'the mixed run settles',
+        'the finishing run settles',
       )
       const output = (await durably.getRun(id))?.output as {
         conclusion: string
         reviewRounds: number
       }
       assert.equal(output.conclusion, 'approved')
+      // The round beside the failed check is still not counted.
       assert.equal(output.reviewRounds, 1)
       const report = await buildReport(durably, id)
-      // A round with a review still running when the check failed is
-      // cancelled as a whole; its answered review is still handed on.
       assert.deepEqual(
-        report.reviewRounds.map((r) => r.status),
-        ['cancelled', 'completed'],
+        report.reviewRounds.map((r) => [r.status, r.reason]),
+        [
+          ['discarded', 'verify-failed'],
+          ['completed', null],
+        ],
       )
       assert.deepEqual(
         report.reviewRounds[0]?.reviews.map((r) => [r.lens, r.status]),
         [
           ['review-a', 'discarded'],
-          ['review-b', 'cancelled'],
+          ['review-b', 'discarded'],
         ],
       )
+      assert.equal(report.reviewOnFailedCheck, 'finish')
+      assert.match(
+        reportToMarkdown(report),
+        /^- reviews on a failed check: finish \(/m,
+      )
       const setup = (await durably.storage.getCompletedStep(id, 'setup'))
-        ?.output as { target: { workdir: string } }
+        ?.output as {
+        target: { workdir: string }
+        reviewOnFailedCheck?: string
+      }
+      assert.equal(setup.reviewOnFailedCheck, 'finish')
       const repairs = recording.calls.filter(
         (c) => c.role === 'repair' && c.workdir === setup.target.workdir,
       )
       assert.equal(repairs.length, 1)
       const prompt = repairs[0]?.input ?? ''
-      assert.ok(
-        prompt.indexOf('- acceptance: ') <
-          prompt.indexOf('<<<UNTRUSTED FAILED_CANDIDATE_REVIEWS '),
-      )
-      assert.match(prompt, /correctness: pass\nANSWERED-NOTE/)
-      assert.doesNotMatch(prompt, /edge-cases|CANCELLED-NOTE/)
+      const fence = prompt.indexOf('<<<UNTRUSTED FAILED_CANDIDATE_REVIEWS ')
+      assert.ok(prompt.indexOf('- acceptance: ') < fence, prompt)
+      const block = prompt.slice(fence)
+      assert.match(block, /correctness: pass\nANSWERED-NOTE/)
+      assert.match(block, /edge-cases: pass\nRUNNING-NOTE/)
     } finally {
       delete process.env.FAKE_REVIEW_SLOW_MS
       recording.stop()
