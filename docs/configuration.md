@@ -109,6 +109,26 @@ pnpm factory trigger --repo . --task-file task.md --provider codex --approve man
 
 実装・修正で追加または変更されたテストファイルを `base` と Candidate の両方で実行し、その結果をレビュアーに渡します（「修正前から通ってしまう空虚なテスト」を見抜くための仕組みです）。`{files}` は独立した配列要素として指定してください（[ADR-0039](adr/0039-local-agent-loop-test-probe.md)）。
 
+`base` 側で知りたいのは「新しいテストが修正前に失敗するか」だけです。テストケースが多く、修正前は全部が失敗して 1 件ずつ時間切れを待つようなテストでは、`base` 側の実行が長くなります。各エントリに次の 2 つを足すと、`base` 側だけを早く終わらせられます（[ADR-0065](adr/0065-test-probe-base-stop-early.md)）。
+
+```json
+{
+  "testProbe": [
+    {
+      "glob": "test/**/*.test.ts",
+      "command": ["pnpm", "vitest", "run", "{files}"],
+      "baseArgs": ["--bail=1"],
+      "baseTimeoutMs": 300000
+    }
+  ]
+}
+```
+
+- `baseArgs`（1〜20 個の文字列、任意）: `base` 側のコマンドだけ、`command` の後ろに付け足す引数です。Vitest の `--bail=1` のように、最初の失敗で止めるオプションを指定します。Candidate 側のコマンドは変わりません。`{files}` は含められません。
+- `baseTimeoutMs`（ミリ秒、任意）: `base` 側だけの制限時間です。`checkTimeoutMs` より小さい値にしてください（同じか大きい値は run の開始時にエラーになります）。この時間で止まったテストは「実行できなかった」ではなく「`base` では制限時間内に終わらなかった」と記録されます。
+
+どちらかで `base` 側の実行が途中で終わったときは、レビュアーに渡す結果とレポートの Test probe の節に、`base` 側が最後まで実行されていないことが書かれます。`testProbe` は run を止めないので、`base` 側が途中で終わっても run はそのまま進みます。どちらも指定しないエントリは、これまでと同じ動きです。
+
 ### チェック成果物の共有（checkArtifacts）
 
 `"checkArtifacts": ".factory/artifacts"` のように作業ツリー内の相対パスを指定すると、`check` 実行後にその配下の通常ファイル（合計 50 MiB まで）を Candidate ごとに保存し、`--reference` で渡した資料と見比べられるようレビュアーに渡します。

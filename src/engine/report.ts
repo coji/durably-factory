@@ -271,8 +271,23 @@ export interface ReportTestProbe {
    */
   failedOnBase: number
   elapsedMs: number
-  /** One line per side that could not run: `<path> (<side>): <reason>`. */
+  /**
+   * One line per side that could not run: `<path> (<side>): <reason>`. A
+   * base side stopped at its `baseTimeoutMs` is in `baseNotFull` instead.
+   */
   couldNotRun: string[]
+  /**
+   * Of the targets, the ones stopped on the base at their rule's
+   * `baseTimeoutMs` whose candidate side passed (ADR-0065).
+   */
+  unfinishedOnBase: number
+  /**
+   * One line per file whose base side is not a full run of it (ADR-0065):
+   * run with its rule's `baseArgs`, which may stop it at its first
+   * failure, or stopped at its rule's `baseTimeoutMs`. Empty for a record
+   * made without either.
+   */
+  baseNotFull: string[]
 }
 
 /**
@@ -2208,6 +2223,15 @@ export function reportToMarkdown(r: LoopReport): string {
       // The reasons are command and git output, so none reads as Markdown.
       if (p.couldNotRun.length > 0)
         lines.push('', ...fencedText(p.couldNotRun.join('\n')), '')
+      // Records without baseArgs or baseTimeoutMs have none (ADR-0065).
+      const notFull = p.baseNotFull ?? []
+      if (notFull.length > 0)
+        lines.push(
+          `- ${p.candidateId}: the base run of ${notFull.length} file(s) is not a full run, ${p.unfinishedOnBase ?? 0} did not finish on the base within its base time limit and passed on the candidate:`,
+          '',
+          ...fencedText(notFull.join('\n')),
+          '',
+        )
     }
     lines.push('')
   }

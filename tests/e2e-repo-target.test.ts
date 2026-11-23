@@ -7070,6 +7070,249 @@ describe('the test probe', { timeout: 300000 }, () => {
     assert.equal(await baseRegistered(repo), false)
   })
 
+  it("appends a rule's baseArgs on the base side only, stops the base at its baseTimeoutMs while the candidate runs in full, and leaves a rule without them as before", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'repo-test-probe-base-stop-'))
+    const repo = await seedRepo(root)
+    // Logs where it ran and its arguments; fails on the base, passes on the
+    // candidate. With --slow it takes 60 s on the base and 2.5 s on the
+    // candidate, longer than the base limit below.
+    await writeFile(
+      join(repo, 'argv-probe.mjs'),
+      [
+        "import { appendFileSync } from 'node:fs'",
+        "const onBase = process.cwd().endsWith('/base-work')",
+        "appendFileSync(process.env.PROBE_LOG, `${onBase ? 'base' : 'candidate'}\\t${process.argv.slice(2).join(' ')}\\n`)",
+        "if (process.argv.includes('--slow'))",
+        // sleep-ok(work): a slow test, stopped on the base at its limit
+        '  await new Promise((r) => setTimeout(r, onBase ? 60000 : 2500))',
+        'process.exit(onBase ? 1 : 0)',
+        '',
+      ].join('\n'),
+    )
+    await git(repo, ['add', '-A'])
+    await git(repo, ['commit', '-m', 'argv probe'])
+    const log = join(root, 'probe.log')
+    process.env.PROBE_LOG = log
+    const runRoot = join(root, 'state', 'runs', 'run-1')
+    const probe = (glob: string, extra: Record<string, unknown> = {}) => ({
+      glob,
+      command: [
+        'node',
+        'argv-probe.mjs',
+        '{files}',
+        ...(glob === 'slow/**' ? ['--slow'] : []),
+      ],
+      ...extra,
+    })
+    try {
+      const config = await prepareRepoTarget({
+        repoPath: repo,
+        baseRef: 'HEAD',
+        branch: `factory/probe-${randomUUID()}`,
+        root: runRoot,
+        task: 'x',
+        spec: null,
+        dispositions: null,
+        issue: null,
+        checkCommand: ['node', '--test'],
+        setupCommand: null,
+        testProbe: [
+          probe('bail/**', { baseArgs: ['--bail=1', '--reporter=dot'] }),
+          probe('slow/**', { baseTimeoutMs: 1000 }),
+          probe('plain/**'),
+        ],
+        checkTimeoutMs: 30000,
+        publish: false,
+        commit: DEFAULT_COMMIT_SETTINGS,
+      })
+      for (const dir of ['bail', 'slow', 'plain']) {
+        await mkdir(join(config.workdir, dir))
+        await writeFile(join(config.workdir, dir, 'a.txt'), 'x\n')
+      }
+      const target = createTarget(config)
+      const candidate = await target.seal({
+        iteration: 1,
+        runId: 'run-1',
+        attemptId: 'a',
+        signal: new AbortController().signal,
+      })
+      const probed = await runTestProbe({
+        config,
+        candidate,
+        runRoot,
+        assertIntact: () => target.assertIntact(candidate),
+        signal: new AbortController().signal,
+      })
+      const byPath = new Map(probed.files.map((f) => [f.path, f]))
+      const bail = byPath.get('bail/a.txt')!
+      const slow = byPath.get('slow/a.txt')!
+      const plain = byPath.get('plain/a.txt')!
+
+      // baseArgs go after the command on the base side only.
+      assert.deepEqual(
+        (await readFile(log, 'utf8')).split('\n').filter(Boolean).sort(),
+        [
+          'base\t./bail/a.txt --bail=1 --reporter=dot',
+          'base\t./plain/a.txt',
+          'base\t./slow/a.txt --slow',
+          'candidate\t./bail/a.txt',
+          'candidate\t./plain/a.txt',
+          'candidate\t./slow/a.txt --slow',
+        ],
+      )
+      assert.deepEqual(bail.command, ['node', 'argv-probe.mjs', './bail/a.txt'])
+      assert.deepEqual(bail.baseCommand, [
+        'node',
+        'argv-probe.mjs',
+        './bail/a.txt',
+        '--bail=1',
+        '--reporter=dot',
+      ])
+      assert.equal(testProbeOutcomeOf(bail), 'failed-on-base')
+
+      // The base stops at its own limit; the candidate runs to its end.
+      assert.equal(slow.base.ran, false)
+      assert.equal((slow.base as { stoppedAtMs?: number }).stoppedAtMs, 1000)
+      assert.match(
+        (slow.base as { reason: string }).reason,
+        /timed out after 1000ms/,
+      )
+      assert.ok(slow.base.elapsedMs < 30000, String(slow.base.elapsedMs))
+      assert.equal(slow.baseTimeoutMs, 1000)
+      assert.deepEqual(slow.candidate.ran && slow.candidate.exitCode, 0)
+      assert.ok(
+        slow.candidate.elapsedMs >= 2500,
+        String(slow.candidate.elapsedMs),
+      )
+      assert.equal(testProbeOutcomeOf(slow), 'unfinished-on-base')
+      // Unless the candidate failed too.
+      assert.equal(
+        testProbeOutcomeOf({
+          ...slow,
+          candidate: { ran: true, exitCode: 1, elapsedMs: 1 },
+        }),
+        'failed-on-candidate',
+      )
+
+      // A rule without either field is recorded as before.
+      assert.deepEqual(Object.keys(plain).sort(), [
+        'base',
+        'baseOutputTail',
+        'baseStderrChars',
+        'candidate',
+        'candidateOutputTail',
+        'candidateStderrChars',
+        'command',
+        'path',
+      ])
+      assert.deepEqual(Object.keys(plain.base).sort(), [
+        'elapsedMs',
+        'exitCode',
+        'ran',
+      ])
+      assert.equal(testProbeOutcomeOf(plain), 'failed-on-base')
+
+      // The reviewers are told which base runs were not full runs.
+      const text = await readFile(probed.resultFile, 'utf8')
+      assert.match(
+        text,
+        /3 test file\(s\), .*: 2 failed on the base, passed on the candidate; 1 did not finish on the base within its base time limit, passed on the candidate; 0 passed/,
+      )
+      assert.match(
+        text,
+        /Not full base runs: 1 file\(s\) ran on the base with a rule's baseArgs added, set to stop the base run early, such as at its first failure, and 1 file\(s\) were stopped on the base at a rule's base time limit \(baseTimeoutMs\)\./,
+      )
+      assert.match(
+        text,
+        /## bail\/a\.txt: failed on the base, passed on the candidate\ncommand: node argv-probe\.mjs \.\/bail\/a\.txt\nbase command: node argv-probe\.mjs \.\/bail\/a\.txt --bail=1 --reporter=dot\nThe base command adds the rule's baseArgs/,
+      )
+      assert.match(
+        text,
+        /## slow\/a\.txt: did not finish on the base within its base time limit, passed on the candidate\ncommand: [^\n]*\nbase: stopped after [^\n]* at the rule's base time limit \(baseTimeoutMs\) of 1s; it neither passed nor failed on the base within that time, so this is not a full base run\ncandidate: exit code 0 /,
+      )
+      assert.match(
+        text,
+        /## plain\/a\.txt: failed on the base, passed on the candidate\ncommand: [^\n]*\nbase: exit code 1 /,
+      )
+      // A result with neither reads as it did before.
+      const before = testProbeText({
+        candidateId: candidate.id,
+        baseCommit: 'a'.repeat(40),
+        rules: [probe('plain/**')],
+        files: [plain],
+        elapsedMs: 10,
+      })
+      assert.ok(!before.includes('Not full base runs'))
+      assert.ok(!before.includes('base time limit'))
+      assert.ok(!before.includes('base command'))
+      // A base side that never started did not run with either: it could
+      // not run, as before.
+      const unstarted = await runTestProbe({
+        config: {
+          ...config,
+          testProbeBase: { ...config.testProbeBase!, setupFailure: 'BROKE' },
+        },
+        candidate,
+        runRoot,
+        assertIntact: () => target.assertIntact(candidate),
+        signal: new AbortController().signal,
+      })
+      for (const file of unstarted.files) {
+        assert.equal(file.baseCommand, undefined, file.path)
+        assert.equal(file.baseTimeoutMs, undefined, file.path)
+        assert.equal(testProbeOutcomeOf(file), 'could-not-run', file.path)
+      }
+      const unstartedText = await readFile(unstarted.resultFile, 'utf8')
+      assert.ok(!unstartedText.includes('Not full base runs'))
+      assert.ok(!unstartedText.includes('base command'))
+      // A base side with only baseArgs that ran out of checkTimeoutMs did
+      // start with them: it is still reported as not a full base run.
+      const killed = await runTestProbe({
+        config: {
+          ...config,
+          checkTimeoutMs: 1000,
+          testProbe: [probe('slow/**', { baseArgs: ['--bail=1'] })],
+        },
+        candidate,
+        runRoot,
+        assertIntact: () => target.assertIntact(candidate),
+        signal: new AbortController().signal,
+      })
+      const killedSlow = killed.files.find((f) => f.path === 'slow/a.txt')!
+      assert.equal(killedSlow.base.ran, false)
+      assert.match(
+        (killedSlow.base as { reason: string }).reason,
+        /timed out after 1000ms/,
+      )
+      assert.equal(
+        (killedSlow.base as { stoppedAtMs?: number }).stoppedAtMs,
+        undefined,
+      )
+      assert.deepEqual(killedSlow.baseCommand, [
+        'node',
+        'argv-probe.mjs',
+        './slow/a.txt',
+        '--slow',
+        '--bail=1',
+      ])
+      const killedText = await readFile(killed.resultFile, 'utf8')
+      assert.match(
+        killedText,
+        /Not full base runs: 1 file\(s\) ran on the base with a rule's baseArgs added/,
+      )
+      assert.match(
+        killedText,
+        /base command: node argv-probe\.mjs \.\/slow\/a\.txt --slow --bail=1\n/,
+      )
+      assert.match(
+        before,
+        /: 1 failed on the base, passed on the candidate; 0 passed on the base and on the candidate; 0 failed on the candidate; 0 could not run\./,
+      )
+    } finally {
+      delete process.env.PROBE_LOG
+    }
+  })
+
   it('keeps the result within the stage context limit, and says so when nothing matches', () => {
     const files = Array.from({ length: 400 }, (_, i) => ({
       path: `test/t${i}.test.js`,

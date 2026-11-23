@@ -4217,7 +4217,12 @@ describe('the test probe', { timeout: 300000 }, () => {
     const start = (args: {
       setupCommand?: string[]
       parallelReview?: boolean
-      testProbe?: { glob: string; command: string[] }[]
+      testProbe?: {
+        glob: string
+        command: string[]
+        baseArgs?: string[]
+        baseTimeoutMs?: number
+      }[]
       changes: Record<string, string>
     }) =>
       durably.jobs.agentLoop.trigger({
@@ -4280,8 +4285,33 @@ describe('the test probe', { timeout: 300000 }, () => {
       const plain = await start({
         changes: { 'test/decimal.test.js': DECIMAL_TEST },
       })
+      // ADR-0065: arguments that only the base gets, and a base that stops
+      // at its own limit while the candidate runs to its end.
+      const argvOf =
+        "console.log('ARGV ' + process.argv.slice(1).join(' ')); process.exit(process.argv.includes('--stop-early') ? 1 : 0)"
+      const stopped = await start({
+        testProbe: [
+          {
+            glob: 'bail/**',
+            command: ['node', '-e', argvOf, '{files}'],
+            baseArgs: ['--stop-early'],
+          },
+          {
+            glob: 'slow/**',
+            command: [
+              'node',
+              '-e',
+              // sleep-ok(work): a slow test, stopped on the base at its limit
+              "if (process.cwd().endsWith('base-work')) setTimeout(() => {}, 60000)",
+              '{files}',
+            ],
+            baseTimeoutMs: 1500,
+          },
+        ],
+        changes: { 'bail/case.txt': 'x\n', 'slow/case.txt': 'x\n' },
+      })
       await durably.init()
-      for (const run of [all, noBase, plain])
+      for (const run of [all, noBase, plain, stopped])
         await waitFor(
           async () =>
             ['completed', 'failed'].includes(
@@ -4359,6 +4389,41 @@ describe('the test probe', { timeout: 300000 }, () => {
       }
       for (const call of callsOf(plain.id))
         assert.ok(!(call.input ?? '').includes('Stage result test-probe'))
+      // Without baseArgs or baseTimeoutMs nothing says a base run was cut.
+      for (const call of [...reviewed, ...callsOf(noBase.id)]) {
+        assert.ok(!block(call.input ?? '').includes('Not full base runs'))
+        assert.ok(!block(call.input ?? '').includes('base time limit'))
+      }
+      const cut = callsOf(stopped.id)
+      assert.equal(cut.length, 2)
+      for (const call of cut) {
+        const text = block(call.input ?? '')
+        assert.match(
+          text,
+          /Not full base runs: 1 file\(s\) ran on the base with a rule's baseArgs added, set to stop the base run early, such as at its first failure, and 1 file\(s\) were stopped on the base at a rule's base time limit \(baseTimeoutMs\)\./,
+        )
+        assert.match(
+          text,
+          /## bail\/case\.txt: failed on the base, passed on the candidate/,
+        )
+        assert.match(
+          text,
+          /base command: node -e .* \.\/bail\/case\.txt --stop-early\n/,
+        )
+        // The candidate side never gets them.
+        assert.match(
+          text,
+          /candidate output:\n[`~]+\nARGV \.\/bail\/case\.txt\n/,
+        )
+        assert.match(
+          text,
+          /## slow\/case\.txt: did not finish on the base within its base time limit, passed on the candidate/,
+        )
+        assert.match(
+          text,
+          /base: stopped after .* of 1\.5s; it neither passed nor failed on the base/,
+        )
+      }
 
       // The report reads the stored step, per candidate.
       const report = await buildReport(durably, all.id)
@@ -4384,6 +4449,24 @@ describe('the test probe', { timeout: 300000 }, () => {
       assert.match(
         noBaseReport.testProbes?.[0]?.couldNotRun[0] ?? '',
         /^test\/decimal\.test\.js \(base\): the base worktree could not be set up/,
+      )
+      // Neither field: no base run is reported as cut short.
+      assert.equal(probe?.unfinishedOnBase, 0)
+      assert.deepEqual(probe?.baseNotFull, [])
+      assert.ok(!markdown.includes('is not a full run'))
+      const stoppedReport = await buildReport(durably, stopped.id)
+      const cutProbe = stoppedReport.testProbes?.[0]
+      assert.equal(cutProbe?.failedOnBase, 1)
+      assert.equal(cutProbe?.unfinishedOnBase, 1)
+      // A base stopped at its limit did run: it is not "could not run".
+      assert.deepEqual(cutProbe?.couldNotRun, [])
+      assert.deepEqual(cutProbe?.baseNotFull, [
+        'bail/case.txt (base): ran with baseArgs appended (--stop-early), which may stop it at its first failure',
+        'slow/case.txt (base): stopped at its base time limit of 1.5s (baseTimeoutMs)',
+      ])
+      assert.match(
+        reportToMarkdown(stoppedReport),
+        /- candidate-1-[0-9a-f]+: 2 test file\(s\), 1 failed on the base and passed on the candidate, 0 side\(s\) could not run, [^\n]*\n- candidate-1-[0-9a-f]+: the base run of 2 file\(s\) is not a full run, 1 did not finish on the base within its base time limit and passed on the candidate:\n\n[`~]+\nbail\/case\.txt \(base\): ran with baseArgs/,
       )
       const plainReport = await buildReport(durably, plain.id)
       assert.deepEqual(plainReport.testProbes, [])

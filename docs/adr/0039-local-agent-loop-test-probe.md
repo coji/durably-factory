@@ -6,6 +6,8 @@ accepted
 
 Follow-up: [ADR-0041](0041-feature-base-for-repair-tests.md) changes the probe's coverage base to the original feature base on repair runs. Candidate diffs still use the repair's parent candidate.
 
+Follow-up: [ADR-0065](0065-test-probe-base-stop-early.md) lets an entry append arguments to the base side's command and give the base side its own time limit below `checkTimeoutMs`.
+
 ## Context
 
 In `examples/local-agent-loop`, the review rules of a repository run say that a new test which would pass against the base commit does not count, and ask for `needsChanges` when it would. The reviewers cannot check that. A Claude reviewer may only read, a command reviewer gets read and search tools and subagents, and Codex reviews in a read-only sandbox. The review snapshots are trees extracted from commits, without installed dependencies. So a reviewer judges by reading the code whether a test exercises the change.
@@ -42,7 +44,7 @@ Left as they are after issue #314, each for the reason given:
 - A worker that lost its lease midway through a removal, while another worker took the run over, can in its `finally` remove the probe output or marker the new worker wrote (R2-O-2); fencing each removal by the lease generation is out of proportion to a race that needs both a lost lease and a takeover inside that window.
 - A `base.json` whose repository is gone stays, and every startup sweep tries it again: a deleted repository cannot be told from one on a volume that is not mounted, and dropping the record in the second case would leave its registration for good.
 - `restoreBase` removes untracked files one at a time and fingerprints every recorded path on each probe (C4-2); that is slow only for a setup that leaves very many untracked files, and keeping setup's files needs the per-path work.
-- The probe has no limit of its own, so it may take up to two runs of `checkTimeoutMs` per file, after a base setup that runs in the setup step (O-14); a limit would need its own setting and a policy for a half-run probe, which no run has needed yet.
+- The probe has no limit of its own, so it may take up to two runs of `checkTimeoutMs` per file, after a base setup that runs in the setup step (O-14); a limit would need its own setting and a policy for a half-run probe, which no run has needed yet. ADR-0065 adds a base-side limit and arguments per entry; the candidate side still has `checkTimeoutMs`.
 - The job tells a Durably suspension from a failure by the message `Durably execution suspended` (O-7); a type or predicate for it belongs in the library's exports, outside the scope of this example.
 - The check that a path stays inside a worktree is written out in five places (O-11), and the verify-review stage registers the stage context and builds its target as the reducer does, with `createTarget` on every stage's services for it (O-12); merging them is a refactor with no change in behaviour, left for one of its own.
 - `git worktree list --porcelain` is read without `-z`, for older git, so a worktree path with a line break in it is not recognised; the factory makes no such path.

@@ -768,6 +768,8 @@ Repository config: factory.json at the repository root, or --config <file>:
     "sandbox": { "network": ["code", "repair"] },
     "selfCheck": [["pnpm", "lint"], ["pnpm", "typecheck"]],
     "generate": [["pnpm", "screenshots:update"]],
+    "testProbe": [{ "glob": "test/**/*.test.ts", "command": ["pnpm", "vitest", "run", "{files}"],
+                    "baseArgs": ["--bail=1"], "baseTimeoutMs": 300000 }],
     "review": { "blockerThreshold": 5, "sessionMode": "fresh", "laterRounds": "scoped",
                 "onFailedCheck": "finish" },
     "checkTimeoutMs": 900000, "agentTimeoutMs": 7200000, "agentIdleTimeoutMs": 900000,
@@ -851,6 +853,18 @@ Repository config: factory.json at the repository root, or --config <file>:
   FACTORY_RUN_ID. What they change is part of the candidate; the report and
   the reviewers are told which paths they changed. A failure stops the run
   as generate-failed before the candidate is sealed or verified.
+  "testProbe" lists 1 to 20 { glob, command } entries: each added or
+  modified file matching a glob runs on its own, with "{files}" (an element
+  of its own) replaced by its path, once in a worktree at the base commit
+  and once in the candidate, each within checkTimeoutMs, and the reviewers
+  get the exit codes and output tails (ADR-0039). The base side only shows
+  whether the new test fails there, so an entry may add "baseArgs",
+  appended after "command" on the base side only (such as ["--bail=1"] for
+  Vitest, to stop at the first failure), and "baseTimeoutMs", a base-side
+  limit below checkTimeoutMs; a base stopped there is recorded as "did not
+  finish on the base", not as "could not run". The result and the report
+  say which base runs were cut short this way (ADR-0065). The probe never
+  stops the run.
   "review.sessionMode" defaults to "fresh". The opt-in "reuse-experiment"
   continues each reviewer independently, then requires two fresh reviews of
   the same candidate before approval or delivery. Final calls count in cost

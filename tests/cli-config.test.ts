@@ -203,7 +203,14 @@ type RunInput = {
     sandbox?: { network: ('code' | 'repair')[] }
     selfCheck?: string[][] | null
     generate?: string[][] | null
-    testProbe?: { glob: string; command: string[] }[] | null
+    testProbe?:
+      | {
+          glob: string
+          command: string[]
+          baseArgs?: string[]
+          baseTimeoutMs?: number
+        }[]
+      | null
     reviewBlockerThreshold?: number | null
     reviewSessionMode?: 'fresh' | 'reuse-experiment'
     name?: string
@@ -2691,6 +2698,47 @@ describe('testProbe', { timeout: 240000 }, () => {
       [{ glob: 'test/**', command: ['node', '', '{files}'] }],
       [{ glob: 'test/**', command: 'node --test {files}' }],
       [{ glob: 'test/**', command: ['node', '{files}'], shell: true }],
+      // ADR-0065: baseArgs and baseTimeoutMs.
+      [{ glob: 'test/**', command: ['node', '{files}'], baseArgs: [] }],
+      [{ glob: 'test/**', command: ['node', '{files}'], baseArgs: [''] }],
+      [
+        {
+          glob: 'test/**',
+          command: ['node', '{files}'],
+          baseArgs: ['{files}'],
+        },
+      ],
+      [
+        {
+          glob: 'test/**',
+          command: ['node', '{files}'],
+          baseArgs: ['--x={files}'],
+        },
+      ],
+      [{ glob: 'test/**', command: ['node', '{files}'], baseArgs: '--bail=1' }],
+      [
+        {
+          glob: 'test/**',
+          command: ['node', '{files}'],
+          baseArgs: Array.from({ length: 21 }, () => '-x'),
+        },
+      ],
+      [
+        {
+          glob: 'test/**',
+          command: ['node', '{files}'],
+          baseArgs: ['x'.repeat(201)],
+        },
+      ],
+      [{ glob: 'test/**', command: ['node', '{files}'], baseTimeoutMs: 0 }],
+      [{ glob: 'test/**', command: ['node', '{files}'], baseTimeoutMs: 1.5 }],
+      [
+        {
+          glob: 'test/**',
+          command: ['node', '{files}'],
+          baseTimeoutMs: '1000',
+        },
+      ],
     ]) {
       const box = await sandbox({ check: CHECK, testProbe })
       await rejected(
@@ -2699,6 +2747,48 @@ describe('testProbe', { timeout: 240000 }, () => {
         /invalid factory config[\s\S]*testProbe/,
       )
     }
+  })
+
+  it('stores baseArgs and baseTimeoutMs, and refuses a base limit that is not below checkTimeoutMs', async () => {
+    const CUT = [
+      {
+        glob: 'test/**/*.test.js',
+        command: ['node', '--test', '{files}'],
+        baseArgs: ['--test-reporter=dot'],
+        baseTimeoutMs: 60000,
+      },
+    ]
+    const box = await sandbox({
+      check: CHECK,
+      testProbe: CUT,
+      checkTimeoutMs: 60001,
+    })
+    const input = await inputOf(
+      box,
+      await trigger(box, ['--repo', box.repo, '--task', 'x']),
+    )
+    assert.deepEqual(input.target.testProbe, CUT)
+    for (const checkTimeoutMs of [60000, 30000]) {
+      const at = await sandbox({ check: CHECK, testProbe: CUT, checkTimeoutMs })
+      await rejected(
+        at,
+        ['--repo', at.repo, '--task', 'x'],
+        new RegExp(
+          `invalid factory config: testProbe\\[0\\]\\.baseTimeoutMs \\(60000\\) must be below checkTimeoutMs \\(${checkTimeoutMs}\\)`,
+        ),
+      )
+    }
+    // `retrigger --reload-config` checks it against the reloaded limit too.
+    await writeFile(
+      join(box.repo, 'factory.json'),
+      JSON.stringify({ check: CHECK, testProbe: CUT, checkTimeoutMs: 60000 }),
+    )
+    await assert.rejects(
+      reloadTriggerInput(
+        input as unknown as Parameters<typeof reloadTriggerInput>[0],
+      ),
+      /baseTimeoutMs \(60000\) must be below checkTimeoutMs \(60000\)/,
+    )
   })
 
   it('keeps the entries fixed at trigger for the worker, and gives them to a repair run whatever factory.json says now', async () => {

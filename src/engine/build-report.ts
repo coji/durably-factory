@@ -17,7 +17,10 @@ import {
 } from '../factory/references.js'
 import { REPAIR_OF_LABEL, triageThatRuns } from '../factory/repair.js'
 import type { GenerationRecord } from '../factory/target.js'
-import { testProbeOutcomeOf } from '../factory/test-probe.js'
+import {
+  stoppedAtBaseLimit,
+  testProbeOutcomeOf,
+} from '../factory/test-probe.js'
 import {
   BASELINE_STEP,
   REPAIR_SESSION_STEP,
@@ -34,6 +37,7 @@ import {
   type TestProbeRecord,
 } from '../factory/types.js'
 import { classifyRun, stageStep } from './failure-reasons.js'
+import { formatters } from './format.js'
 import { PRICE_BASIS } from './pricing.js'
 import {
   boundedDenials,
@@ -99,6 +103,9 @@ import {
   type TaskRunInput,
 } from './status.js'
 import { TERMINAL_STATUSES } from './terminal.js'
+
+/** The report's own lines are English, like its Markdown. */
+const { formatDuration } = formatters('en')
 
 interface PersistedProfile {
   provider?: string
@@ -602,9 +609,29 @@ function testProbesOf(steps: StoredStep[]): ReportTestProbe[] {
           couldNotRun: files.flatMap((f) =>
             (['base', 'candidate'] as const).flatMap((side) => {
               const result = f[side]
-              return result.ran ? [] : [`${f.path} (${side}): ${result.reason}`]
+              return result.ran || stoppedAtBaseLimit(result)
+                ? []
+                : [`${f.path} (${side}): ${result.reason}`]
             }),
           ),
+          unfinishedOnBase: files.filter(
+            (f) => testProbeOutcomeOf(f) === 'unfinished-on-base',
+          ).length,
+          baseNotFull: files.flatMap((f) => {
+            const why = [
+              ...(f.baseCommand
+                ? [
+                    `ran with baseArgs appended (${f.baseCommand.slice(f.command.length).join(' ')}), which may stop it at its first failure`,
+                  ]
+                : []),
+              ...(stoppedAtBaseLimit(f.base)
+                ? [
+                    `stopped at its base time limit of ${formatDuration(f.base.stoppedAtMs)} (baseTimeoutMs)`,
+                  ]
+                : []),
+            ]
+            return why.length > 0 ? [`${f.path} (base): ${why.join('; ')}`] : []
+          }),
         },
       ]
     })

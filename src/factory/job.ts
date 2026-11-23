@@ -116,6 +116,8 @@ import {
 } from './target.js'
 import {
   TEST_PROBE_FILES,
+  TEST_PROBE_MAX_BASE_ARG,
+  TEST_PROBE_MAX_BASE_ARGS,
   TEST_PROBE_MAX_GLOB,
   TEST_PROBE_MAX_RULES,
 } from './test-probe.js'
@@ -211,7 +213,9 @@ export const generateSchema = z
  * The path is never part of a longer element, so no shell or tool splits
  * it. At most `TEST_PROBE_MAX_RULES` entries of globs up to
  * `TEST_PROBE_MAX_GLOB` characters, so the globs the result lists stay a
- * few KiB of its 32 KiB.
+ * few KiB of its 32 KiB. An entry may add `baseArgs`, appended after
+ * `command` on the base side only, and `baseTimeoutMs`, the base side's
+ * limit in place of `checkTimeoutMs` (ADR-0065).
  */
 export const testProbeSchema = z
   .array(
@@ -234,6 +238,28 @@ export const testProbeSchema = z
               message: `"${TEST_PROBE_FILES}" must be an element of its own, not part of one`,
             },
           ),
+        // ADR-0065: arguments appended to the base side's argv only, such
+        // as a runner's stop-at-first-failure flag, and the base side's own
+        // time limit, below `checkTimeoutMs` (checked at trigger).
+        baseArgs: z
+          .array(
+            z
+              .string()
+              .min(1)
+              .max(TEST_PROBE_MAX_BASE_ARG)
+              .refine((arg) => !arg.includes(TEST_PROBE_FILES), {
+                message: `baseArgs may not contain "${TEST_PROBE_FILES}": the file's path is in command`,
+              }),
+          )
+          .min(1)
+          .max(TEST_PROBE_MAX_BASE_ARGS)
+          .optional(),
+        baseTimeoutMs: z
+          .number()
+          .int()
+          .positive()
+          .max(MAX_TIMEOUT_MS)
+          .optional(),
       })
       .strict(),
   )

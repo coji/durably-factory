@@ -31,7 +31,7 @@ import {
   sep,
 } from 'node:path'
 
-import { childOutput, runChild } from '../engine/child.js'
+import { childOutput, runChild, SpawnTimeoutError } from '../engine/child.js'
 import { formatters } from '../engine/format.js'
 import {
   changedGitlinks,
@@ -72,6 +72,12 @@ export const TEST_PROBE_MAX_RULES = 20
 /** The longest glob a `testProbe` entry may have, in characters. */
 export const TEST_PROBE_MAX_GLOB = 200
 
+/** The most `baseArgs` elements a `testProbe` entry may have. */
+export const TEST_PROBE_MAX_BASE_ARGS = 20
+
+/** The longest `baseArgs` element, in characters. */
+export const TEST_PROBE_MAX_BASE_ARG = 200
+
 /** Each side's stdout and stderr are kept up to this many characters. */
 const OUTPUT_CHARS = 8000
 
@@ -84,11 +90,16 @@ const REASON_CHARS = 1000
 /**
  * One test file to probe, with the argv of the entry whose glob it matched
  * first, its `{files}` elements already replaced by the path as `./<path>`,
- * so a file whose name starts with `-` is never read as an option.
+ * so a file whose name starts with `-` is never read as an option. The base
+ * side runs `baseArgv`: `argv` with the entry's `baseArgs` appended, or
+ * `argv` itself without them, within the entry's `baseTimeoutMs` when it
+ * has one (ADR-0065).
  */
 interface ProbeTarget {
   path: string
   argv: [string, ...string[]]
+  baseArgv: [string, ...string[]]
+  baseTimeoutMs?: number
 }
 
 /**
@@ -110,12 +121,17 @@ export function probeTargets(
     const rule = rules.find((r) => posix.matchesGlob(path, r.glob))
     if (!rule) continue
     seen.add(path)
+    // The schema gives every command at least one element.
+    const argv = rule.command.map((arg) =>
+      arg === TEST_PROBE_FILES ? `./${path}` : arg,
+    ) as [string, ...string[]]
     targets.push({
       path,
-      // The schema gives every command at least one element.
-      argv: rule.command.map((arg) =>
-        arg === TEST_PROBE_FILES ? `./${path}` : arg,
-      ) as [string, ...string[]],
+      argv,
+      baseArgv: rule.baseArgs ? [...argv, ...rule.baseArgs] : argv,
+      ...(rule.baseTimeoutMs !== undefined
+        ? { baseTimeoutMs: rule.baseTimeoutMs }
+        : {}),
     })
   }
   return targets
@@ -144,13 +160,16 @@ function notRun(reason: string): TestProbeSide {
 }
 
 /**
- * One side's result, its stored output tail (`storedTail`) and how many of
- * the tail's last characters are stderr's.
+ * One side's result, its stored output tail (`storedTail`), how many of
+ * the tail's last characters are stderr's, and whether its command started:
+ * one that ran out of time did, one that could not be spawned or whose path
+ * leaves the worktree did not (ADR-0065).
  */
 interface SideRun {
   side: TestProbeSide
   output: string
   stderrChars: number
+  started: boolean
 }
 
 /**
@@ -161,19 +180,24 @@ interface SideRun {
 export const TEST_PROBE_ENV = { CI: 'true' } as const
 
 /**
- * Run one test file in `cwd`, as its argv, which no shell ever sees, with
+ * Run one test file in `cwd`, as `argv`, which no shell ever sees, with
  * `TEST_PROBE_ENV`. A command that cannot start or times out is a side that
- * could not run; a cancel or a lost lease throws.
+ * could not run; a cancel or a lost lease throws. With `stopAtLimit`, a
+ * timeout is the base side stopped at its rule's `baseTimeoutMs`, and the
+ * side records that limit as `stoppedAtMs` (ADR-0065).
  */
 async function runSide(
   target: ProbeTarget,
+  argv: [string, ...string[]],
   cwd: string,
   timeoutMs: number,
   signal: AbortSignal,
+  stopAtLimit = false,
 ): Promise<SideRun> {
   const outside = await escapes(cwd, target.path)
-  if (outside) return { side: notRun(outside), output: '', stderrChars: 0 }
-  const [command, ...args] = target.argv
+  if (outside)
+    return { side: notRun(outside), output: '', stderrChars: 0, started: false }
+  const [command, ...args] = argv
   const started = Date.now()
   try {
     const res = await runChild(command, args, {
@@ -186,18 +210,23 @@ async function runSide(
     return {
       side: { ran: true, exitCode: res.code, elapsedMs: res.elapsedMs },
       ...storedTail(res.stdout, res.stderr),
+      started: true,
     }
   } catch (error) {
     if (signal.aborted || (error as Error).name === 'SpawnCancelledError')
       throw error
     // A command that ran out of time keeps what it printed until then.
     const { stdout, stderr } = childOutput(error)
+    // Only a timeout comes from a child that was spawned and then killed.
+    const timedOut = error instanceof SpawnTimeoutError
     return {
       side: {
         ...notRun((error as Error).message),
         elapsedMs: Date.now() - started,
+        ...(stopAtLimit && timedOut ? { stoppedAtMs: timeoutMs } : {}),
       },
       ...storedTail(stdout, stderr),
+      started: timedOut,
     }
   }
 }
@@ -384,17 +413,35 @@ async function removeEmptyDirectories(full: string): Promise<boolean> {
   )
 }
 
-/** What one file came to, as the result and the report name it. */
+/**
+ * What one file came to, as the result and the report name it.
+ * `unfinished-on-base` is a base side stopped at its rule's `baseTimeoutMs`
+ * with a candidate side that passed (ADR-0065).
+ */
 export type TestProbeOutcome =
   | 'failed-on-base'
+  | 'unfinished-on-base'
   | 'passed-on-both'
   | 'failed-on-candidate'
   | 'could-not-run'
+
+/** Whether `side` is a base side stopped at its `baseTimeoutMs`. */
+export function stoppedAtBaseLimit(
+  side: TestProbeSide,
+): side is Extract<TestProbeSide, { ran: false }> & { stoppedAtMs: number } {
+  return !side.ran && side.stoppedAtMs !== undefined
+}
 
 export function testProbeOutcomeOf(
   file: Pick<TestProbeFile, 'base' | 'candidate'>,
 ): TestProbeOutcome {
   const { base, candidate } = file
+  // A base stopped at its limit ran, only not to the end: the candidate,
+  // which ran in full, decides between the two outcomes it leaves.
+  if (stoppedAtBaseLimit(base) && candidate.ran)
+    return candidate.exitCode === 0
+      ? 'unfinished-on-base'
+      : 'failed-on-candidate'
   if (!base.ran || !candidate.ran) return 'could-not-run'
   if (candidate.exitCode !== 0) return 'failed-on-candidate'
   return base.exitCode === 0 ? 'passed-on-both' : 'failed-on-base'
@@ -402,15 +449,32 @@ export function testProbeOutcomeOf(
 
 const OUTCOME_TEXT: Record<TestProbeOutcome, string> = {
   'failed-on-base': 'failed on the base, passed on the candidate',
+  'unfinished-on-base':
+    'did not finish on the base within its base time limit, passed on the candidate',
   'passed-on-both': 'passed on the base and on the candidate',
   'failed-on-candidate': 'failed on the candidate',
   'could-not-run': 'could not run',
 }
 
 function sideLine(name: string, side: TestProbeSide): string {
+  if (stoppedAtBaseLimit(side))
+    return `${name}: stopped after ${formatDuration(side.elapsedMs)} at the rule's base time limit (baseTimeoutMs) of ${formatDuration(side.stoppedAtMs)}; it neither passed nor failed on the base within that time, so this is not a full base run`
   return side.ran
     ? `${name}: exit code ${side.exitCode ?? 'none (killed by a signal)'} after ${formatDuration(side.elapsedMs)}`
     : `${name}: could not run: ${side.reason}`
+}
+
+/**
+ * The line that says a file's base run used its rule's `baseArgs`, or none.
+ * The factory does not know what those arguments do, only that the
+ * repository set them to cut the base run short.
+ */
+function baseCommandLines(file: TestProbeFile): string[] {
+  if (!file.baseCommand) return []
+  return [
+    `base command: ${file.baseCommand.join(' ')}`,
+    "The base command adds the rule's baseArgs after the command, which the repository configured to stop the base run early, such as at its first failure, so the base exit code and output tail may cover only part of this file.",
+  ]
 }
 
 /**
@@ -522,12 +586,25 @@ export function testProbeText(args: {
       ].join('\n')
     return fits(none(true)) ? none(true) : none(false)
   }
+  const withBaseArgs = files.filter((f) => f.baseCommand).length
+  const stopped = files.filter((f) => stoppedAtBaseLimit(f.base)).length
   const summary = [
     `${files.length} test file(s), ${formatDuration(args.elapsedMs)} in all: ${(
       Object.keys(OUTCOME_TEXT) as TestProbeOutcome[]
     )
+      // A run with no base stopped at its limit reads as before ADR-0065.
+      .filter(
+        (outcome) =>
+          outcome !== 'unfinished-on-base' || counts.has('unfinished-on-base'),
+      )
       .map((outcome) => `${counts.get(outcome) ?? 0} ${OUTCOME_TEXT[outcome]}`)
       .join('; ')}.`,
+    // Counts only, so it stays whatever the files below shrink to.
+    ...(withBaseArgs > 0 || stopped > 0
+      ? [
+          `Not full base runs: ${withBaseArgs} file(s) ran on the base with a rule's baseArgs added, set to stop the base run early, such as at its first failure, and ${stopped} file(s) were stopped on the base at a rule's base time limit (baseTimeoutMs). For those files the base side shows only what ran before it stopped: a test stopped at the limit neither passed nor failed on the base, and one run with baseArgs may not have run all its cases there.`,
+        ]
+      : []),
     // How to read it, here rather than in the review rules, which hold for
     // any stage result.
     'A test that failed on the base is not evidence by itself that it checks the changed behaviour: read its output tail. Failing only because a module, export or file it imports is missing on the base proves nothing about the behaviour; failing on an assertion about that behaviour does. The base has only the matched test files from the candidate, beside what its setupCommand produced, which is made again when an earlier test changed or removed it, so a test that also needs a fixture, snapshot or helper the candidate added and no glob matches fails there for that reason alone, which its tail shows. A test that could not run is judged from the code.',
@@ -542,6 +619,7 @@ export function testProbeText(args: {
           '',
           `## ${file.path}: ${OUTCOME_TEXT[testProbeOutcomeOf(file)]}`,
           `command: ${file.command.join(' ')}`,
+          ...baseCommandLines(file),
           sideLine('base', file.base),
           sideLine('candidate', file.candidate),
           ...tailLines(
@@ -614,7 +692,8 @@ async function changedFilesOf(
  * checked with `assertIntact`. While the tests may touch that worktree a
  * marker beside the result says so, for `recoverInterruptedProbe`. A base
  * that cannot be prepared, a command that cannot start and one that times
- * out are recorded as not run; only a cancel, a lost lease or a candidate
+ * out are recorded as not run, a base side stopped at its rule's
+ * `baseTimeoutMs` with that limit (ADR-0065); only a cancel, a lost lease or a candidate
  * that no longer matches its seal throws.
  */
 export async function runTestProbe(args: {
@@ -651,19 +730,49 @@ export async function runTestProbe(args: {
       for (const target of targets) {
         const unrunnable =
           'dir' in base ? base.unplaced.get(target.path) : base.failure
+        // The base side's own limit only when it is below the check's,
+        // which the trigger makes sure of (ADR-0065).
+        const baseLimit =
+          target.baseTimeoutMs !== undefined &&
+          target.baseTimeoutMs < config.checkTimeoutMs
+            ? target.baseTimeoutMs
+            : undefined
         const onBase =
           'dir' in base && unrunnable === undefined
-            ? await runSide(target, base.dir, config.checkTimeoutMs, signal)
-            : { side: notRun(unrunnable ?? ''), output: '', stderrChars: 0 }
+            ? await runSide(
+                target,
+                target.baseArgv,
+                base.dir,
+                baseLimit ?? config.checkTimeoutMs,
+                signal,
+                baseLimit !== undefined,
+              )
+            : {
+                side: notRun(unrunnable ?? ''),
+                output: '',
+                stderrChars: 0,
+                started: false,
+              }
         const onCandidate = await runSide(
           target,
+          target.argv,
           config.workdir,
           config.checkTimeoutMs,
           signal,
         )
+        // Only a base side whose command started ran with them, one that
+        // timed out included; one that never did is reported as could not
+        // run, as before.
+        const started = onBase.started
         files.push({
           path: target.path,
           command: target.argv,
+          ...(started && target.baseArgv !== target.argv
+            ? { baseCommand: target.baseArgv }
+            : {}),
+          ...(started && baseLimit !== undefined
+            ? { baseTimeoutMs: baseLimit }
+            : {}),
           base: onBase.side,
           candidate: onCandidate.side,
           baseOutputTail: onBase.output,

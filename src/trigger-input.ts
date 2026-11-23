@@ -820,6 +820,16 @@ function assembleInput(a: Record<string, string>, resolved: ResolvedTarget) {
   // config wins, then this process's environment, then the target default.
   const { checkTimeoutMs, agentTimeoutMs, agentIdleTimeoutMs } =
     resolveTimeouts(target.kind, config)
+  // A base limit at or above the check's would never cut the base side
+  // short, so it is refused here, where both are known (ADR-0065).
+  for (const [i, rule] of (config?.testProbe ?? []).entries())
+    if (
+      rule.baseTimeoutMs !== undefined &&
+      rule.baseTimeoutMs >= checkTimeoutMs
+    )
+      throw new Error(
+        `invalid factory config: testProbe[${i}].baseTimeoutMs (${rule.baseTimeoutMs}) must be below checkTimeoutMs (${checkTimeoutMs})`,
+      )
   const approve = a['approve']
   if (approve !== undefined && approve !== 'auto' && approve !== 'manual')
     throw new Error('--approve must be auto|manual')
