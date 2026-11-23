@@ -319,8 +319,26 @@ export function normalizeCheckArtifactsPath(path: string): string {
 }
 
 /**
+ * Whether a check artifact's name may be copied, listed and named in a
+ * prompt: one without control characters (C0, DEL, C1) or Unicode line
+ * and paragraph separators. The check runs the candidate's code, so it
+ * chooses these names; a name that holds a line break could end its line
+ * in a prompt and go on as a heading of the factory's own. Without those
+ * characters each name stays on the one list line that calls it a path.
+ */
+export function isSafeArtifactName(name: string): boolean {
+  for (const char of name) {
+    const code = char.codePointAt(0) ?? 0
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return false
+    if (code === 0x2028 || code === 0x2029) return false
+  }
+  return true
+}
+
+/**
  * Copy the check's artifact directory, when it exists, into `to`, afresh:
- * regular files only, symbolic links skipped, and at most
+ * regular files only, symbolic links skipped, files and directories whose
+ * name is not `isSafeArtifactName` skipped, and at most
  * `MAX_CHECK_ARTIFACT_BYTES` in total, in name order. Returns the copied
  * files' paths relative to `to`; empty when there was nothing to copy.
  */
@@ -341,6 +359,7 @@ export async function copyCheckArtifacts(
   const walk = async (dir: string) => {
     const entries = await readdir(dir, { withFileTypes: true })
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!isSafeArtifactName(entry.name)) continue
       const path = join(dir, entry.name)
       if (entry.isDirectory()) await walk(path)
       else if (entry.isFile()) {
@@ -358,7 +377,11 @@ export async function copyCheckArtifacts(
   return copied
 }
 
-/** The files under a candidate's copied artifacts, relative; empty when none. */
+/**
+ * The files under a candidate's copied artifacts, relative; empty when none.
+ * A path with a name that is not `isSafeArtifactName` is left out, for a
+ * copy made before such names were skipped.
+ */
 export async function checkArtifactFiles(dir: string): Promise<string[]> {
   try {
     const entries = await readdir(dir, { recursive: true, withFileTypes: true })
@@ -366,10 +389,16 @@ export async function checkArtifactFiles(dir: string): Promise<string[]> {
       .filter((e) => e.isFile())
       .map((e) => relative(dir, join(e.parentPath, e.name)))
       .map((rel) => rel.split(sep).join('/'))
+      .filter(isSafeArtifactPath)
       .sort()
   } catch {
     return []
   }
+}
+
+/** Whether every name in a `/`-separated artifact path is safe to list. */
+export function isSafeArtifactPath(path: string): boolean {
+  return path.split('/').every(isSafeArtifactName)
 }
 
 /** A candidate's copy of its check artifacts, beside its diff. */

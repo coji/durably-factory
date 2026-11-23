@@ -143,10 +143,10 @@ function requireCandidate(state: StageArgs['state']) {
  * the first repair of a repair run built from its parent's check failure,
  * what `factory repair` recorded of that check. Null on every other call.
  */
-async function failedCheckOf(
-  state: StageArgs['state'],
+export async function failedCheckOf(
+  state: Pick<FactoryState, 'setup' | 'verification' | 'candidate'>,
   role: 'implement' | 'repair',
-  target: Target,
+  target: Pick<Target, 'checkArtifacts'>,
   options: { fromParentCheck: boolean },
 ): Promise<FailedCheckEvidence | null> {
   if (role !== 'repair') return null
