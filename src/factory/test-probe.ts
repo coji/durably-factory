@@ -160,13 +160,16 @@ function notRun(reason: string): TestProbeSide {
 }
 
 /**
- * One side's result, its stored output tail (`storedTail`) and how many of
- * the tail's last characters are stderr's.
+ * One side's result, its stored output tail (`storedTail`), how many of
+ * the tail's last characters are stderr's, and whether its command started:
+ * one that ran out of time did, one that could not be spawned or whose path
+ * leaves the worktree did not (ADR-0065).
  */
 interface SideRun {
   side: TestProbeSide
   output: string
   stderrChars: number
+  started: boolean
 }
 
 /**
@@ -192,7 +195,8 @@ async function runSide(
   stopAtLimit = false,
 ): Promise<SideRun> {
   const outside = await escapes(cwd, target.path)
-  if (outside) return { side: notRun(outside), output: '', stderrChars: 0 }
+  if (outside)
+    return { side: notRun(outside), output: '', stderrChars: 0, started: false }
   const [command, ...args] = argv
   const started = Date.now()
   try {
@@ -206,21 +210,23 @@ async function runSide(
     return {
       side: { ran: true, exitCode: res.code, elapsedMs: res.elapsedMs },
       ...storedTail(res.stdout, res.stderr),
+      started: true,
     }
   } catch (error) {
     if (signal.aborted || (error as Error).name === 'SpawnCancelledError')
       throw error
     // A command that ran out of time keeps what it printed until then.
     const { stdout, stderr } = childOutput(error)
+    // Only a timeout comes from a child that was spawned and then killed.
+    const timedOut = error instanceof SpawnTimeoutError
     return {
       side: {
         ...notRun((error as Error).message),
         elapsedMs: Date.now() - started,
-        ...(stopAtLimit && error instanceof SpawnTimeoutError
-          ? { stoppedAtMs: timeoutMs }
-          : {}),
+        ...(stopAtLimit && timedOut ? { stoppedAtMs: timeoutMs } : {}),
       },
       ...storedTail(stdout, stderr),
+      started: timedOut,
     }
   }
 }
@@ -741,7 +747,12 @@ export async function runTestProbe(args: {
                 signal,
                 baseLimit !== undefined,
               )
-            : { side: notRun(unrunnable ?? ''), output: '', stderrChars: 0 }
+            : {
+                side: notRun(unrunnable ?? ''),
+                output: '',
+                stderrChars: 0,
+                started: false,
+              }
         const onCandidate = await runSide(
           target,
           target.argv,
@@ -749,9 +760,10 @@ export async function runTestProbe(args: {
           config.checkTimeoutMs,
           signal,
         )
-        // Only a base side that started ran with them: one that never did
-        // is reported as could not run, as before.
-        const started = onBase.side.ran || stoppedAtBaseLimit(onBase.side)
+        // Only a base side whose command started ran with them, one that
+        // timed out included; one that never did is reported as could not
+        // run, as before.
+        const started = onBase.started
         files.push({
           path: target.path,
           command: target.argv,

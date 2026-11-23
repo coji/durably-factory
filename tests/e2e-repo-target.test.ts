@@ -7265,6 +7265,45 @@ describe('the test probe', { timeout: 300000 }, () => {
       const unstartedText = await readFile(unstarted.resultFile, 'utf8')
       assert.ok(!unstartedText.includes('Not full base runs'))
       assert.ok(!unstartedText.includes('base command'))
+      // A base side with only baseArgs that ran out of checkTimeoutMs did
+      // start with them: it is still reported as not a full base run.
+      const killed = await runTestProbe({
+        config: {
+          ...config,
+          checkTimeoutMs: 1000,
+          testProbe: [probe('slow/**', { baseArgs: ['--bail=1'] })],
+        },
+        candidate,
+        runRoot,
+        assertIntact: () => target.assertIntact(candidate),
+        signal: new AbortController().signal,
+      })
+      const killedSlow = killed.files.find((f) => f.path === 'slow/a.txt')!
+      assert.equal(killedSlow.base.ran, false)
+      assert.match(
+        (killedSlow.base as { reason: string }).reason,
+        /timed out after 1000ms/,
+      )
+      assert.equal(
+        (killedSlow.base as { stoppedAtMs?: number }).stoppedAtMs,
+        undefined,
+      )
+      assert.deepEqual(killedSlow.baseCommand, [
+        'node',
+        'argv-probe.mjs',
+        './slow/a.txt',
+        '--slow',
+        '--bail=1',
+      ])
+      const killedText = await readFile(killed.resultFile, 'utf8')
+      assert.match(
+        killedText,
+        /Not full base runs: 1 file\(s\) ran on the base with a rule's baseArgs added/,
+      )
+      assert.match(
+        killedText,
+        /base command: node argv-probe\.mjs \.\/slow\/a\.txt --slow --bail=1\n/,
+      )
       assert.match(
         before,
         /: 1 failed on the base, passed on the candidate; 0 passed on the base and on the candidate; 0 failed on the candidate; 0 could not run\./,
