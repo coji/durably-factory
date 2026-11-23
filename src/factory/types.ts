@@ -499,16 +499,29 @@ export type ParallelReviewStepResult =
 export interface TestProbeRule {
   glob: string
   command: string[]
+  /**
+   * Appended after `command` on the base side only, such as a runner's
+   * stop-at-first-failure flag (ADR-0065); absent, the base runs `command`.
+   */
+  baseArgs?: string[]
+  /**
+   * The base side's time limit, below the run's `checkTimeoutMs`
+   * (ADR-0065); absent, the base side has `checkTimeoutMs` as before.
+   */
+  baseTimeoutMs?: number
 }
 
 /**
  * One side of one probed test file: its exit code, or why it could not run
  * (the base could not be prepared, the command did not start, or it timed
- * out). `elapsedMs` is 0 for a side that was never started.
+ * out). `elapsedMs` is 0 for a side that was never started. A base side
+ * stopped at its rule's `baseTimeoutMs` also records that limit as
+ * `stoppedAtMs` (ADR-0065): it did not finish on the base within it, which
+ * is not the same as could not run.
  */
 export type TestProbeSide =
   | { ran: true; exitCode: number | null; elapsedMs: number }
-  | { ran: false; reason: string; elapsedMs: number }
+  | { ran: false; reason: string; elapsedMs: number; stoppedAtMs?: number }
 
 /**
  * One test file the probe ran on the base and on the candidate, with the
@@ -519,7 +532,19 @@ export type TestProbeSide =
  */
 export interface TestProbeFile {
   path: string
+  /** The candidate side's argv, and the base side's without `baseCommand`. */
   command: string[]
+  /**
+   * The base side's argv when its rule has `baseArgs` and the base side
+   * started: `command` with them appended (ADR-0065). Absent otherwise.
+   */
+  baseCommand?: string[]
+  /**
+   * The base side's limit when its rule's `baseTimeoutMs` was below
+   * `checkTimeoutMs` and the base side started (ADR-0065). Absent
+   * otherwise.
+   */
+  baseTimeoutMs?: number
   base: TestProbeSide
   candidate: TestProbeSide
   baseOutputTail: string
