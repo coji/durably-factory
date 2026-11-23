@@ -443,7 +443,8 @@ export interface ReportReviewRound {
   /**
    * `completed` when its verdicts counted. A round run beside a check that
    * failed is `cancelled` when that ended a review still running, and
-   * `discarded` when every review had answered, and `pending` while that
+   * `discarded` when every review had answered, as each one sent does under
+   * `reviewOnFailedCheck: "finish"` (ADR-0064), and `pending` while that
    * check has not completed, still running or ended by an error; none of
    * these counts toward the review rounds or the highlights. The reviews
    * that answered beside a failed check go to the next repair after the
@@ -1107,6 +1108,14 @@ export interface LoopReport {
    * every round whole.
    */
   reviewLaterRounds?: 'scoped' | 'whole'
+  /**
+   * With `parallelReview`, what a failed check did to a review already sent
+   * beside it, as setup fixed it (ADR-0064): "finish", it ran to its
+   * answer for the repair; "cancel", it was ended. Absent without
+   * `parallelReview` and on a run set up before it existed, which
+   * cancelled. Either way such a round is not counted.
+   */
+  reviewOnFailedCheck?: 'finish' | 'cancel'
   /** See `LaterRoundNonBlockers`; absent on a report made before it existed. */
   laterRoundNonBlockers?: LaterRoundNonBlockers[]
   /** See `BlockingRuleNonBlockers`; absent on a report made before it existed. */
@@ -1925,6 +1934,10 @@ export function reportToMarkdown(r: LoopReport): string {
   if (r.reviewLaterRounds)
     lines.push(
       `- later review rounds: ${r.reviewLaterRounds} (${r.reviewLaterRounds === 'scoped' ? 'after a repair, a review blocks only on an earlier blocker left unfixed, a defect the repair introduced or a problem inside the repair diff' : 'every round may block on anything'})`,
+    )
+  if (r.reviewOnFailedCheck)
+    lines.push(
+      `- reviews on a failed check: ${r.reviewOnFailedCheck} (${r.reviewOnFailedCheck === 'finish' ? 'a review already sent runs to its answer for the repair' : 'a review still running is cancelled'}; the round is not counted)`,
     )
   for (const n of r.blockingRuleNonBlockers ?? [])
     lines.push(

@@ -111,8 +111,16 @@ export interface AgentCallSpec {
    * or a lost lease, the call is settled: a completed checkpoint records it
    * as `cancelled` with `reason`, the partial usage already reported stays
    * on the measurement, and a replay reads it back without calling again.
+   * With `onceSent: 'finish'` the signal only keeps a call from being sent:
+   * once sent, the call runs to its own end as if no signal were given,
+   * and a run cancel, a lost lease or a timeout still end it as they would
+   * (ADR-0064). Absent or `'cancel'`: it ends a call already sent too.
    */
-  supersede?: { signal: AbortSignal; reason: SupersedeReason }
+  supersede?: {
+    signal: AbortSignal
+    reason: SupersedeReason
+    onceSent?: 'cancel' | 'finish'
+  }
 }
 
 /** Why a call's result was no longer wanted; see `AgentCallSpec.supersede`. */
@@ -770,7 +778,12 @@ export async function runAgentCall(
         log.writeError ??= (error as Error).message
       })
   }
-  const supersede = spec.supersede ?? null
+  // What ends the call once sent: nothing, when a superseded call that was
+  // already sent is to finish (ADR-0064).
+  const supersede =
+    spec.supersede && spec.supersede.onceSent !== 'finish'
+      ? spec.supersede
+      : null
   const linked = AbortSignal.any([
     signal,
     timeout.signal,

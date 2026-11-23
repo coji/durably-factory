@@ -265,6 +265,19 @@ export type ReviewLaterRounds = z.infer<typeof reviewLaterRoundsSchema>
 /** What a new trigger fixes when factory.json names none. */
 export const DEFAULT_REVIEW_LATER_ROUNDS: ReviewLaterRounds = 'scoped'
 
+/**
+ * `review.onFailedCheck` in factory.json and a target's
+ * `reviewOnFailedCheck` (ADR-0064): with `parallelReview`, what a failed
+ * check does to a review already sent. "finish": it runs to its answer,
+ * which goes to the next repair with the round's other reviews. "cancel":
+ * it is ended at once and hands the repair nothing, as before.
+ */
+export const reviewOnFailedCheckSchema = z.enum(['finish', 'cancel'])
+export type ReviewOnFailedCheck = z.infer<typeof reviewOnFailedCheckSchema>
+
+/** What a new trigger fixes when factory.json names none. */
+export const DEFAULT_REVIEW_ON_FAILED_CHECK: ReviewOnFailedCheck = 'finish'
+
 /** Where an input came from. Its hash is taken from the stored content. */
 const inputFileSchema = z.object({ path: z.string().min(1) })
 
@@ -376,6 +389,12 @@ const targetSchema = z
        * (ADR-0062). Absent, as on a run stored before it existed: "whole".
        */
       reviewLaterRounds: reviewLaterRoundsSchema.optional(),
+      /**
+       * What a failed check does to a review already sent beside it, fixed
+       * at trigger (ADR-0064). Absent, as on a run stored before it
+       * existed: "cancel".
+       */
+      reviewOnFailedCheck: reviewOnFailedCheckSchema.optional(),
       reviewBlockerThreshold: reviewBlockerThresholdSchema
         .nullable()
         .optional(),
@@ -1872,6 +1891,12 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
               input.target.kind === 'repo'
                 ? (input.target.reviewLaterRounds ?? 'whole')
                 : 'whole'
+            // "cancel" on the sample and on a run stored before it existed
+            // (ADR-0064).
+            const reviewOnFailedCheck: ReviewOnFailedCheck =
+              input.target.kind === 'repo'
+                ? (input.target.reviewOnFailedCheck ?? 'cancel')
+                : 'cancel'
             // A repair run's first review continues the parent's last round
             // only when the parent stopped at its review cap and the findings
             // are the factory's copy of those reviews' blockers: then that
@@ -1987,6 +2012,9 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
               // Recorded on every run set up with it, so a repair inherits
               // it as it is; absent: "whole" (ADR-0062).
               reviewLaterRounds,
+              // Recorded on every run set up with it, so a repair inherits
+              // it as it is; absent: "cancel" (ADR-0064).
+              reviewOnFailedCheck,
               ...(spec ? { spec } : {}),
               // Only when on, so a run without it keeps the setup it had.
               ...(parallelReview ? { parallelReview } : {}),
