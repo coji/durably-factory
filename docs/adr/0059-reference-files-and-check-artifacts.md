@@ -4,6 +4,8 @@
 
 accepted
 
+Follow-up: [ADR-0066](0066-repair-sees-check-evidence.md) also gives the repair after a failed check that check's artifacts and full logs, as untrusted, read-only evidence.
+
 ## Context
 
 A run's only inputs were text files: the task, `--spec-file`, `--context-file` and `--scope-file`. A target's visual source of truth, such as an HTML mock and its rendered screenshots kept outside git, could not be passed. In one UI task the coordinator transcribed a mock into prose; the first candidate used different components and layout, and the visual problems were found only after approval, by a separate critique that compared screenshots with the mock.
