@@ -608,7 +608,7 @@ export const SHELL = {
   product: 'durably-factory',
   skipToContent: '本文へ移動',
   nav: '画面',
-  factory: '工場',
+  factory: 'ファクトリー',
   runs: 'タスク',
   compare: '振り返り',
   back: 'タスク',
