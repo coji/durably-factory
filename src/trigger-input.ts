@@ -10,6 +10,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { z } from 'zod'
 
 import { defaultStateRoot } from './durably.js'
+import type { CheckFailureKind } from './engine/check-failure.js'
 import { runChild } from './engine/child.js'
 import {
   reviewIncompleteBase,
@@ -64,6 +65,7 @@ import {
 } from './factory/prompt-policy.js'
 import { earlierBlockersOf } from './factory/prompts.js'
 import {
+  candidateArtifactsDirOf,
   checkArtifactsPathProblem,
   normalizeCheckArtifactsPath,
   stageReferences,
@@ -77,6 +79,7 @@ import {
   type FindingsRef,
   type InputFileRef,
   MAX_CONTEXT_BYTES,
+  type ParentCheckEvidence,
   type RepairParentConclusion,
   type RepoTargetConfig,
 } from './factory/target.js'
@@ -1012,7 +1015,12 @@ export async function readNotesFile(path: string): Promise<string> {
  * repair run is given.
  */
 export interface RepairFiles {
-  findings: { content: string; ref: FindingsRef }
+  findings: {
+    content: string
+    ref: FindingsRef
+    /** Built from the parent's failed check: what that check left. */
+    check?: ParentCheckEvidence
+  }
   dispositions: { content: string; ref: InputFileRef } | null
   /** Absent or null: the parent's context is inherited. */
   scope?: { content: string; ref: InputFileRef } | null
@@ -1229,7 +1237,12 @@ export function checkFailureFindings(
   parent: RepairParent,
   steps: StoredStepRecord[],
   check: string[],
-): { content: string; ref: FindingsRef } {
+  /**
+   * The parent's candidates directory, when its check left artifacts
+   * (`checkArtifacts`): the failed candidate's copy is named from it.
+   */
+  candidatesDir: string | null = null,
+): { content: string; ref: FindingsRef; check: ParentCheckEvidence } {
   const refuse = (why: string) =>
     refusal(
       parent,
@@ -1290,7 +1303,51 @@ export function checkFailureFindings(
     ...fencedText(result.stdout),
     '',
   ].join('\n')
-  return { content, ref: { parentRun: parent.id } }
+  return {
+    content,
+    ref: { parentRun: parent.id },
+    check: {
+      failureKind: storedFailureKind(result.failureKind),
+      exitCode: typeof result.exitCode === 'number' ? result.exitCode : null,
+      log: storedLogPaths(result.log),
+      artifactsDir: candidatesDir
+        ? candidateArtifactsDirOf(join(candidatesDir, candidate.id))
+        : null,
+    },
+  }
+}
+
+/** A stored verdict's failure kind; null when absent or unknown. */
+function storedFailureKind(value: unknown): CheckFailureKind | null {
+  return value === 'timeout' ||
+    value === 'setup' ||
+    value === 'test' ||
+    value === 'unknown'
+    ? value
+    : null
+}
+
+/** A stored verdict's log paths; null when it recorded none. */
+function storedLogPaths(value: unknown): ParentCheckEvidence['log'] {
+  const log = value as {
+    stdoutPath?: unknown
+    stderrPath?: unknown
+    writeError?: unknown
+  } | null
+  if (
+    typeof log?.stdoutPath !== 'string' ||
+    log.stdoutPath === '' ||
+    typeof log.stderrPath !== 'string' ||
+    log.stderrPath === ''
+  )
+    return null
+  return {
+    stdoutPath: log.stdoutPath,
+    stderrPath: log.stderrPath,
+    ...(typeof log.writeError === 'string'
+      ? { writeError: log.writeError }
+      : {}),
+  }
 }
 
 /**
@@ -1594,6 +1651,11 @@ export function buildRepairInput(
       findings: files.findings.content,
       findingsFile: files.findings.ref,
       ...(parentBlockers ? { parentBlockers } : {}),
+      // What the check that failed left, when the findings were built from
+      // it: the first repair is shown its logs and artifacts.
+      ...(files.findings.check && conclusion === 'verification-failed'
+        ? { parentCheck: files.findings.check }
+        : {}),
       profiles: {
         code: stored.profiles.code,
         correctness: stored.profiles.correctness,
@@ -1677,6 +1739,10 @@ export async function startableRepair(
               parent,
               steps,
               fixed.check ?? stored.target.checkCommand,
+              stored.target.checkArtifacts
+                ? (stored.target.candidatesDir ??
+                    join(dirname(stored.target.deliveryDir), 'candidates'))
+                : null,
             )
   }
   const built = buildRepairInput(

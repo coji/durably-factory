@@ -210,8 +210,8 @@ export function decideToolPermission(
   input: Record<string, unknown>,
   /**
    * Exact files outside the root a role may also read with `Read`: the
-   * candidate's diff and changed-file list, the owner's reference files and
-   * the check's artifacts. Only whole paths match, so a directory or a
+   * candidate's diff and changed-file list, the owner's reference files,
+   * the check's artifacts and, for a repair, the failed check's logs. Only whole paths match, so a directory or a
    * sibling file is not opened up with them.
    */
   readableFiles: readonly string[] = [],

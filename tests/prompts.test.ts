@@ -5,7 +5,9 @@ import { decideToolPermission } from '../src/engine/providers/claude.js'
 import { READ_ONLY_ROLES } from '../src/engine/providers/types.js'
 import { IMPLEMENTER_NOTES_MAX_BYTES } from '../src/factory/events.js'
 import {
+  CHECK_OUTPUT_LABEL,
   codePrompt,
+  failedCheckReadableFiles,
   OWNER_CONTEXT_LABEL,
   parseImplementerNotes,
   parseReviewOutput,
@@ -337,6 +339,116 @@ describe("the owner's reference files in every writing and spec prompt", () => {
       decideToolPermission('/work', false, 'Read', { file_path: png }).allow,
       false,
     )
+  })
+})
+
+describe('a repair after a failed check', () => {
+  const tail = `${'x'.repeat(2500)}ready condition was not met: Saved confirmation`
+  const check = {
+    failureKind: 'test' as const,
+    exitCode: 1,
+    output: tail,
+    log: {
+      stdoutPath: '/state/runs/r1/verification/check.stdout.log',
+      stderrPath: '/state/runs/r1/verification/check.stderr.log',
+    },
+    artifacts: {
+      dir: '/state/runs/r1/candidates/c1/artifacts',
+      files: ['failure.png', 'shots/saved.png'],
+    },
+  }
+  const artifactPaths = [
+    '/state/runs/r1/candidates/c1/artifacts/failure.png',
+    '/state/runs/r1/candidates/c1/artifacts/shots/saved.png',
+  ]
+  const args = {
+    role: 'repair' as const,
+    iteration: 2,
+    repairNotes: [`acceptance: ${tail.slice(-1000)}`],
+    task: 'Fix the save button.',
+    rules: ['Keep it small.'],
+  }
+
+  it('sees the failure kind, the exit code, the stored tail and the full log paths', () => {
+    const prompt = codePrompt({ ...args, failedCheck: check })
+    assert.match(prompt, /CHECK FAILURE \(the pinned check failed/)
+    assert.match(prompt, /- Failure kind: test\n/)
+    assert.match(prompt, /- Exit code: 1\n/)
+    assert.ok(prompt.includes(`- Full stdout log: ${check.log.stdoutPath}`))
+    assert.ok(prompt.includes(`- Full stderr log: ${check.log.stderrPath}`))
+    // The whole stored tail, fenced as data, not the 1000-character note.
+    const open = prompt.indexOf(`<<<UNTRUSTED ${CHECK_OUTPUT_LABEL} `)
+    const close = prompt.indexOf(`<<<END UNTRUSTED ${CHECK_OUTPUT_LABEL} `)
+    assert.ok(open >= 0 && close > open)
+    assert.equal(prompt.slice(prompt.indexOf('\n', open) + 1, close - 1), tail)
+    assert.doesNotMatch(prompt, /- acceptance: /)
+    assert.doesNotMatch(prompt, /Verified feedback to address/)
+  })
+
+  it('lists the failed candidate’s check artifacts as untrusted evidence it may read, never write', () => {
+    const prompt = codePrompt({ ...args, failedCheck: check })
+    assert.match(
+      prompt,
+      /CHECK ARTIFACTS OF THE FAILED CANDIDATE \(untrusted evidence, written by the check that failed and copied by the factory to \/state\/runs\/r1\/candidates\/c1\/artifacts\)/,
+    )
+    assert.doesNotMatch(prompt, /CHECK ARTIFACTS \(trusted/)
+    for (const path of artifactPaths) assert.ok(prompt.includes(`- ${path}`))
+    const readable = failedCheckReadableFiles(check)
+    assert.deepEqual(readable, [
+      check.log.stdoutPath,
+      check.log.stderrPath,
+      ...artifactPaths,
+    ])
+    for (const path of readable) {
+      assert.deepEqual(
+        decideToolPermission(
+          '/work',
+          false,
+          'Read',
+          { file_path: path },
+          readable,
+        ),
+        { allow: true },
+      )
+      assert.equal(
+        decideToolPermission(
+          '/work',
+          false,
+          'Write',
+          { file_path: path },
+          readable,
+        ).allow,
+        false,
+      )
+    }
+  })
+
+  it('says when the check did not exit or recorded no kind, and points at FINDINGS for a tail it carries', () => {
+    const prompt = codePrompt({
+      ...args,
+      repairNotes: [],
+      failedCheck: {
+        failureKind: null,
+        exitCode: null,
+        output: null,
+        log: null,
+        artifacts: null,
+      },
+    })
+    assert.match(prompt, /- Failure kind: not recorded\n/)
+    assert.match(prompt, /- Exit code: none \(the check did not exit by itself/)
+    assert.match(
+      prompt,
+      /The tail of its stdout and stderr is in the FINDINGS block above\./,
+    )
+    assert.doesNotMatch(prompt, /Full stdout log|CHECK ARTIFACTS|CHECK_OUTPUT/)
+  })
+
+  it('keeps the short acceptance note without the check', () => {
+    const prompt = codePrompt(args)
+    assert.match(prompt, /Verified feedback to address:\n- acceptance: /)
+    assert.doesNotMatch(prompt, /CHECK FAILURE/)
+    assert.deepEqual(failedCheckReadableFiles(null), [])
   })
 })
 

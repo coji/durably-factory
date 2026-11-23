@@ -55,6 +55,8 @@ import {
   blockerNotes,
   untrustedSection,
   expandReviewCommand,
+  failedCheckReadableFiles,
+  type FailedCheckEvidence,
   LOCAL_INSTRUCTIONS_INPUT,
   localInstructions,
   parseFindingsOutput,
@@ -79,7 +81,7 @@ import {
   specBlockers,
   type SpecState,
 } from './reducer.js'
-import { referencePaths } from './references.js'
+import { checkArtifactFiles, referencePaths } from './references.js'
 import {
   checkStageContextName,
   MAX_CONTEXT_BYTES,
@@ -133,6 +135,65 @@ import {
 function requireCandidate(state: StageArgs['state']) {
   if (!state.candidate) throw new Error('stage requires a candidate')
   return state.candidate
+}
+
+/**
+ * The check a repair follows, as the reviewers of its candidate would see
+ * it: the run's own failed verification of the candidate to repair, or, for
+ * the first repair of a repair run built from its parent's check failure,
+ * what `factory repair` recorded of that check. Null on every other call.
+ */
+async function failedCheckOf(
+  state: StageArgs['state'],
+  role: 'implement' | 'repair',
+  target: Target,
+  options: { fromParentCheck: boolean },
+): Promise<FailedCheckEvidence | null> {
+  if (role !== 'repair') return null
+  const repairOf =
+    state.setup.target.kind === 'repo' ? state.setup.target.repairOf : null
+  if (options.fromParentCheck) {
+    const parent = repairOf?.parentCheck
+    if (!parent) return null
+    const files = parent.artifactsDir
+      ? await checkArtifactFiles(parent.artifactsDir)
+      : []
+    return {
+      failureKind: parent.failureKind,
+      exitCode: parent.exitCode,
+      // The FINDINGS block already holds the stored tail.
+      output: null,
+      log: parent.log,
+      artifacts:
+        parent.artifactsDir && files.length > 0
+          ? { dir: parent.artifactsDir, files }
+          : null,
+    }
+  }
+  const verification = state.verification
+  const candidate = state.candidate
+  if (
+    !verification ||
+    verification.passed ||
+    !candidate ||
+    verification.targetId !== candidate.id
+  )
+    return null
+  return {
+    failureKind: verification.failureKind ?? null,
+    exitCode: verification.exitCode,
+    output: verification.stdout,
+    log: verification.log
+      ? {
+          stdoutPath: verification.log.stdoutPath,
+          stderrPath: verification.log.stderrPath,
+          ...(verification.log.writeError
+            ? { writeError: verification.log.writeError }
+            : {}),
+        }
+      : null,
+    artifacts: (await target.checkArtifacts?.(candidate)) ?? null,
+  }
 }
 
 /**
@@ -254,6 +315,9 @@ export const codeStage: StageHandler = async ({
             : null,
         )
       : []
+  const failedCheck = await failedCheckOf(state, role, target, {
+    fromParentCheck: fromFindings !== null && checkDiagnostics,
+  })
   const promptArgs: Parameters<typeof codePrompt>[0] = {
     repairFindings: findings,
     requiresNotes: tracked && (commands.length > 0 || findings.length > 0),
@@ -261,6 +325,7 @@ export const codeStage: StageHandler = async ({
     iteration,
     repairNotes: state.repairNotes,
     failedCheckReviews: state.failedCheckReviews,
+    failedCheck,
     task: target.taskBrief(),
     rules: target.implementationRules({
       policy: state.setup.prompts?.[role]?.mode !== 'replace',
@@ -282,7 +347,12 @@ export const codeStage: StageHandler = async ({
     // Read from the reviews themselves, never from the notes' text.
     repairsReviewFeedback: repairsReviewFeedback(state),
   }
-  const references = referencePaths(promptArgs.references)
+  // The owner's reference files, and the logs and artifacts of the check
+  // the candidate failed: outside the worktree, read only.
+  const readable = [
+    ...referencePaths(promptArgs.references),
+    ...failedCheckReadableFiles(failedCheck),
+  ]
   const runCodeCall = (
     suffix: string,
     prompt: string,
@@ -299,8 +369,7 @@ export const codeStage: StageHandler = async ({
           providerName: profile.provider,
           prompt,
           workdir: target.workdir,
-          // The owner's reference files, outside the worktree, read only.
-          ...(references.length > 0 ? { readableFiles: references } : {}),
+          ...(readable.length > 0 ? { readableFiles: readable } : {}),
           timeoutMs: state.setup.agentTimeoutMs,
           ...idleLimitOf(state.setup),
           // A call the factory's timer stops is settled; what it left in the

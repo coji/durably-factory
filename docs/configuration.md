@@ -133,6 +133,8 @@ pnpm factory trigger --repo . --task-file task.md --provider codex --approve man
 
 `"checkArtifacts": ".factory/artifacts"` のように作業ツリー内の相対パスを指定すると、`check` 実行後にその配下の通常ファイル（合計 50 MiB まで）を Candidate ごとに保存し、`--reference` で渡した資料と見比べられるようレビュアーに渡します。
 
+`check` が落ちたあとの修正担当にも、その Candidate の成果物を渡します。修正担当のプロンプトには、失敗の種類（`failureKind`）、終了コード、出力の末尾（保存している 4000 文字）、標準出力と標準エラーの完全なログのパス、成果物のパスが入ります。成果物は `check` が書いたもので、信頼しない資料として渡します。修正担当はログと成果物を読めますが、書き換えはできません。`verification-failed` で止まった run を指摘ファイルなしで `repair` したときは、最初の修正担当に親の run の最後の `check` のログと成果物を同じように渡します。
+
 ### blocker のしきい値と再レビュー（review）
 
 - `review.blockerThreshold`（`0`〜`100` の整数、デフォルト `5`）: `findings-json` 形式のコードレビューにおいて、プロダクトの挙動に関する指摘のうち「発生頻度（`likelihood` 1〜10）× 深刻度（`impact` 1〜10）」がしきい値未満のものを `non-blocker` として扱わせます（`0` で無効化）。ただし、仕様・タスク・確定コンテキストで明示された要件の漏れや、テスト不足・スコープ・セキュリティ等の指摘には適用されません。最終判定はレビュアーが行い、しきい値未満でも `blocker` とされたものはレポートの `belowThresholdBlockers` に記録されます。

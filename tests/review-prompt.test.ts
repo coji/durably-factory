@@ -610,6 +610,47 @@ describe('the reviews of a candidate that failed its check', () => {
     assert.doesNotMatch(body, /ignored when findings are listed/)
   })
 
+  it('come after the failed check, its logs and its artifacts, and the short acceptance note is not repeated', () => {
+    const prompt = codePrompt({
+      role: 'repair',
+      iteration: 2,
+      repairNotes: ['acceptance: CHECK-FAILURE add(0.1, 0.2) returned 0'],
+      task: 'Fix add().',
+      rules: ['Keep the change minimal.'],
+      failedCheckReviews: reviews,
+      failedCheck: {
+        failureKind: 'test',
+        exitCode: 1,
+        output: 'LONG-TAIL CHECK-FAILURE add(0.1, 0.2) returned 0',
+        log: {
+          stdoutPath: '/logs/check.stdout',
+          stderrPath: '/logs/check.stderr',
+        },
+        artifacts: { dir: '/cands/c1/artifacts', files: ['failure.png'] },
+      },
+    })
+    const order = [
+      'CHECK FAILURE (the pinned check failed',
+      '- Failure kind: test',
+      '- Exit code: 1',
+      '- Full stdout log: /logs/check.stdout',
+      'LONG-TAIL CHECK-FAILURE',
+      'CHECK ARTIFACTS OF THE FAILED CANDIDATE (untrusted evidence',
+      '- /cands/c1/artifacts/failure.png',
+      'Fix the check failure above first.',
+      `<<<UNTRUSTED ${FAILED_CANDIDATE_REVIEWS_LABEL} `,
+    ].map((text) => prompt.indexOf(text))
+    assert.ok(
+      order.every((at) => at >= 0),
+      String(order),
+    )
+    assert.deepEqual(
+      order,
+      [...order].sort((a, b) => a - b),
+    )
+    assert.doesNotMatch(prompt, /- acceptance: /)
+  })
+
   it('keep a finding line bounded like the repair notes', () => {
     const long = 'x'.repeat(5000)
     const [review] = reviews.slice(1)
