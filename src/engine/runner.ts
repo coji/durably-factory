@@ -789,6 +789,22 @@ export async function runAgentCall(
     timeout.signal,
     ...(supersede ? [supersede.signal] : []),
   ])
+  // Superseded after the check above but before the call is sent, while the
+  // start was being recorded: still not sent, under either `onceSent`. The
+  // start is on record, so it is settled as cancelled, as a replay reads it.
+  if (spec.supersede?.signal.aborted) {
+    endTimers()
+    const cancelled: CompletedCheckpoint = {
+      ...startRecord,
+      status: 'completed',
+      result: null,
+      cancelled: spec.supersede.reason,
+      partial: { ...reported },
+      invocationCompletedAt: new Date().toISOString(),
+    }
+    await writeJsonAtomic(paths.completed, cancelled, attempt.id)
+    return finishCancelled(spec.supersede.reason, cancelled, false)
+  }
   // Whether the agent was seen at work on this call; see `onActivity`.
   let active = false
   try {

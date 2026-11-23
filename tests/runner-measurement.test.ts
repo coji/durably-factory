@@ -1701,6 +1701,52 @@ describe("the factory's total and idle limits on an agent call", () => {
       assert.equal(sent.calls, 0)
     })
 
+    for (const onceSent of ['finish', 'cancel'] as const)
+      it(`sends nothing when superseded while the start is recorded (${onceSent}), and settles it cancelled`, async () => {
+        const { provider, sent } = beating(() => {}, 10, 150)
+        const supersede = new AbortController()
+        const spec = {
+          ...(await specOf(provider, { timeoutMs: 5000 })),
+          role: 'review-a' as const,
+          supersede: {
+            signal: supersede.signal,
+            reason: 'superseded-by-verify' as const,
+            onceSent,
+          },
+        }
+        // The check fails after the pre-send check passed: while the start
+        // is being recorded, before anything is handed to the provider.
+        const attempt = fakeAttempt()
+        const record = attempt.setMetadata
+        attempt.setMetadata = async (m: unknown) => {
+          if ((m as AttemptMeasurement).invocationStartedAt) supersede.abort()
+          await record(m)
+        }
+        const outcome = await runAgentCall(
+          new AbortController().signal,
+          attempt as never,
+          spec,
+        )
+        assert.equal(sent.calls, 0)
+        assert.equal(outcome.cancelled, 'superseded-by-verify')
+        assert.equal(outcome.measurement.result, 'cancelled')
+        const saved = JSON.parse(
+          await readFile(
+            checkpointPaths(spec.checkpointsDir, spec.operationKey).completed,
+            'utf8',
+          ),
+        ) as { cancelled?: string }
+        assert.equal(saved.cancelled, 'superseded-by-verify')
+        // A replay reads it back: nothing is sent, nothing is uncertain.
+        const replayed = await runAgentCall(
+          new AbortController().signal,
+          fakeAttempt() as never,
+          spec,
+        )
+        assert.equal(replayed.cancelled, 'superseded-by-verify')
+        assert.equal(sent.calls, 0)
+      })
+
     it('settles the idle limit as a timeout, after the abort', async () => {
       const { provider, sent } = beating(() => {}, 10, null)
       const { supersede, spec } = await finishing(provider, {
