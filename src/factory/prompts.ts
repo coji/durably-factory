@@ -15,6 +15,7 @@ import {
 } from './events.js'
 import type { PromptPolicy } from './prompt-policy.js'
 import {
+  asksForDecisions,
   INSTRUCTIONS_PROMPT_VERSION,
   type PromptVersion,
 } from './prompt-version.js'
@@ -383,6 +384,7 @@ const REPAIR_BASE: Record<RepairParentConclusion, string> = {
   'verification-failed': `${UNAPPROVED_REPAIR_BASE} that run stopped because the pinned check still failed on it after its last repair.`,
   'review-cap-reached': `${UNAPPROVED_REPAIR_BASE} the pinned check passed on it, but that run stopped because reviewers still found blocking issues after its review cap.`,
   'review-incomplete': `${UNAPPROVED_REPAIR_BASE} the pinned check passed on it, but that run failed because its reviews did not finish, so no reviewer has judged the whole candidate.`,
+  'decision-needed': `${UNAPPROVED_REPAIR_BASE} that run stopped before the pinned check and any review because its implementer asked for the owner decisions named in the FINDINGS block below. Where the owner context answers them, follow it, and finish the work those decisions held back.`,
 }
 
 /** How a reviewer judges a repair whose base was never approved. */
@@ -396,6 +398,7 @@ const REVIEW_REPAIR_BASE: Record<RepairParentConclusion, string> = {
   'verification-failed': `The base is the last candidate of an earlier run of this task that was never approved: the pinned check still failed on it. ${UNAPPROVED_REVIEW_JUDGEMENT}`,
   'review-cap-reached': `The base is the last candidate of an earlier run of this task that was never approved: the pinned check passed on it, but reviewers still found blocking issues after the review cap. ${UNAPPROVED_REVIEW_JUDGEMENT}`,
   'review-incomplete': `The base is the last candidate of an earlier run of this task that was never approved: the pinned check passed on it, but its reviews did not finish, so no reviewer has judged it as a whole. ${UNAPPROVED_REVIEW_JUDGEMENT}`,
+  'decision-needed': `The base is the last candidate of an earlier run of this task that was never approved: that run stopped before the pinned check and any review because its implementer asked for an owner decision, so no reviewer has judged it. ${UNAPPROVED_REVIEW_JUDGEMENT}`,
 }
 
 /**
@@ -424,6 +427,14 @@ const CODE_REPLY_FORMAT = [
   'Reply with a short summary of the files you changed, in plain sentences.',
   'End your reply with a section that starts with a line of its own, NOTES:, when you have something to report: a finding, a piece of feedback or a requested change you left unfixed on purpose and why, an assumption you made, a follow-up you noticed, or an instruction file that made you pause. Leave the section out when there is nothing to report.',
 ]
+
+/**
+ * How a code or repair call asks for an owner decision it cannot make
+ * itself, from prompt version 6 (ADR-0067): a `DECISION NEEDED:` line under
+ * NOTES stops the run before the check and the reviews.
+ */
+export const DECISION_NEEDED_LINE =
+  "If the spec, the owner's decisions or the protected scope forbid every fix you can see for part of the task, do all the rest of the work first, then put one line for each such case at the top of NOTES: DECISION NEEDED: <what the owner must decide, and why no allowed fix exists>. The factory then stops before the check and the reviews and hands these lines to the owner. Do not write it for ordinary uncertainty: make that call yourself and state the assumption."
 
 const UNATTENDED_RUN =
   'This is an unattended factory run. No person is watching, and no one can answer a question before you finish: make routine judgment calls yourself, say under NOTES which assumption you made, and complete the change. Stop short only of what these rules forbid.'
@@ -640,6 +651,9 @@ export function codePrompt(args: CodePromptArgs): string {
           )
         : line,
     ),
+    ...(args.promptVersion !== undefined && asksForDecisions(args.promptVersion)
+      ? [DECISION_NEEDED_LINE]
+      : []),
     ...findingTreatmentInstructions(args.repairFindings ?? []),
     ...(args.failedCheck ? failedCheckSection(args.failedCheck) : []),
     // Without a failed check, an empty feedback keeps the ending as it was.

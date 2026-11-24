@@ -1236,7 +1236,8 @@ export function deriveTrace(input: TraceInput): Trace {
   const failedRun =
     run.status === 'failed' ||
     input.conclusion === 'verification-failed' ||
-    input.conclusion === 'review-cap-reached'
+    input.conclusion === 'review-cap-reached' ||
+    input.conclusion === 'decision-needed'
 
   type Timed = {
     start: number | null

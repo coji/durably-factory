@@ -51,6 +51,7 @@ export function kindStatus(kind: DiagnosisKind): Status {
 const FAILED_CONCLUSIONS = new Set([
   'verification-failed',
   'review-cap-reached',
+  'decision-needed',
   'generate-failed',
   'failed',
 ])

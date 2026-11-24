@@ -5,6 +5,9 @@ import type { FactoryState, StageDecision, StageName } from './types.js'
 export function availableActions(state: FactoryState): StageName[] {
   if (state.outcome) return []
   if (!state.candidate) return ['code']
+  // The implementer asked for an owner decision: neither the check nor a
+  // review can settle it (ADR-0067).
+  if (state.decisionNeeded?.length) return ['stop']
   if (!state.verification || state.verification.targetId !== state.candidate.id)
     return ['verify']
   if (!state.verification.passed) {
@@ -67,9 +70,11 @@ export function decide(state: FactoryState): StageDecision {
   if (stage === 'stop') {
     return {
       stage,
-      reason: state.verification?.passed
-        ? 'review repair budget exhausted'
-        : 'verification repair budget exhausted',
+      reason: state.decisionNeeded?.length
+        ? 'the implementer asked for an owner decision'
+        : state.verification?.passed
+          ? 'review repair budget exhausted'
+          : 'verification repair budget exhausted',
     }
   }
   return { stage, reason: `next required stage: ${stage}` }

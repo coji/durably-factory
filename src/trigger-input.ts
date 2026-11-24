@@ -1148,6 +1148,7 @@ interface StoredOutput {
   candidate?: { id?: string; commit?: string; branch?: string } | null
   delivery?: { commit?: string | null } | null
   reviews?: { lens?: string; decision?: string; notes?: string }[]
+  decisionNeeded?: string[]
 }
 
 const refusal = (parent: RepairParent, why: string) =>
@@ -1156,10 +1157,10 @@ const refusal = (parent: RepairParent, why: string) =>
 /**
  * The parent's candidate, when the parent may be repaired: a repository run
  * that completed either approved and delivered its last candidate, or
- * verification-failed or review-cap-reached with a recorded last candidate,
- * or one that failed on a review that did not finish after its last sealed
- * candidate passed the check (ADR-0030). Anything else, a rejected run
- * included, is refused.
+ * verification-failed, review-cap-reached or decision-needed with a
+ * recorded last candidate, or one that failed on a review that did not
+ * finish after its last sealed candidate passed the check (ADR-0030,
+ * ADR-0067). Anything else, a rejected run included, is refused.
  */
 export function repairableCandidate(
   parent: RepairParent,
@@ -1196,12 +1197,13 @@ export function repairableCandidate(
     output?.conclusion === 'approved' && output.approved === true
       ? 'approved'
       : output?.conclusion === 'verification-failed' ||
-          output?.conclusion === 'review-cap-reached'
+          output?.conclusion === 'review-cap-reached' ||
+          output?.conclusion === 'decision-needed'
         ? output.conclusion
         : null
   if (!conclusion)
     throw refuse(
-      `its conclusion is ${output?.conclusion ?? 'unknown'}, not approved, verification-failed or review-cap-reached`,
+      `its conclusion is ${output?.conclusion ?? 'unknown'}, not approved, verification-failed, review-cap-reached or decision-needed`,
     )
   const commit = output?.candidate?.commit
   const branch = output?.candidate?.branch
@@ -1403,6 +1405,37 @@ export function reviewFindings(parent: RepairParent): {
     output?.reviews ?? [],
     `The pinned check passed on the run's last candidate, commit ${output?.candidate?.commit}, but these reviewers still asked for changes when it stopped at its review cap.`,
   )
+}
+
+/**
+ * Findings built from a decision-needed parent's own record: the DECISION
+ * NEEDED lines its last candidate's reply left, as stored in its output,
+ * one list item each (ADR-0067). They are the implementer's words, so they
+ * stay untrusted findings; the owner's answer comes as the child's context.
+ * The text depends on the stored output alone.
+ */
+export function decisionFindings(parent: RepairParent): {
+  content: string
+  ref: FindingsRef
+} {
+  const output = parent.output as StoredOutput | null
+  const decisions = (output?.decisionNeeded ?? []).filter(
+    (line) => typeof line === 'string' && line.trim() !== '',
+  )
+  if (decisions.length === 0)
+    throw refusal(
+      parent,
+      'it recorded no DECISION NEEDED line; give the findings with --findings-file <path> instead',
+    )
+  const content = [
+    `# Decisions asked for in factory run ${parent.id}`,
+    '',
+    `The run's last candidate, commit ${output?.candidate?.commit}, was neither checked nor reviewed: its implementer stopped and asked for these owner decisions. Finish the work they held back, as the owner context decides.`,
+    '',
+    ...decisions.map((line) => `- ${line.trim().replaceAll('\n', '\n  ')}`),
+    '',
+  ].join('\n')
+  return { content, ref: { parentRun: parent.id } }
 }
 
 /**
@@ -1733,17 +1766,19 @@ export async function startableRepair(
     findings =
       conclusion === 'review-cap-reached'
         ? reviewFindings(parent)
-        : conclusion === 'review-incomplete'
-          ? incompleteReviewFindings(parent)
-          : checkFailureFindings(
-              parent,
-              steps,
-              fixed.check ?? stored.target.checkCommand,
-              stored.target.checkArtifacts
-                ? (stored.target.candidatesDir ??
-                    join(dirname(stored.target.deliveryDir), 'candidates'))
-                : null,
-            )
+        : conclusion === 'decision-needed'
+          ? decisionFindings(parent)
+          : conclusion === 'review-incomplete'
+            ? incompleteReviewFindings(parent)
+            : checkFailureFindings(
+                parent,
+                steps,
+                fixed.check ?? stored.target.checkCommand,
+                stored.target.checkArtifacts
+                  ? (stored.target.candidatesDir ??
+                      join(dirname(stored.target.deliveryDir), 'candidates'))
+                  : null,
+              )
   }
   const built = buildRepairInput(
     parent,

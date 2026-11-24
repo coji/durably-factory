@@ -1845,6 +1845,188 @@ describe('repair from outside findings', { timeout: 240000 }, () => {
     }
   })
 
+  it('stops a candidate whose NOTES ask for an owner decision before its check and reviews, and repairs it from those decisions (ADR-0067)', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'repo-target-decision-'))
+    const repo = await seedRepo(root)
+    delete process.env.FAKE_FAIL_FIRST
+    delete process.env.FAKE_REVIEW_SEQUENCE
+    const durably = createAgentDurably({ stateRoot: join(root, 'state') })
+    await durably.init()
+    const FIRST =
+      'the spec keeps src/legacy.js out of scope, but add() rounds through it; may it change?'
+    const SECOND = 'should add() keep truncating negative inputs?'
+    try {
+      const { parent, setup } = await approvedParent(durably, repo, {
+        maxIterations: 2,
+        fakeScenario: {
+          failIterations: 0,
+          codeReplies: [
+            `fake: fixed add() for positive inputs\nNOTES:\nDECISION NEEDED: ${FIRST}\n- DECISION NEEDED: ${SECOND}\nleft legacy.js unchanged`,
+          ],
+        },
+      })
+      assert.equal(setup.instructionsVersion, 'local-factory.v10')
+      const parentOutput = parent.output as {
+        approved: boolean
+        conclusion: string
+        iterations: number
+        reviewRounds: number
+        decisionNeeded?: string[]
+        candidate: { id: string; commit: string; branch: string } | null
+        delivery: unknown
+      }
+      assert.equal(parentOutput.conclusion, 'decision-needed')
+      assert.equal(parentOutput.approved, false)
+      assert.equal(parentOutput.iterations, 1)
+      assert.equal(parentOutput.reviewRounds, 0)
+      assert.equal(parentOutput.delivery, null)
+      assert.deepEqual(parentOutput.decisionNeeded, [FIRST, SECOND])
+      const parentCommit = parentOutput.candidate?.commit
+      assert.ok(parentCommit && parentOutput.candidate?.branch)
+      // Neither the pinned check nor any review was started.
+      const attempts = await durably.getStepAttempts(parent.id)
+      assert.ok(
+        attempts.some((a) => /^stage:\d+:code:candidate$/.test(a.stepName)),
+      )
+      assert.ok(
+        !attempts.some((a) =>
+          /^stage:\d+:(?:verify|review)\b/.test(a.stepName),
+        ),
+        attempts.map((a) => a.stepName).join(', '),
+      )
+      // The candidate is kept, sealed with its diff.
+      const report = await buildReport(durably, parent.id)
+      assert.equal(report.candidate?.commit, parentCommit)
+      const diffPath = report.candidate?.changes?.diffPath
+      assert.ok(diffPath && existsSync(diffPath))
+      // Status, wait and the report say what to decide and what to run next.
+      const failure = await classifyRun(durably, parent)
+      assert.equal(failure?.kind, 'decision-needed')
+      assert.equal(failure?.retryable, true)
+      assert.deepEqual(failure?.details, [
+        `decision needed: ${FIRST}`,
+        `decision needed: ${SECOND}`,
+      ])
+      assert.ok(
+        failure?.next.some((n) =>
+          n.includes(`repair --run ${parent.id} --context-file <file>`),
+        ),
+      )
+      const markdown = reportToMarkdown(report)
+      assert.ok(markdown.includes('- kind: decision-needed'))
+      assert.ok(markdown.includes(`- decision needed: ${FIRST}`))
+      const json = JSON.parse(reportToJson(report)) as {
+        failure: { kind: string; details: string[] }
+      }
+      assert.equal(json.failure.kind, 'decision-needed')
+      assert.ok(json.failure.details.includes(`decision needed: ${SECOND}`))
+
+      // A repair starts from the kept candidate, its findings built from the
+      // decisions and the owner's answer given as its context.
+      const ANSWER =
+        'OWNER: src/legacy.js may change; negative inputs round too.'
+      const built = await startableRepair(
+        durably,
+        parent.id,
+        {
+          findings: null,
+          dispositions: null,
+          context: { content: ANSWER, ref: { path: join(root, 'answer.md') } },
+          maxIterations: 1,
+        },
+        {
+          failIterations: 0,
+          reviewSequence: ['needsChanges', 'needsChanges'],
+          changes: { 'NOTES.md': 'repaired\n' },
+        },
+      )
+      const { input, idempotencyKey, labels } = built
+      assert.equal(input.target.baseRef, parentCommit)
+      assert.equal(input.repairOf.parentConclusion, 'decision-needed')
+      assert.deepEqual(input.repairOf.findingsFile, { parentRun: parent.id })
+      assert.ok(input.repairOf.findings.includes(`- ${FIRST}`))
+      assert.ok(input.repairOf.findings.includes(`- ${SECOND}`))
+      // The parent was never reviewed, so there is no earlier round.
+      assert.equal(input.repairOf.parentBlockers, undefined)
+      const child = await durably.jobs.agentLoop.trigger(
+        { ...input, target: { ...input.target, baselineCheck: true } },
+        { idempotencyKey, labels },
+      )
+      await waitFor(
+        async () => (await durably.getRun(child.id))?.status === 'completed',
+        150000,
+        'repair of a decision-needed run completes',
+      )
+      const output = (await durably.getRun(child.id))?.output as {
+        conclusion: string
+        iterations: number
+        reviewRounds: number
+      }
+      // Checked and reviewed this time.
+      assert.equal(output.conclusion, 'review-cap-reached')
+      assert.equal(output.iterations, 1)
+      assert.equal(output.reviewRounds, 1)
+      // No parent blockers: its first review is a first round.
+      const childSetup = (
+        await durably.storage.getCompletedStep(child.id, 'setup')
+      )?.output as FactorySetup
+      assert.deepEqual(childSetup.repairOf, {
+        runId: parent.id,
+        candidateCommit: parentCommit,
+        parentConclusion: 'decision-needed',
+      })
+      const childAttempts = await durably.getStepAttempts(child.id)
+      // Its base was never checked, so no baseline runs on it.
+      assert.ok(!childAttempts.some((a) => a.stepName === BASELINE_STEP))
+      assert.ok(
+        childAttempts.some((a) => /^stage:\d+:verify\b/.test(a.stepName)),
+      )
+      const childReport = await buildReport(durably, child.id)
+      const calls = childReport.attempts.filter((a) =>
+        /^stage:\d+:code:agent$/.test(a.stepName),
+      )
+      assert.equal(calls[0]?.measurement?.role, 'repair')
+    } finally {
+      await durably.stop()
+      await durably.db.destroy()
+    }
+  })
+
+  it('goes on to the check and the reviews when NOTES only quote or mention a decision (ADR-0067)', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'repo-target-no-decision-'))
+    const repo = await seedRepo(root)
+    delete process.env.FAKE_FAIL_FIRST
+    delete process.env.FAKE_REVIEW_SEQUENCE
+    const durably = createAgentDurably({ stateRoot: join(root, 'state') })
+    await durably.init()
+    try {
+      const { parent } = await approvedParent(durably, repo, {
+        maxIterations: 1,
+        fakeScenario: {
+          failIterations: 0,
+          reviewSequence: ['needsChanges', 'pass'],
+          codeReplies: [
+            'fake: fixed add()\nNOTES:\nno decision needed: the spec settles rounding.\n```\nDECISION NEEDED: an example, not a request\n```\nDECISION NEEDED:\n',
+          ],
+        },
+      })
+      const output = parent.output as {
+        conclusion: string
+        reviewRounds: number
+        decisionNeeded?: string[]
+      }
+      assert.equal(output.conclusion, 'review-cap-reached')
+      assert.equal(output.reviewRounds, 1)
+      assert.equal(output.decisionNeeded, undefined)
+      const attempts = await durably.getStepAttempts(parent.id)
+      assert.ok(attempts.some((a) => /^stage:\d+:verify\b/.test(a.stepName)))
+      assert.ok(attempts.some((a) => /^stage:\d+:review\b/.test(a.stepName)))
+    } finally {
+      await durably.stop()
+      await durably.db.destroy()
+    }
+  })
+
   it("repairs a candidate whose review did not finish after it passed the check, from that candidate's finished reviews or a file", async () => {
     const root = await mkdtemp(join(tmpdir(), 'repo-target-incomplete-'))
     const repo = await seedRepo(root)

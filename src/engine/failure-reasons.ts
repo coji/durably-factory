@@ -36,6 +36,7 @@ export type FailureKind =
   | 'agent-timeout'
   | 'verification-failed'
   | 'review-cap-reached'
+  | 'decision-needed'
   | 'generate-failed'
   | 'uncertain-invocation'
   | 'cancelled'
@@ -263,6 +264,23 @@ const FAILURE_REASONS: Record<FailureKind, FailureEntry> = {
       ...(repo
         ? [
             `${FACTORY_COMMAND} repair --run ${runId}  # go on from the last candidate with a new repair budget; the findings are built from the last reviews unless --findings-file is given`,
+          ]
+        : []),
+      retrigger(runId),
+    ],
+  },
+  'decision-needed': {
+    reason:
+      'the implementer could not finish without an owner decision; the run stopped before the pinned check and any review, and kept the candidate',
+    retryable: true,
+    humanCheck:
+      'read each decision below and decide it; then repair with a context file that answers it (a given context replaces the earlier one, so repeat the earlier owner decisions too)',
+    next: (runId, _reload, repo) => [
+      `${FACTORY_COMMAND} report --run ${runId}  # the decisions, the implementer notes and the candidate diff`,
+      // Only a repository run has a candidate a repair run can start from.
+      ...(repo
+        ? [
+            `${FACTORY_COMMAND} repair --run ${runId} --context-file <file>  # go on from the kept candidate with your answer as the owner context; the findings are built from the decisions unless --findings-file is given`,
           ]
         : []),
       retrigger(runId),
@@ -650,7 +668,16 @@ export function classifyFailure(
       for (const log of input.verificationLogs ?? [])
         details.push(...logDetails(log))
     } else if (conclusion === 'review-cap-reached') kind = 'review-cap-reached'
-    else if (conclusion === 'generate-failed') {
+    else if (conclusion === 'decision-needed') {
+      kind = 'decision-needed'
+      const decisions = (input.output as { decisionNeeded?: unknown } | null)
+        ?.decisionNeeded
+      for (const line of Array.isArray(decisions) ? decisions : [])
+        if (typeof line === 'string')
+          details.push(
+            `${DETAIL_PREFIX.decisionNeeded}${line.trim().replace(/\s*\n\s*/g, ' | ')}`,
+          )
+    } else if (conclusion === 'generate-failed') {
       kind = 'generate-failed'
       const failed = input.generateFailure
       if (failed)

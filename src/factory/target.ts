@@ -214,13 +214,16 @@ export interface ParentCheckEvidence {
  * How a repair run's parent ended: approved and delivered, stopped with its
  * last candidate failing the check, stopped with reviewers still asking
  * for changes after the review cap, or failed because a review of its last
- * candidate, which passed the check, did not finish (ADR-0030).
+ * candidate, which passed the check, did not finish (ADR-0030), or stopped
+ * before the check because its implementer asked for an owner decision
+ * (ADR-0067).
  */
 export type RepairParentConclusion =
   | 'approved'
   | 'verification-failed'
   | 'review-cap-reached'
   | 'review-incomplete'
+  | 'decision-needed'
 
 export type TargetConfig = SubjectTargetConfig | RepoTargetConfig
 

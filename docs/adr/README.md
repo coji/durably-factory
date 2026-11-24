@@ -87,3 +87,4 @@ What we considered and why we didn't do it.
 | [0064](0064-finish-reviews-on-failed-check.md)                  | Let a review already sent finish on a failed check | accepted |
 | [0065](0065-test-probe-base-stop-early.md)                      | Stop the test probe's base run early               | accepted |
 | [0066](0066-repair-sees-check-evidence.md)                      | Give the repair after a failed check its evidence  | accepted |
+| [0067](0067-decision-needed.md)                                 | Stop for an owner decision the implementer asks    | accepted |

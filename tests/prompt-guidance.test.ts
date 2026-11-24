@@ -237,12 +237,13 @@ describe('v6 factory prompt guidance', () => {
         expected[name],
         name,
       )
-    assert.equal(INSTRUCTIONS_VERSION, 'local-factory.v9')
+    assert.equal(INSTRUCTIONS_VERSION, 'local-factory.v10')
     assert.equal(promptVersionOf('local-factory.v6'), 2)
     assert.equal(promptVersionOf('local-factory.v5'), 1)
     assert.equal(promptVersionOf('local-factory.v7'), 3)
     assert.equal(promptVersionOf('local-factory.v8'), 4)
-    assert.equal(promptVersionOf(INSTRUCTIONS_VERSION), 5)
+    assert.equal(promptVersionOf('local-factory.v9'), 5)
+    assert.equal(promptVersionOf(INSTRUCTIONS_VERSION), 6)
   })
 })
 

@@ -734,7 +734,9 @@ function isSuspension(error: unknown): boolean {
  * Whether a run checks its base commit before any agent call. A repair of a
  * verification-failed parent keeps the setting for its own children but
  * never runs the baseline: its base is the candidate the check failed on,
- * and that failure is its findings (ADR-0030).
+ * and that failure is its findings (ADR-0030). Nor does a repair of a
+ * decision-needed parent: its base was never checked, and finishing it is
+ * the repair's work (ADR-0067).
  */
 function runsBaselineCheck(
   baselineCheck: boolean | undefined,
@@ -742,7 +744,8 @@ function runsBaselineCheck(
 ): boolean {
   return (
     baselineCheck === true &&
-    repairOf?.parentConclusion !== 'verification-failed'
+    repairOf?.parentConclusion !== 'verification-failed' &&
+    repairOf?.parentConclusion !== 'decision-needed'
   )
 }
 
@@ -750,7 +753,8 @@ function runsBaselineCheck(
  * A run that repairs another run's last candidate from outside findings: an
  * approved, delivered one, or one that stopped failing the check, with
  * reviewers still asking for changes, or on a review that did not finish
- * after the check passed (ADR-0030).
+ * after the check passed (ADR-0030), or before the check on an owner
+ * decision its implementer asked for (ADR-0067).
  * Built by `factory repair` from the parent's stored input and setup; the
  * worker never resolves these profiles again.
  */
@@ -770,6 +774,7 @@ const repairOfSchema = z
         'verification-failed',
         'review-cap-reached',
         'review-incomplete',
+        'decision-needed',
       ])
       .optional(),
     /** Stored once at trigger; its SHA-256 is taken from this content. */
@@ -1103,7 +1108,7 @@ const inputSchema = z
         input.repairOf.parentConclusion !== 'approved'),
     {
       message:
-        "findings built from a run's record must name the parent run, which stopped verification-failed, review-cap-reached or review-incomplete",
+        "findings built from a run's record must name the parent run, which stopped verification-failed, review-cap-reached, review-incomplete or decision-needed",
       path: ['repairOf', 'findingsFile'],
     },
   )
@@ -1119,6 +1124,7 @@ const outputSchema = z.object({
     'verification-failed',
     'review-cap-reached',
     'generate-failed',
+    'decision-needed',
   ]),
   candidate: candidateSchema.nullable(),
   iterations: z.number(),
@@ -1139,6 +1145,11 @@ const outputSchema = z.object({
    * remove. The run is approved and delivered either way.
    */
   worktreeCleanupWarning: z.string().nullable().optional(),
+  /**
+   * The DECISION NEEDED lines of the last candidate's NOTES on a
+   * `decision-needed` run (ADR-0067); absent on every other conclusion.
+   */
+  decisionNeeded: z.array(z.string().min(1)).min(1).optional(),
   /** Null when the run had no triage profile. */
   triage: z
     .object({
@@ -2288,7 +2299,8 @@ export function createAgentLoopJob(options: AgentLoopJobOptions) {
         // matching passing result of another run is used instead, once the
         // worktree is proven to be as the check would need it. The choice is
         // this step's output, so a replay never looks again. A repair of a
-        // verification-failed parent skips it (`runsBaselineCheck`).
+        // verification-failed or decision-needed parent skips it
+        // (`runsBaselineCheck`).
         if (
           runsBaselineCheck(runSetup.baselineCheck, runSetup.repairOf) &&
           target instanceof RepoTarget &&
