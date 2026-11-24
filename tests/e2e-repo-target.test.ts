@@ -2000,7 +2000,7 @@ describe('repair from outside findings', { timeout: 240000 }, () => {
     const durably = createAgentDurably({ stateRoot: join(root, 'state') })
     await durably.init()
     try {
-      const { parent } = await approvedParent(durably, repo, {
+      const { parent, setup } = await approvedParent(durably, repo, {
         maxIterations: 1,
         fakeScenario: {
           failIterations: 0,
@@ -2010,6 +2010,8 @@ describe('repair from outside findings', { timeout: 240000 }, () => {
           ],
         },
       })
+      // A run whose prompts ask for the line, so its parser was in use.
+      assert.equal(setup.instructionsVersion, 'local-factory.v10')
       const output = parent.output as {
         conclusion: string
         reviewRounds: number

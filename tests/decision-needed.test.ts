@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { classifyFailure } from '../src/engine/failure-reasons.js'
+import type { AgentProvider } from '../src/engine/providers/types.js'
 import {
   decisionNeededLines,
   parseCodeResponse,
@@ -16,6 +20,7 @@ import {
 } from '../src/factory/prompt-version.js'
 import { codePrompt, DECISION_NEEDED_LINE } from '../src/factory/prompts.js'
 import { reduce } from '../src/factory/reducer.js'
+import { codeStage } from '../src/factory/stages.js'
 import { initialState, type FactorySetup } from '../src/factory/types.js'
 
 function profile(role: string) {
@@ -212,4 +217,148 @@ describe('DECISION NEEDED lines (ADR-0067)', () => {
       ),
     )
   })
+})
+
+describe('the code stage and DECISION NEEDED lines (ADR-0067)', () => {
+  for (const instructionsVersion of ['local-factory.v10', 'local-factory.v9'])
+    it(`${instructionsVersion === INSTRUCTIONS_VERSION ? 'stores' : 'ignores'} the lines of a reply on a run pinned to ${instructionsVersion}`, async () => {
+      const root = await mkdtemp(join(tmpdir(), 'factory-decision-stage-'))
+      const profile = {
+        id: 'p',
+        provider: 'fake' as const,
+        requestedModel: null,
+        requestedEffort: 'low',
+        effectiveModel: 'fake-model',
+        effectiveEffort: 'low',
+      }
+      const repoSetup: FactorySetup = {
+        fake: true,
+        contextMode: 'fresh',
+        target: {
+          kind: 'repo',
+          repoPath: root,
+          workdir: root,
+          baseCommit: 'base',
+          branch: 'branch',
+          checkCommand: ['true'],
+          checkTimeoutMs: 5000,
+          setupCommand: null,
+          task: 'implement',
+          spec: null,
+          dispositions: null,
+          issue: null,
+          publish: false,
+          deliveryDir: root,
+        },
+        profiles: {
+          code: profile,
+          correctness: profile,
+          'edge-cases': profile,
+        },
+        checkpointsDir: root,
+        instructionsVersion,
+        configVersion: 'test',
+        maxIterations: 2,
+        agentTimeoutMs: 5000,
+        autoApprove: true,
+      }
+      const prompts: string[] = []
+      const provider: AgentProvider = {
+        name: 'fake',
+        fake: true,
+        cliPath: null,
+        partialUsage: false,
+        resolveExecution: () => ({ model: 'fake-model', effort: 'low' }),
+        checkAvailability: async () => ({
+          verdict: 'available',
+          method: 'stub',
+          detail: 'stub',
+        }),
+        rejectionReason: () => null,
+        call: async (options) => {
+          prompts.push(options.prompt)
+          return {
+            text: 'Changed calc.js.\nNOTES:\nDECISION NEEDED: may legacy.js change?',
+            session: { id: 'session-1' },
+            resolvedModel: 'fake-model',
+            resolvedEffort: 'low',
+            reportedModel: 'fake-model',
+            reportedEffort: 'low',
+            usage: null,
+            elapsedMs: 1,
+          }
+        },
+      }
+      const outputs = new Map<string, unknown>()
+      const step = {
+        runId: 'r',
+        run: async (
+          name: string,
+          fn: (signal: AbortSignal, attempt: unknown) => Promise<unknown>,
+        ) => {
+          if (!outputs.has(name))
+            outputs.set(
+              name,
+              await fn(new AbortController().signal, {
+                id: name,
+                setMetadata: async () => {},
+              }),
+            )
+          return structuredClone(outputs.get(name))
+        },
+      }
+      const target = {
+        workdir: root,
+        taskBrief: () => 'implement',
+        implementationRules: () => ['CORE CONTRACT'],
+        ownerContext: () => null,
+        untrustedInputs: () => [],
+        seal: async () => ({
+          id: 'candidate',
+          snapshotDir: root,
+          sourceHash: 'h',
+          acceptanceHash: 'h',
+        }),
+      }
+      // The same partial stubs as code-stage-response.test.ts: the stage
+      // reads only the members given here.
+      const event = await codeStage({
+        step: step as never,
+        state: initialState(repoSetup),
+        decision: { stage: 'code', role: 'implement', reason: 'test' },
+        key: 'stage:0:code',
+        services: {
+          providers: {
+            code: provider,
+            repair: provider,
+            correctness: provider,
+            'edge-cases': provider,
+          },
+          target: target as never,
+          createTarget: () => target as never,
+        },
+      })
+      const pinned = instructionsVersion === INSTRUCTIONS_VERSION
+      assert.equal(prompts[0]?.includes(DECISION_NEEDED_LINE), pinned)
+      const stored = outputs.get('stage:0:code:candidate') as {
+        decisionNeeded?: string[]
+      }
+      assert.ok(event.type === 'code.completed')
+      if (pinned) {
+        assert.deepEqual(stored.decisionNeeded, ['may legacy.js change?'])
+        assert.deepEqual(event.decisionNeeded, ['may legacy.js change?'])
+        assert.equal(
+          decide(reduce(initialState(repoSetup), event)).stage,
+          'stop',
+        )
+      } else {
+        // An older run replays as it was: the words alone stop nothing.
+        assert.equal(stored.decisionNeeded, undefined)
+        assert.equal(event.decisionNeeded, undefined)
+        assert.equal(
+          decide(reduce(initialState(repoSetup), event)).stage,
+          'verify',
+        )
+      }
+    })
 })

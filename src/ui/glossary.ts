@@ -321,9 +321,9 @@ export const FAILURE_TEXT: Record<
   },
   'decision-needed': {
     reason:
-      '実装担当が、持ち主の判断がないと仕上げられないと書いたので、チェックとレビューの前に止めました。候補はそのまま残しています。',
+      '実装担当が、人が決めないと仕上げられないことがあると書いたので、チェックとレビューの前に止めました。候補はそのまま残しています。',
     check:
-      '下の判断の内容を読んで決め、答えを書いたファイルを --context-file に渡して修正を始める。渡したコンテキストは前のものと入れ替わるので、前に決めたことも書き直す。',
+      '下の「判断が必要なこと」を読んで決め、答えを書いたファイルを --context-file に渡して修正を始める。渡した確定事項は前のものと入れ替わるので、前に決めたことも書き直す。',
   },
   'generate-failed': {
     reason:
@@ -461,7 +461,7 @@ export const COMMAND_NOTES: [string, string][] = [
   ],
   [
     'go on from the kept candidate with your answer as the owner context; the findings are built from the decisions unless --findings-file is given',
-    '残した候補から、答えを確定コンテキストとして渡して続けます。--findings-file を渡さなければ、判断が必要なことを指摘として渡します。',
+    '残した候補から、答えを確定事項として渡して続けます。--findings-file を渡さなければ、判断が必要なことを指摘として渡します。',
   ],
   [
     'read the spec reviews first',
