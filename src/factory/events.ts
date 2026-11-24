@@ -196,6 +196,9 @@ export const FactoryEventSchema = z.discriminatedUnion('type', [
         `implementer notes are over ${IMPLEMENTER_NOTES_MAX_BYTES} bytes`,
       )
       .optional(),
+    // The DECISION NEEDED lines of those NOTES (ADR-0067); the run stops
+    // before the check. Absent: none, as on every event before it existed.
+    decisionNeeded: z.array(z.string().min(1)).min(1).optional(),
   }),
   z.object({
     type: z.literal('verify.completed'),
@@ -255,6 +258,7 @@ export const FactoryEventSchema = z.discriminatedUnion('type', [
         'verification-failed',
         'review-cap-reached',
         'generate-failed',
+        'decision-needed',
       ]),
       candidate: candidateSchema.nullable(),
       iterations: z.number(),
@@ -264,6 +268,7 @@ export const FactoryEventSchema = z.discriminatedUnion('type', [
       fake: z.boolean(),
       delivery: deliverySchema.nullable(),
       worktreeCleanupWarning: z.string().nullable().optional(),
+      decisionNeeded: z.array(z.string().min(1)).min(1).optional(),
     }),
   }),
 ])

@@ -169,6 +169,30 @@ function hasDetail(text: string): boolean {
   return text.replace(/[—–\s-]/g, '') !== ''
 }
 
+/**
+ * A `DECISION NEEDED: <what and why>` line under NOTES: the implementer or
+ * repairer could not finish without an owner decision (ADR-0067). Written in
+ * capitals, optionally as a list item or in bold, like the CHECK lines.
+ */
+const DECISION_NEEDED =
+  /^(?:\*\*|__)?DECISION NEEDED(?:\*\*|__)?\s*[:：](?:\*\*|__)?\s*(.*)$/
+
+/**
+ * The DECISION NEEDED lines of a code or repair reply's NOTES, in order,
+ * each as the text after its colon. A quoted example in a fenced code block
+ * and a line with no text after the colon are not counted.
+ */
+export function decisionNeededLines(notes: string | null): string[] {
+  return plainLines(notes ?? '').flatMap((line) => {
+    const text = DECISION_NEEDED.exec(
+      line.replace(/^\s*[-*]\s+/, '').trim(),
+    )?.[1]
+      ?.replace(/^(?:\*\*|__)\s*/, '')
+      .trim()
+    return text && hasDetail(text) ? [text] : []
+  })
+}
+
 export function parseCodeResponse(args: {
   text: string
   role: 'implement' | 'repair'

@@ -3973,7 +3973,7 @@ describe('repair', { timeout: 240000 }, () => {
       )
   })
 
-  it('refuses every parent that is not an approved, delivered, verification-failed, review-cap-reached or review-incomplete repository run', () => {
+  it('refuses every parent that is not an approved, delivered, verification-failed, review-cap-reached, decision-needed or review-incomplete repository run', () => {
     const commit = 'c'.repeat(40)
     const setup = {
       target: { kind: 'repo' },
@@ -4042,6 +4042,16 @@ describe('repair', { timeout: 240000 }, () => {
         ),
       /no candidate commit/,
     )
+    // And a run that stopped on an owner decision before its check (ADR-0067).
+    const decision = {
+      ...stopped,
+      output: { ...stopped.output, conclusion: 'decision-needed' },
+    }
+    assert.equal(repairableCandidate(decision, setup).commit, commit)
+    assert.equal(
+      repairableCandidate(decision, setup).conclusion,
+      'decision-needed',
+    )
     const cases: [string, Partial<typeof good>, RegExp][] = [
       ['pending', { status: 'pending' }, /it is pending, not completed/],
       ['leased', { status: 'leased' }, /it is leased, not completed/],
@@ -4071,7 +4081,7 @@ describe('repair', { timeout: 240000 }, () => {
           },
         },
         new RegExp(
-          `its conclusion is ${conclusion}, not approved, verification-failed or review-cap-reached`,
+          `its conclusion is ${conclusion}, not approved, verification-failed, review-cap-reached or decision-needed`,
         ),
       ])
     for (const status of [

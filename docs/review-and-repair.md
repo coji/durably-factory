@@ -118,10 +118,17 @@ pnpm factory repair --run RUN_ID --findings-file findings.md
 | `verification-failed`             | 最後に失敗した `check` コマンドの出力と終了コードから自動生成（最初の修正担当には、その `check` のログと成果物のパスも渡す） |
 | `review-cap-reached`              | 最後に修正を求めたレビューの指摘内容から自動生成                                                                             |
 | `review-incomplete`（検証通過後） | 同じ Candidate に対して完了していたレビューの指摘から自動生成                                                                |
+| `decision-needed`                 | 実装担当が書いた `DECISION NEEDED:` の行から自動生成（答えは `--context-file` で渡す）                                       |
 
 - 親の Candidate ブランチが記録済みのコミットを指している必要があります（動いていれば `candidate-moved` で停止）。
 - 親の設定を引き継いで修正から開始します（`--max-iterations 1..5` で修正回数だけ上書き可能）。
 - `--dispositions-file`（対応見送り方針）や `--context-file`（確定コンテキスト）を指定すると親の設定を上書きし、省略時は親から引き継ぎます。公開設定（`--publish`）も引き継がれます。
+
+### 持ち主の判断が必要なとき（decision-needed）
+
+`local-factory.v10` 以降の run では、実装・修正担当は、仕様・持ち主が決めたこと・保護された範囲のせいで、見えている直し方がどれも取れないとき、残りの作業を済ませたうえで `NOTES:` の先頭に `DECISION NEEDED: <何を決める必要があり、なぜか>` を 1 件 1 行で書きます。ふつうの迷いには使いません。この行がある Candidate を記録すると、run は固定した `check` とレビューの前に `decision-needed` で止まります。Candidate とその差分は残り、判断が必要なことは `status`・`wait`・`report` に出ます。
+
+決めた答えをファイルに書き、`pnpm factory repair --run RUN_ID --context-file answer.md` で続けます。`--context-file` は親の確定コンテキストと入れ替わるので、前に決めたことも書き直してください。修正 run は残った Candidate から始まり、ベース検証（`baselineCheck`）は行いません。親はレビューされていないので、修正 run の最初のレビューは 1 回目として扱います（[ADR-0067](adr/0067-decision-needed.md)）。
 
 ### テストの比較基準（featureBase）と指摘ごとの回答（NOTES）
 

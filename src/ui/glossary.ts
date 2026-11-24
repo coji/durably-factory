@@ -99,6 +99,7 @@ export const STOP_NAME: Record<FailureKind, string> = {
   'agent-timeout': '呼び出しの時間切れ',
   'verification-failed': '検証失敗',
   'review-cap-reached': 'レビュー上限',
+  'decision-needed': '判断待ちで停止',
   'generate-failed': '生成コマンドの失敗',
   'uncertain-invocation': '結果が不明な呼び出し',
   cancelled: '取り消し',
@@ -157,6 +158,7 @@ export const CONCLUSION_NAME: Record<string, string> = {
   rejected: '却下',
   'verification-failed': '検証失敗',
   'review-cap-reached': 'レビュー上限',
+  'decision-needed': '判断待ちで停止',
   'generate-failed': '生成コマンドの失敗',
   failed: '失敗',
   cancelled: '取り消し',
@@ -317,6 +319,12 @@ export const FAILURE_TEXT: Record<
     check:
       'レポートでレビューの指摘を読み、候補を手で仕上げるか、タスクを書き直す。',
   },
+  'decision-needed': {
+    reason:
+      '実装担当が、人が決めないと仕上げられないことがあると書いたので、チェックとレビューの前に止めました。候補はそのまま残しています。',
+    check:
+      '下の「判断が必要なこと」を読んで決め、答えを書いたファイルを --context-file に渡して修正を始める。渡した確定事項は前のものと入れ替わるので、前に決めたことも書き直す。',
+  },
   'generate-failed': {
     reason:
       '実装か修正のあとに走らせる生成コマンドが失敗したか、時間切れになったか、起動できませんでした。その作業を候補にして検証する前に止めました。',
@@ -386,6 +394,7 @@ export const DETAIL_LABEL: Record<keyof typeof DETAIL_PREFIX, string> = {
   generateCommand: '生成コマンド',
   generateExitCode: '生成コマンドの終了コード',
   generateOutput: '生成コマンドの出力の末尾',
+  decisionNeeded: '判断が必要なこと',
 }
 
 export const DETAIL_TEXT = {
@@ -446,6 +455,14 @@ export const COMMAND_NOTES: [string, string][] = [
     'チェックを通った最後の候補から、修正の回数を新しくして続けます。--findings-file を渡さなければ、その候補のレビューのうち、終わって修正を求めたものの指摘を渡します。',
   ],
   ['the reviewer notes', 'レビューのメモを読めます。'],
+  [
+    'the decisions, the implementer notes and the candidate diff',
+    '判断が必要なこと、実装担当のメモ、候補の差分を読めます。',
+  ],
+  [
+    'go on from the kept candidate with your answer as the owner context; the findings are built from the decisions unless --findings-file is given',
+    '残した候補から、答えを確定事項として渡して続けます。--findings-file を渡さなければ、判断が必要なことを指摘として渡します。',
+  ],
   [
     'read the spec reviews first',
     '判断の前に、仕様レビューの指摘と仕様を読みます。',

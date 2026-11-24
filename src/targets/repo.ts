@@ -135,6 +135,8 @@ const UNAPPROVED_BASE: Record<
     'reviewers still found blocking issues in it after the review cap',
   'review-incomplete':
     'its reviews did not finish after the pinned check passed on it',
+  'decision-needed':
+    'its implementer asked for an owner decision, so it was neither checked nor reviewed',
 }
 
 /**

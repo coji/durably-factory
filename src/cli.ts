@@ -693,9 +693,9 @@ Commands:
                   [--context-file <file>]
                   [--max-iterations <n>]    new run that repairs the last candidate of an approved,
                                             delivered repository run from outside findings, or of
-                                            one that stopped verification-failed or
-                                            review-cap-reached, or failed review-incomplete
-                                            after its check passed (see below)
+                                            one that stopped verification-failed,
+                                            review-cap-reached or decision-needed, or failed
+                                            review-incomplete after its check passed (see below)
   ${FACTORY_COMMAND} status [--format text|json]     tasks that wait on a person, stopped unresolved or
                                             run now: a first run and its repair runs are one task,
                                             shown by its representative run's reason and next command
@@ -853,6 +853,12 @@ Repository config: factory.json at the repository root, or --config <file>:
   FACTORY_RUN_ID. What they change is part of the candidate; the report and
   the reviewers are told which paths they changed. A failure stops the run
   as generate-failed before the candidate is sealed or verified.
+  From local-factory.v10 the implementer and repairer may end their NOTES
+  with "DECISION NEEDED: <what and why>" lines when the spec, the owner's
+  decisions or the protected scope forbid every fix they can see. A sealed
+  candidate whose reply has one stops the run as decision-needed before the
+  pinned check and any review, keeping the candidate; repair it with
+  --context-file answering the decisions.
   "testProbe" lists 1 to 20 { glob, command } entries: each added or
   modified file matching a glob runs on its own, with "{files}" (an element
   of its own) replaced by its path, once in a worktree at the base commit
@@ -923,18 +929,20 @@ Repository config: factory.json at the repository root, or --config <file>:
   squashed branch when "publishSquashed" is true; without --publish neither
   is pushed.
   repair starts a child run from a parent run that completed approved and
-  delivered its last candidate, or completed verification-failed or
-  review-cap-reached with a recorded last candidate, or failed with a
+  delivered its last candidate, or completed verification-failed,
+  review-cap-reached or decision-needed with a recorded last candidate, or failed with a
   review-incomplete error after the check passed on its last sealed
   candidate, whose candidate branch still points at that commit. Every
   other conclusion or failure is refused. An approved parent needs
-  --findings-file. For the other three it is optional: without it, a
+  --findings-file. For the others it is optional: without it, a
   verification-failed parent's findings are built from its stored output
   tail and exit code of the check that failed on its last candidate, with
   the check command, a review-cap-reached parent's from the notes of each
   of its last reviews that asked for changes, and a review-incomplete
   parent's from the notes of each review of its last candidate that
-  finished asking for changes; with none, give --findings-file. The child
+  finished asking for changes, and a decision-needed parent's from the
+  DECISION NEEDED lines its last candidate's reply left (give the answer
+  with --context-file); with none, give --findings-file. The child
   works on factory/<childRunId> cut from that commit, with the parent's
   stored task, spec, issue, profiles, check, setup, timeouts, codexPath,
   commit and publish settings and max iterations; factory.json and the
@@ -943,7 +951,8 @@ Repository config: factory.json at the repository root, or --config <file>:
   candidate branch again and stops as candidate-moved, before creating
   anything, if the branch moved since. The child of a verification-failed
   parent skips baselineCheck, since its base is the candidate the check
-  failed on; every other child runs it as its parent did. It skips triage,
+  failed on, and so does the child of a decision-needed parent, whose base
+  was never checked; every other child runs it as its parent did. It skips triage,
   starts with a repair in a new session, and its max iterations count its
   own repairs only. The findings are stored as untrusted input for the
   repairer and both reviewers; --dispositions-file replaces the parent's

@@ -41,6 +41,7 @@ import {
   type VerificationOutcome,
 } from '../engine/verification.js'
 import {
+  decisionNeededLines,
   parseCodeResponse,
   repairFindings,
   type CodeResponse,
@@ -49,7 +50,7 @@ import { SpecEventSchema, type SpecEvent } from './events.js'
 import { readInputFile } from './input-file.js'
 import { agentLogsDirBeside, specRevisionsDirOf } from './layout.js'
 import { specAction } from './policy.js'
-import { promptVersionOf } from './prompt-version.js'
+import { asksForDecisions, promptVersionOf } from './prompt-version.js'
 import {
   codePrompt,
   blockerNotes,
@@ -126,6 +127,7 @@ import {
   type SpecVersion,
   type StageArgs,
   type StageHandler,
+  type StoredDecisionNeeded,
   type StoredImplementerNotes,
   TEST_PROBE_CONTEXT,
   type TestProbeRecord,
@@ -520,23 +522,34 @@ export const codeStage: StageHandler = async ({
   // candidate they explain, so a replay and the report read them back and
   // never parse the reply again. A stopped call settled no reply, so it
   // leaves none.
+  // From prompt version 6 its DECISION NEEDED lines are kept beside them:
+  // the run then stops before the check and any review (ADR-0067).
   const sealed: SealedCandidate & {
     implementerNotes?: StoredImplementerNotes
-  } = await step.run(`${key}:candidate`, async (signal, attempt) => {
-    const notes = timedOut ? null : parseImplementerNotes(call.text)
-    return {
-      ...(await target.seal({
-        iteration,
-        runId: step.runId,
-        attemptId: attempt.id,
-        signal,
-      })),
-      ...(generation?.changes ? { generated: generation.changes } : {}),
-      ...(timedOut ? { timedOut } : {}),
-      ...(notes ? { implementerNotes: { role, notes } } : {}),
-    }
-  })
-  const { implementerNotes, ...candidate } = sealed
+  } & StoredDecisionNeeded = await step.run(
+    `${key}:candidate`,
+    async (signal, attempt) => {
+      const notes = timedOut ? null : parseImplementerNotes(call.text)
+      const decisions = asksForDecisions(
+        promptVersionOf(state.setup.instructionsVersion),
+      )
+        ? decisionNeededLines(notes)
+        : []
+      return {
+        ...(await target.seal({
+          iteration,
+          runId: step.runId,
+          attemptId: attempt.id,
+          signal,
+        })),
+        ...(generation?.changes ? { generated: generation.changes } : {}),
+        ...(timedOut ? { timedOut } : {}),
+        ...(notes ? { implementerNotes: { role, notes } } : {}),
+        ...(decisions.length > 0 ? { decisionNeeded: decisions } : {}),
+      }
+    },
+  )
+  const { implementerNotes, decisionNeeded, ...candidate } = sealed
   // A separate repair session is not the implementation session: the one on
   // record stays, and the next repair starts new again. A repair that may
   // continue across an effort change records the session it returned, as
@@ -573,6 +586,7 @@ export const codeStage: StageHandler = async ({
     candidate,
     session,
     ...(implementerNotes ? { implementerNotes: implementerNotes.notes } : {}),
+    ...(decisionNeeded?.length ? { decisionNeeded } : {}),
   }
 }
 
@@ -1396,14 +1410,25 @@ export const stopStage: StageHandler = async ({
 }) => {
   const target = services.target
   if (state.candidate) await target.assertIntact(state.candidate)
+  // A candidate whose reply asked for an owner decision is kept, sealed and
+  // with its diff, unchecked and unreviewed (ADR-0067).
+  const decisions = state.decisionNeeded ?? []
   return step.run(`${key}:result`, async () => ({
     type: 'factory.finished' as const,
-    outcome: outcome(
-      state,
-      state.verification?.passed ? 'review-cap-reached' : 'verification-failed',
-      null,
-      target.workdir,
-    ),
+    outcome:
+      decisions.length > 0
+        ? {
+            ...outcome(state, 'decision-needed', null, target.workdir),
+            decisionNeeded: decisions,
+          }
+        : outcome(
+            state,
+            state.verification?.passed
+              ? 'review-cap-reached'
+              : 'verification-failed',
+            null,
+            target.workdir,
+          ),
   }))
 }
 

@@ -48,7 +48,8 @@ const ruleLines = (prompt: string) =>
 
 describe('the shared blocking rule (ADR-0063)', () => {
   it('pins v9, and keeps the v8 bytes for a replay', () => {
-    assert.equal(INSTRUCTIONS_VERSION, 'local-factory.v9')
+    // v10 adds only the DECISION NEEDED line to the code prompts (ADR-0067).
+    assert.equal(INSTRUCTIONS_VERSION, 'local-factory.v10')
     assert.equal(promptVersionOf('local-factory.v9'), 5)
     // Captured from the preceding committed implementation, before this edit.
     assert.equal(

@@ -580,6 +580,7 @@ export interface FactoryOutcome {
     | 'verification-failed'
     | 'review-cap-reached'
     | 'generate-failed'
+    | 'decision-needed'
   candidate: SealedCandidate | null
   iterations: number
   reviewRounds: number
@@ -588,6 +589,11 @@ export interface FactoryOutcome {
   fake: boolean
   /** What the human receives; null when the run produced nothing to act on. */
   delivery: Delivery | null
+  /**
+   * The DECISION NEEDED lines of the last candidate's NOTES, for a
+   * `decision-needed` run (ADR-0067); absent on every other conclusion.
+   */
+  decisionNeeded?: string[]
   /**
    * Why the worktree could not be removed after the approved delivery was
    * recorded; null when it was. Absent when there was nothing to remove.
@@ -630,6 +636,11 @@ export interface FactoryState {
    * as untrusted. Null when its reply had none.
    */
   implementerNotes: string | null
+  /**
+   * The DECISION NEEDED lines the current candidate's reply left: the run
+   * stops before its check (ADR-0067). Absent or empty: none.
+   */
+  decisionNeeded?: string[]
   approval: 'approved' | 'rejected' | null
   outcome: FactoryOutcome | null
 }
@@ -642,6 +653,14 @@ export interface FactoryState {
 export interface StoredImplementerNotes {
   role: CodeRole
   notes: string
+}
+
+/**
+ * The DECISION NEEDED lines a candidate step stores beside the notes, from a
+ * run whose prompts ask for them (ADR-0067). Absent: none.
+ */
+export interface StoredDecisionNeeded {
+  decisionNeeded?: string[]
 }
 
 /**

@@ -24,9 +24,12 @@ function setupWith(
 
 export function reduce(state: FactoryState, event: FactoryEvent): FactoryState {
   switch (event.type) {
-    case 'code.completed':
+    case 'code.completed': {
+      // Only the new candidate's DECISION NEEDED lines, never an earlier
+      // candidate's; the key stays absent without any (ADR-0067).
+      const { decisionNeeded: _earlier, ...rest } = state
       return {
-        ...state,
+        ...rest,
         iteration: state.iteration + 1,
         candidate: event.candidate,
         implementationSession: event.session,
@@ -38,7 +41,11 @@ export function reduce(state: FactoryState, event: FactoryEvent): FactoryState {
         failedCheckReviews: [],
         // The new candidate's own, or none: never an earlier candidate's.
         implementerNotes: event.implementerNotes ?? null,
+        ...(event.decisionNeeded
+          ? { decisionNeeded: event.decisionNeeded }
+          : {}),
       }
+    }
     case 'verify.completed':
       if (event.targetId !== state.candidate?.id)
         throw new Error(`verification target is stale: ${event.targetId}`)

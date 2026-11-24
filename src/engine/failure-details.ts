@@ -17,6 +17,7 @@ export const DETAIL_PREFIX = {
   generateCommand: 'generate command: ',
   generateExitCode: 'generate exit code: ',
   generateOutput: 'generate output tail: ',
+  decisionNeeded: 'decision needed: ',
 } as const
 
 /** The `checkAttempt` value of a cancelled or lease-lost grading attempt. */
