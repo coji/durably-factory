@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/coji/durably-factory/compare/v0.3.0...v0.4.0) (2026-11-24)
+
+
+### Features
+
+* stop a run before its check when the implementer asks for an owner decision ([d97bc13](https://github.com/coji/durably-factory/commit/d97bc1387d4d368fc80952dc196d2ad9df56320c))
+* stop a run before its check when the implementer asks for an owner decision ([f126b01](https://github.com/coji/durably-factory/commit/f126b015bd6f9da58ac502c06a6e93bae1b99647))
+
+
+### Bug Fixes
+
+* rename factory tab to ファクトリー ([#62](https://github.com/coji/durably-factory/issues/62)) ([e95182b](https://github.com/coji/durably-factory/commit/e95182b9b06b6d61640a01d8d550c6e424e4f3f6))
+
 ## [0.3.0](https://github.com/coji/durably-factory/compare/v0.2.0...v0.3.0) (2026-11-23)
 
 
